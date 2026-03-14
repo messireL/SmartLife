@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="card">
+    <div class="section-header">
+      <div>
+        <h1>{{ device.name }}</h1>
+        <div class="muted">{{ device.provider.value }} · {{ device.model or 'unknown model' }}</div>
+      </div>
+      <div>
+        {% if device.is_online %}
+          <span class="badge online">online</span>
+        {% else %}
+          <span class="badge offline">offline</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="detail-grid">
+      <div><span class="muted">Комната:</span> {{ device.room_name or '—' }}</div>
+      <div><span class="muted">Локация:</span> {{ device.location_name or '—' }}</div>
+      <div><span class="muted">Категория:</span> {{ device.category or '—' }}</div>
+      <div><span class="muted">External ID:</span> {{ device.external_id }}</div>
+      <div><span class="muted">Последняя активность:</span> {{ device.last_seen_at or '—' }}</div>
+      <div><span class="muted">Описание:</span> {{ device.notes or '—' }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Дневное энергопотребление</h2>
+      <div class="muted">Последние 30 дней</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Дата</th>
+            <th>kWh</th>
+            <th>W</th>
+            <th>V</th>
+            <th>A</th>
+            <th>Источник</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in daily %}
+            <tr>
+              <td>{{ item.period_start }}</td>
+              <td>{{ item.energy_kwh }}</td>
+              <td>{{ item.power_w or '—' }}</td>
+              <td>{{ item.voltage_v or '—' }}</td>
+              <td>{{ item.current_a or '—' }}</td>
+              <td>{{ item.source_note or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Месячное энергопотребление</h2>
+      <div class="muted">Последние 12 месяцев</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Месяц</th>
+            <th>kWh</th>
+            <th>Источник</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in monthly %}
+            <tr>
+              <td>{{ item.period_start }}</td>
+              <td>{{ item.energy_kwh }}</td>
+              <td>{{ item.source_note or '—' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if flash %}
+    <div class="flash">{{ flash }}</div>
+  {% endif %}
+
+  <section class="summary-grid">
+    <article class="card stat-card">
+      <div class="muted">Устройств</div>
+      <div class="stat-value">{{ summary.devices_total }}</div>
+    </article>
+    <article class="card stat-card">
+      <div class="muted">Онлайн</div>
+      <div class="stat-value">{{ summary.online_total }}</div>
+    </article>
+    <article class="card stat-card">
+      <div class="muted">Сегодня, kWh</div>
+      <div class="stat-value">{{ summary.day_total_kwh }}</div>
+    </article>
+    <article class="card stat-card">
+      <div class="muted">Текущий месяц, kWh</div>
+      <div class="stat-value">{{ summary.month_total_kwh }}</div>
+    </article>
+  </section>
+
+  <section class="card toolbar">
+    <div>
+      <h2>Быстрый старт</h2>
+      <p class="muted">Для первого запуска можно заполнить проект демо-данными и проверить UI, API и расчёт метрик.</p>
+    </div>
+    <form method="post" action="/actions/sync-demo">
+      <button type="submit">Загрузить demo-данные</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Устройства</h2>
+      <div class="muted">{{ devices|length }} записей</div>
+    </div>
+    {% if devices %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Устройство</th>
+              <th>Провайдер</th>
+              <th>Комната</th>
+              <th>Категория</th>
+              <th>Статус</th>
+              <th>Последняя активность</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for device in devices %}
+              <tr>
+                <td><a href="/devices/{{ device.id }}">{{ device.name }}</a><div class="tiny muted">{{ device.model or '—' }}</div></td>
+                <td>{{ device.provider.value }}</td>
+                <td>{{ device.room_name or '—' }}</td>
+                <td>{{ device.category or '—' }}</td>
+                <td>
+                  {% if device.is_online %}
+                    <span class="badge online">online</span>
+                  {% else %}
+                    <span class="badge offline">offline</span>
+                  {% endif %}
+                </td>
+                <td>{{ device.last_seen_at or '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">Пока пусто. Нажми «Загрузить demo-данные» и приложение сразу оживёт.</div>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SmartLife</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <a class="brand" href="/">SmartLife</a>
+        <div class="subtitle">Устройства Smart Life / Mi Home</div>
+      </div>
+      <nav class="navlinks">
+        <a href="/">Панель</a>
+        <a href="/api/devices">API</a>
+        <a href="/health">Health</a>
+      </nav>
+    </header>
+    <main class="container">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>
