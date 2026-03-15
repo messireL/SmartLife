@@ -27,7 +27,7 @@ def get_rooms_overview(db: Session) -> list[dict]:
             .order_by(name_expr.asc())
         ).scalars().all()
         visible_devices = [d for d in room_devices if not d.is_hidden]
-        if not room_devices:
+        if not room_devices or not visible_devices:
             continue
         device_ids = [d.id for d in room_devices]
         today_energy = db.scalar(
@@ -44,7 +44,7 @@ def get_rooms_overview(db: Session) -> list[dict]:
                 EnergySample.period_start == month_start,
             )
         ) or ZERO
-        live_power = sum((d.current_power_w or Decimal('0.00')) for d in visible_devices)
+        live_power = sum(((d.current_power_w or Decimal('0.00')) for d in visible_devices), Decimal('0.00'))
         rooms.append(
             {
                 'name': room_name,
