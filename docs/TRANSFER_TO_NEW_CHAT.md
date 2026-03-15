@@ -17,7 +17,7 @@
 
 ## Что уже сделано в текущем состоянии
 
-Версия: `v0.2.3`
+Версия: `v0.2.4`
 
 Сделано:
 - стартовый MVP-каркас FastAPI + PostgreSQL + Docker Compose;
@@ -122,3 +122,15 @@ chmod +x scripts/manage.sh
 ## Подсказка для следующего чата
 
 Если продолжаем разработку, сначала сверяем фактическое состояние `repo/main` и сервера `/opt/SmartLife`, потом готовим следующий релиз.
+
+
+Обновление сервера через git:
+
+```bash
+cd /opt/SmartLife
+git pull --ff-only
+chmod +x scripts/manage.sh
+./scripts/manage.sh up --build
+./scripts/manage.sh health
+./scripts/manage.sh url
+```

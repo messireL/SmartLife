@@ -417,6 +417,20 @@ wait_for_http() {
   return 1
 }
 
+wait_for_container_http() {
+  local url="$1"
+  local attempts="${2:-30}"
+  local sleep_seconds="${3:-2}"
+  local i
+  for ((i=1; i<=attempts; i++)); do
+    if compose exec -T app sh -lc "curl -fsS --max-time 5 '$url' >/dev/null" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$sleep_seconds"
+  done
+  return 1
+}
+
 show_app_logs() {
   echo >&2
   echo "Последние логи app:" >&2
@@ -429,13 +443,13 @@ verify_app_ready() {
   local external_url
   external_url="$(health_url)"
 
-  if ! compose exec -T app sh -lc "curl -fsS --max-time 5 '$internal_url' >/dev/null"; then
+  if ! wait_for_container_http "$internal_url" 45 2; then
     echo "SmartLife внутри контейнера ещё не отвечает на ${internal_url}" >&2
     show_app_logs
     return 1
   fi
 
-  if ! wait_for_http "$external_url" 20 2; then
+  if ! wait_for_http "$external_url" 30 2; then
     echo "SmartLife внутри контейнера запущен, но опубликованный URL пока недоступен: $external_url" >&2
     echo "Проверь, что выбранный bind IP реально назначен серверу и не блокируется firewall." >&2
     show_app_logs

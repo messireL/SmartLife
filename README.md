@@ -8,7 +8,7 @@ SmartLife — веб-приложение для управления устро
 - PostgreSQL
 - Docker Compose
 
-## Что уже есть в `v0.2.3`
+## Что уже есть в `v0.2.4`
 
 - LAN-first запуск с выбором IP и порта;
 - изолированное Docker-окружение;
@@ -171,3 +171,15 @@ SMARTLIFE_SYNC_ON_STARTUP=yes
 Актуальное состояние проекта поддерживается в файле:
 
 `docs/TRANSFER_TO_NEW_CHAT.md`
+
+
+Обновление сервера через git:
+
+```bash
+cd /opt/SmartLife
+git pull --ff-only
+chmod +x scripts/manage.sh
+./scripts/manage.sh up --build
+./scripts/manage.sh health
+./scripts/manage.sh url
+```
