@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.core.version import APP_VERSION
 from app.db.models import BucketType, Device, DeviceCommandLog, DeviceStatusSnapshot, EnergySample, SyncRun
 from app.db.session import get_db
-from app.services.dashboard_service import get_sync_overview
+from app.services.dashboard_service import get_dashboard_summary, get_sync_overview
 from app.services.runtime_config_service import get_runtime_config
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -157,6 +157,7 @@ def device_commands(device_id: int, limit: int = 20, db: Session = Depends(get_d
 @router.get("/sync/status")
 def sync_status(db: Session = Depends(get_db)):
     overview = get_sync_overview(db)
+    summary = get_dashboard_summary(db)
     last_run = overview["last_run"]
     return {
         "background_sync_enabled": overview["background_sync_enabled"],
@@ -206,6 +207,7 @@ def health(db: Session = Depends(get_db)):
     settings = get_settings()
     runtime = get_runtime_config(db)
     overview = get_sync_overview(db)
+    summary = get_dashboard_summary(db)
     last_run = overview["last_run"]
     return {
         "status": "ok",
@@ -220,4 +222,6 @@ def health(db: Session = Depends(get_db)):
         "sync_running_now": overview["is_running_now"],
         "last_sync_status": last_run.status.value if last_run else None,
         "last_sync_started_at": last_run.started_at.isoformat() if last_run and last_run.started_at else None,
+        "tariff_price_per_kwh": float(summary["tariff_price_per_kwh"]),
+        "tariff_currency": summary["tariff_currency"],
     }

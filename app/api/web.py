@@ -23,7 +23,7 @@ from app.services.device_control_service import DeviceControlError, get_recent_c
 from app.services.device_query_service import get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
-from app.services.runtime_config_service import configure_demo_provider, configure_tuya_cloud, get_runtime_config
+from app.services.runtime_config_service import configure_demo_provider, configure_tariff_settings, configure_tuya_cloud, get_runtime_config
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -219,6 +219,30 @@ def update_runtime_cloud_settings(
         project_code=project_code,
     )
     flash = "Облачные настройки сохранены в PostgreSQL. Провайдер переключён на tuya_cloud."
+    return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
+
+
+
+
+@router.post("/settings/tariff")
+def update_tariff_settings(
+    tariff_price_per_kwh: str = Form(default="0.00"),
+    tariff_currency: str = Form(default="₽"),
+    db: Session = Depends(get_db),
+):
+    raw_price = (tariff_price_per_kwh or "0.00").strip().replace(",", ".")
+    try:
+        from decimal import Decimal, InvalidOperation
+        price = Decimal(raw_price)
+        if price < 0:
+            raise InvalidOperation
+        normalized = f"{price.quantize(Decimal('0.01'))}"
+    except Exception:
+        flash = "Тариф должен быть неотрицательным числом, например 7.35"
+        return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
+
+    configure_tariff_settings(db, price_per_kwh=normalized, currency=(tariff_currency or "₽").strip() or "₽")
+    flash = "Тариф электроэнергии сохранён в PostgreSQL и сразу используется в сводке и графиках."
     return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 

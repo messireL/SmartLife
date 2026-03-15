@@ -11,7 +11,8 @@
 </section>
 
 <section class="summary-grid">
-  <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ summary.day_total_kwh }}</div></article>
+  <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ summary.day_total_kwh }}</div><div class="muted tiny">{{ summary.day_total_cost }} {{ summary.tariff_currency }}</div></article>
+  <article class="card stat-card"><div class="muted">Месяц, {{ summary.tariff_currency }}</div><div class="stat-value">{{ summary.month_total_cost }}</div><div class="muted tiny">{{ summary.month_total_kwh }} kWh · {{ summary.tariff_display }}</div></article>
   <article class="card stat-card"><div class="muted">Текущая нагрузка, W</div><div class="stat-value">{{ summary.live_power_total_w }}</div></article>
   <article class="card stat-card"><div class="muted">Активных сейчас</div><div class="stat-value">{{ summary.power_now_total }}</div></article>
 </section>
@@ -78,17 +79,18 @@
     <div class="section-header"><h2>Топ месяца</h2></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Устройство</th><th>Комната</th><th>kWh</th><th>Сейчас, W</th></tr></thead>
+        <thead><tr><th>Устройство</th><th>Комната</th><th>kWh</th><th>{{ dashboard_panels.tariff_currency }}</th><th>Сейчас, W</th></tr></thead>
         <tbody>
           {% for item in dashboard_panels.top_month %}
             <tr>
               <td><a href="/devices/{{ item.device.id }}">{{ item.device.display_name }}</a></td>
               <td>{{ item.device.display_room_name or '—' }}</td>
               <td>{{ item.energy_kwh }}</td>
+              <td>{{ item.cost }}</td>
               <td>{{ item.device.current_power_w or '—' }}</td>
             </tr>
           {% else %}
-            <tr><td colspan="4" class="muted">Месячная статистика пока не накопилась.</td></tr>
+            <tr><td colspan="5" class="muted">Месячная статистика пока не накопилась.</td></tr>
           {% endfor %}
         </tbody>
       </table>

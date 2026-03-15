@@ -11,6 +11,7 @@ from app.core.timeutils import format_local_date, format_local_datetime, local_t
 from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, SyncRun, SyncRunStatus
 from app.services.chart_service import build_bar_chart, build_line_chart
 from app.services.sync_runner import is_sync_running
+from app.services.runtime_config_service import get_runtime_config
 
 
 ZERO = Decimal("0.000")
@@ -24,9 +25,15 @@ def _quantize(value: Decimal | None, places: str = "0.00") -> Decimal:
 
 
 
+def _money(value: Decimal | None) -> Decimal:
+    return _quantize(value, "0.00")
+
+
 def get_dashboard_summary(db: Session) -> dict:
     today = local_today()
     month_start = today.replace(day=1)
+    runtime = get_runtime_config(db)
+    tariff_price = runtime.tariff_price_decimal
 
 
     devices_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.is_deleted.is_(False))) or 0
@@ -65,12 +72,20 @@ def get_dashboard_summary(db: Session) -> dict:
         )
     ) or 0
 
+    day_cost = (day_total or ZERO) * tariff_price
+    month_cost = (month_total or ZERO) * tariff_price
+
     return {
         "devices_total": devices_total,
         "online_total": online_total,
         "powered_on_total": powered_on_total,
         "day_total_kwh": _quantize(day_total, "0.000"),
         "month_total_kwh": _quantize(month_total, "0.000"),
+        "day_total_cost": _money(day_cost),
+        "month_total_cost": _money(month_cost),
+        "tariff_price_per_kwh": runtime.tariff_price_decimal,
+        "tariff_currency": runtime.tariff_currency,
+        "tariff_display": runtime.tariff_display,
         "live_power_total_w": _quantize(live_power_total),
         "power_now_total": power_now_total,
     }
@@ -96,6 +111,8 @@ def get_sync_overview(db: Session) -> dict:
 
 def get_dashboard_panels(db: Session) -> dict:
     today = local_today()
+    runtime = get_runtime_config(db)
+    tariff_price = runtime.tariff_price_decimal
     month_start = today.replace(day=1)
     trend_start = today - timedelta(days=13)
 
@@ -184,13 +201,24 @@ def get_dashboard_panels(db: Session) -> dict:
         suffix=" kWh",
     )
 
+    top_cost_today_rows = [
+        {"device": device, "energy_kwh": energy, "cost": _money(energy * tariff_price)}
+        for device, energy in top_today_rows
+    ]
+    top_cost_month_rows = [
+        {"device": device, "energy_kwh": energy, "cost": _money(energy * tariff_price)}
+        for device, energy in top_month_rows
+    ]
+
     return {
         "daily_totals_chart": build_bar_chart(trend_items, suffix=" kWh"),
         "current_power_chart": current_power_chart,
         "top_today_chart": top_today_chart,
         "live_now": live_now,
-        "top_today": [{"device": device, "energy_kwh": energy} for device, energy in top_today_rows],
-        "top_month": [{"device": device, "energy_kwh": energy} for device, energy in top_month_rows],
+        "top_today": top_cost_today_rows,
+        "top_month": top_cost_month_rows,
+        "tariff_display": runtime.tariff_display,
+        "tariff_currency": runtime.tariff_currency,
         "trend_period_label": f"{format_local_date(trend_start)} — {format_local_date(today)}",
     }
 
@@ -198,6 +226,8 @@ def get_dashboard_panels(db: Session) -> dict:
 
 def get_device_dashboard(db: Session, device: Device) -> dict:
     today = local_today()
+    runtime = get_runtime_config(db)
+    tariff_price = runtime.tariff_price_decimal
     month_start = today.replace(day=1)
 
     daily_rows = db.execute(
@@ -281,6 +311,10 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
         "stats": {
             "today_kwh": _quantize(today_energy, "0.000"),
             "month_kwh": _quantize(month_energy, "0.000"),
+            "today_cost": _money(today_energy * tariff_price),
+            "month_cost": _money(month_energy * tariff_price),
+            "tariff_display": runtime.tariff_display,
+            "tariff_currency": runtime.tariff_currency,
             "latest_power_w": _quantize(device.current_power_w),
             "latest_voltage_v": _quantize(device.current_voltage_v),
             "peak_power_w": _quantize(max(power_values) if power_values else Decimal("0.00")),

@@ -17,7 +17,8 @@
   <article class="card stat-card"><div class="muted">Онлайн</div><div class="stat-value">{{ summary.online_total }}</div></article>
   <article class="card stat-card"><div class="muted">Включено</div><div class="stat-value">{{ summary.powered_on_total }}</div></article>
   <article class="card stat-card"><div class="muted">Сейчас тянут нагрузку</div><div class="stat-value">{{ summary.power_now_total }}</div></article>
-  <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ summary.day_total_kwh }}</div></article>
+  <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ summary.day_total_kwh }}</div><div class="muted tiny">{{ summary.day_total_cost }} {{ summary.tariff_currency }}</div></article>
+  <article class="card stat-card"><div class="muted">Месяц, {{ summary.tariff_currency }}</div><div class="stat-value">{{ summary.month_total_cost }}</div><div class="muted tiny">{{ summary.month_total_kwh }} kWh · {{ summary.tariff_display }}</div></article>
   <article class="card stat-card"><div class="muted">Текущая нагрузка, W</div><div class="stat-value">{{ summary.live_power_total_w }}</div></article>
 </section>
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,6 +15,8 @@ RUNTIME_KEY_TUYA_BASE_URL = "tuya.base_url"
 RUNTIME_KEY_TUYA_ACCESS_ID = "tuya.access_id"
 RUNTIME_KEY_TUYA_ACCESS_SECRET = "tuya.access_secret"
 RUNTIME_KEY_TUYA_PROJECT_CODE = "tuya.project_code"
+RUNTIME_KEY_TARIFF_PRICE = "tariff.price_per_kwh"
+RUNTIME_KEY_TARIFF_CURRENCY = "tariff.currency"
 
 
 @dataclass(slots=True)
@@ -23,6 +26,8 @@ class RuntimeConfig:
     tuya_access_id: str
     tuya_access_secret: str
     tuya_project_code: str
+    tariff_price_per_kwh: str
+    tariff_currency: str
 
     @property
     def tuya_access_id_masked(self) -> str:
@@ -43,6 +48,22 @@ class RuntimeConfig:
     @property
     def tuya_is_configured(self) -> bool:
         return bool((self.tuya_access_id or "").strip() and (self.tuya_access_secret or "").strip())
+
+    @property
+    def tariff_price_decimal(self) -> Decimal:
+        raw = (self.tariff_price_per_kwh or "").strip()
+        if not raw:
+            return Decimal("0.00")
+        try:
+            return Decimal(raw).quantize(Decimal("0.01"))
+        except (InvalidOperation, ValueError):
+            return Decimal("0.00")
+
+    @property
+    def tariff_display(self) -> str:
+        amount = self.tariff_price_decimal
+        currency = (self.tariff_currency or "₽").strip() or "₽"
+        return f"{amount:.2f} {currency}/kWh"
 
 
 def _get_setting_row(db: Session, key: str) -> AppSetting | None:
@@ -78,6 +99,8 @@ def _build_runtime_config(db: Session) -> RuntimeConfig:
         tuya_access_id=get_setting_value(db, RUNTIME_KEY_TUYA_ACCESS_ID, settings.smartlife_tuya_access_id or ""),
         tuya_access_secret=get_setting_value(db, RUNTIME_KEY_TUYA_ACCESS_SECRET, settings.smartlife_tuya_access_secret or ""),
         tuya_project_code=get_setting_value(db, RUNTIME_KEY_TUYA_PROJECT_CODE, settings.smartlife_tuya_project_code or ""),
+        tariff_price_per_kwh=get_setting_value(db, RUNTIME_KEY_TARIFF_PRICE, "0.00"),
+        tariff_currency=get_setting_value(db, RUNTIME_KEY_TARIFF_CURRENCY, "₽"),
     )
 
 
@@ -89,6 +112,8 @@ def bootstrap_runtime_settings(db: Session) -> RuntimeConfig:
         RUNTIME_KEY_TUYA_ACCESS_ID: settings.smartlife_tuya_access_id or "",
         RUNTIME_KEY_TUYA_ACCESS_SECRET: settings.smartlife_tuya_access_secret or "",
         RUNTIME_KEY_TUYA_PROJECT_CODE: settings.smartlife_tuya_project_code or "",
+        RUNTIME_KEY_TARIFF_PRICE: "0.00",
+        RUNTIME_KEY_TARIFF_CURRENCY: "₽",
     }
     changed = False
     for key, default_value in defaults.items():
@@ -126,4 +151,14 @@ def configure_tuya_cloud(db: Session, *, base_url: str, access_id: str, access_s
 
 def configure_demo_provider(db: Session) -> RuntimeConfig:
     set_runtime_values(db, {RUNTIME_KEY_PROVIDER: ProviderType.DEMO.value})
+    return get_runtime_config(db)
+
+
+def configure_tariff_settings(db: Session, *, price_per_kwh: str, currency: str) -> RuntimeConfig:
+    normalized_currency = (currency or "₽").strip() or "₽"
+    normalized_price = (price_per_kwh or "0.00").strip() or "0.00"
+    set_runtime_values(db, {
+        RUNTIME_KEY_TARIFF_PRICE: normalized_price,
+        RUNTIME_KEY_TARIFF_CURRENCY: normalized_currency,
+    })
     return get_runtime_config(db)

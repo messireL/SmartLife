@@ -22,10 +22,10 @@
 
 {% if active_tab == 'overview' %}
   <section class="summary-grid metrics-grid">
-    <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ device_view.stats.today_kwh }}</div></article>
-    <article class="card stat-card"><div class="muted">Месяц, kWh</div><div class="stat-value">{{ device_view.stats.month_kwh }}</div></article>
+    <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ device_view.stats.today_kwh }}</div><div class="muted tiny">{{ device_view.stats.today_cost }} {{ device_view.stats.tariff_currency }}</div></article>
+    <article class="card stat-card"><div class="muted">Месяц, kWh</div><div class="stat-value">{{ device_view.stats.month_kwh }}</div><div class="muted tiny">{{ device_view.stats.month_cost }} {{ device_view.stats.tariff_currency }}</div></article>
     <article class="card stat-card"><div class="muted">Сейчас, W</div><div class="stat-value">{{ device_view.stats.latest_power_w }}</div></article>
-    <article class="card stat-card"><div class="muted">Напряжение, V</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div></article>
+    <article class="card stat-card"><div class="muted">Напряжение, V</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div><div class="muted tiny">{{ device_view.stats.tariff_display }}</div></article>
   </section>
 
   <section class="grid-2">

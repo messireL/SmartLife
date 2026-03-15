@@ -30,6 +30,7 @@
       <div class="status-row"><span class="muted">Стартовый прогон</span><span>{% if sync_overview.sync_on_startup %}да{% else %}нет{% endif %}</span></div>
       <div class="status-row"><span class="muted">Интервал</span><span>{{ sync_overview.sync_interval_seconds }} сек</span></div>
       <div class="status-row"><span class="muted">Health</span><span><a href="/health">/health</a></span></div>
+      <div class="status-row"><span class="muted">Тариф</span><span>{{ runtime.tariff_display if runtime else "0.00 ₽/kWh" }}</span></div>
     </div>
   </article>
 </section>
@@ -68,6 +69,25 @@
     <div class="muted">Настройки сохраняются в PostgreSQL (`app_settings`). Secret в форме обратно не показывается; пустое поле оставит текущий secret без изменений.</div>
     <div class="form-actions">
       <button class="button-primary" type="submit">Сохранить настройки облака</button>
+    </div>
+  </form>
+</section>
+
+
+<section class="card">
+  <div class="section-header"><h2>Тариф электроэнергии</h2></div>
+  <form class="stack-form" method="post" action="/settings/tariff">
+    <label>
+      <span>Цена за 1 kWh</span>
+      <input type="text" name="tariff_price_per_kwh" value="{{ runtime.tariff_price_per_kwh if runtime else '0.00' }}" placeholder="7.35">
+    </label>
+    <label>
+      <span>Валюта / символ</span>
+      <input type="text" name="tariff_currency" value="{{ runtime.tariff_currency if runtime else '₽' }}" placeholder="₽">
+    </label>
+    <div class="muted">После сохранения стоимость расхода сразу появится на главной, в потреблении и в карточках устройств.</div>
+    <div class="form-actions">
+      <button class="button-primary" type="submit">Сохранить тариф</button>
     </div>
   </form>
 </section>

@@ -16,6 +16,13 @@ clear_screen_if_tty() {
   fi
 }
 
+remove_legacy_compose_conflicts() {
+  unset COMPOSE_IGNORE_ORPHANS || true
+  if [[ -f "$ENV_FILE" ]]; then
+    sed -i '/^COMPOSE_IGNORE_ORPHANS=/d' "$ENV_FILE" 2>/dev/null || true
+  fi
+}
+
 prune_stopped_containers() {
   if command -v docker >/dev/null 2>&1; then
     echo "[SmartLife] preflight: cleaning stopped Docker containers" >&2
@@ -39,9 +46,11 @@ copy_env_template() {
   if [[ ! -f "$ENV_FILE" ]]; then
     cp "$ROOT_DIR/.env.example" "$ENV_FILE"
   fi
+  remove_legacy_compose_conflicts
 }
 
 load_env() {
+  remove_legacy_compose_conflicts
   if [[ -f "$ENV_FILE" ]]; then
     set -a
     # shellcheck disable=SC1090
@@ -53,6 +62,9 @@ load_env() {
 upsert_env() {
   local key="$1"
   local value="$2"
+  if [[ "$key" == "COMPOSE_IGNORE_ORPHANS" ]]; then
+    return 0
+  fi
   if grep -q "^${key}=" "$ENV_FILE"; then
     sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
   else
@@ -425,6 +437,7 @@ configure_demo() {
 }
 
 compose() {
+  remove_legacy_compose_conflicts
   env -u COMPOSE_IGNORE_ORPHANS docker compose "$@"
 }
 
@@ -635,7 +648,7 @@ case "$COMMAND" in
       filtered_args+=("$arg")
     done
     if [[ "$build_requested" == "yes" ]]; then
-      compose up -d --remove-orphans --build "${filtered_args[@]}"
+      compose up -d --build --remove-orphans "${filtered_args[@]}"
     else
       compose up -d --remove-orphans "${filtered_args[@]}"
     fi
