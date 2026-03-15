@@ -215,6 +215,7 @@ configure_runtime() {
   upsert_env SMARTLIFE_SYNC_INTERVAL_SECONDS "${SMARTLIFE_SYNC_INTERVAL_SECONDS:-60}"
   upsert_env SMARTLIFE_BACKGROUND_SYNC_ENABLED "${SMARTLIFE_BACKGROUND_SYNC_ENABLED:-yes}"
   upsert_env SMARTLIFE_SYNC_ON_STARTUP "${SMARTLIFE_SYNC_ON_STARTUP:-yes}"
+  upsert_env SMARTLIFE_TIMEZONE "${SMARTLIFE_TIMEZONE:-Europe/Moscow}"
 
   load_env
 
@@ -370,6 +371,31 @@ configure_sync() {
   echo "Настройки синхронизации обновлены: background=${enabled}, startup=${startup}, interval=${interval}s" >&2
 }
 
+configure_timezone() {
+  copy_env_template
+  load_env
+  ensure_secrets
+
+  local requested="${1:-}"
+  local current="${SMARTLIFE_TIMEZONE:-Europe/Moscow}"
+  local timezone=""
+
+  if [[ -n "$requested" ]]; then
+    timezone="$requested"
+  else
+    read -r -p "Часовой пояс приложения [${current}]: " timezone
+    timezone="${timezone:-$current}"
+  fi
+
+  if [[ -z "$timezone" ]]; then
+    echo "Часовой пояс не должен быть пустым." >&2
+    exit 1
+  fi
+
+  upsert_env SMARTLIFE_TIMEZONE "$timezone"
+  echo "Часовой пояс обновлён: ${timezone}" >&2
+}
+
 configure_demo() {
   copy_env_template
   load_env
@@ -400,6 +426,7 @@ show_banner() {
   echo "Режим: ${SMARTLIFE_NETWORK_MODE:-$DEFAULT_NETWORK_MODE}; bind IP: ${SMARTLIFE_BIND_IP:-127.0.0.1}; port: ${SMARTLIFE_PUBLIC_PORT:-$DEFAULT_PORT}; provider: ${SMARTLIFE_PROVIDER:-demo}"
   echo "Внутренний bind приложения: ${SMARTLIFE_APP_HOST:-0.0.0.0}:${SMARTLIFE_APP_PORT:-18089}"
   echo "Фоновая синхронизация: ${SMARTLIFE_BACKGROUND_SYNC_ENABLED:-yes}; стартовый прогон: ${SMARTLIFE_SYNC_ON_STARTUP:-yes}; интервал: ${SMARTLIFE_SYNC_INTERVAL_SECONDS:-60}s"
+  echo "Часовой пояс: ${SMARTLIFE_TIMEZONE:-Europe/Moscow}"
   echo
 }
 
@@ -476,6 +503,11 @@ case "${1:-}" in
     configure_sync
     show_banner
     ;;
+  configure-timezone)
+    shift || true
+    configure_timezone "${1:-}"
+    show_banner
+    ;;
   up)
     shift || true
     configure_runtime
@@ -508,6 +540,9 @@ case "${1:-}" in
     configure_demo
     compose exec app python -m app.commands.seed_demo
     ;;
+  rebuild-energy)
+    compose exec app python -m app.commands.rebuild_energy
+    ;;
   shell)
     compose exec app bash
     ;;
@@ -521,7 +556,7 @@ case "${1:-}" in
     echo "$(show_url)"
     ;;
   *)
-    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|up [--build]|down|build|logs|restart|ps|sync|seed-demo|shell|health|url}"
+    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--build]|down|build|logs|restart|ps|sync|rebuild-energy|seed-demo|shell|health|url}"
     exit 1
     ;;
 esac

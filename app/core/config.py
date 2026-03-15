@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     smartlife_sync_on_startup: bool = Field(default=True, validation_alias="SMARTLIFE_SYNC_ON_STARTUP")
     smartlife_xiaomi_region: str = Field(default="cn", validation_alias="SMARTLIFE_XIAOMI_REGION")
     smartlife_xiaomi_device_ip: str = Field(default="", validation_alias="SMARTLIFE_XIAOMI_DEVICE_IP")
-    timezone: str = Field(default="Europe/Helsinki", validation_alias="SMARTLIFE_TIMEZONE")
+    timezone: str = Field(default="Europe/Moscow", validation_alias="SMARTLIFE_TIMEZONE")
 
     smartlife_db_name: str = Field(default="smartlife", validation_alias="SMARTLIFE_DB_NAME")
     smartlife_db_user: str = Field(default="smartlife", validation_alias="SMARTLIFE_DB_USER")

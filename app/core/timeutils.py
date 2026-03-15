@@ -7,11 +7,11 @@ from app.core.config import get_settings
 
 
 def get_app_timezone() -> ZoneInfo:
-    tz_name = get_settings().timezone or "Europe/Helsinki"
+    tz_name = get_settings().timezone or "Europe/Moscow"
     try:
         return ZoneInfo(tz_name)
     except Exception:
-        return ZoneInfo("Europe/Helsinki")
+        return ZoneInfo("Europe/Moscow")
 
 
 def utc_now_naive() -> datetime:

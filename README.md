@@ -8,7 +8,7 @@ SmartLife — веб-приложение для управления устро
 - PostgreSQL
 - Docker Compose
 
-## Что уже есть в `v0.2.4`
+## Что уже есть в `v0.2.6`
 
 - LAN-first запуск с выбором IP и порта;
 - изолированное Docker-окружение;
@@ -36,6 +36,7 @@ cd /opt/SmartLife
 chmod +x scripts/manage.sh
 ./scripts/manage.sh up --build
 ./scripts/manage.sh seed-demo
+./scripts/manage.sh rebuild-energy
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```
@@ -88,6 +89,7 @@ cd /opt/SmartLife
 
 ```bash
 ./scripts/manage.sh configure-sync
+./scripts/manage.sh configure-timezone Europe/Moscow
 ./scripts/manage.sh up --build
 ./scripts/manage.sh health
 ./scripts/manage.sh url
@@ -140,6 +142,19 @@ SMARTLIFE_SYNC_ON_STARTUP=yes
 
 ```bash
 ./scripts/manage.sh configure-sync
+./scripts/manage.sh configure-timezone Europe/Moscow
+```
+
+Если нужно сменить часовой пояс приложения:
+
+```bash
+./scripts/manage.sh configure-timezone Europe/Moscow
+```
+
+Если нужно пересчитать исторические day/month агрегаты из уже накопленных снапшотов:
+
+```bash
+./scripts/manage.sh rebuild-energy
 ```
 
 ## Управление
@@ -149,9 +164,11 @@ SMARTLIFE_SYNC_ON_STARTUP=yes
 ./scripts/manage.sh configure-tuya
 ./scripts/manage.sh configure-demo
 ./scripts/manage.sh configure-sync
+./scripts/manage.sh configure-timezone Europe/Moscow
 ./scripts/manage.sh up --build
 ./scripts/manage.sh sync
 ./scripts/manage.sh seed-demo
+./scripts/manage.sh rebuild-energy
 ./scripts/manage.sh down
 ./scripts/manage.sh logs
 ./scripts/manage.sh shell
@@ -187,4 +204,4 @@ chmod +x scripts/manage.sh
 
 Примечание по версии и времени
 - версия UI и `/health` берётся из кода релиза, а не из `.env`;
-- хранение времени остаётся в UTC, но UI и агрегаты дня/месяца используют `SMARTLIFE_TIMEZONE` (по умолчанию `Europe/Helsinki`).
+- хранение времени остаётся в UTC, но UI и агрегаты дня/месяца используют `SMARTLIFE_TIMEZONE` (по умолчанию `Europe/Moscow`).

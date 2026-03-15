@@ -17,7 +17,7 @@
 
 ## Что уже сделано в текущем состоянии
 
-Версия: `v0.2.4`
+Версия: `v0.2.6`
 
 Сделано:
 - стартовый MVP-каркас FastAPI + PostgreSQL + Docker Compose;
@@ -89,6 +89,7 @@
 4. полноценная интеграция Xiaomi Mi Home / miIO;
 5. расширенный roadmap по Smart Life / Mi Home устройствам и аналитике;
 6. при желании — отдельный экран настроек интеграции и синхронизации в самом UI.
+7. графики потребления/нагрузки по времени.
 
 ## Полезные команды на сервере
 
@@ -102,6 +103,7 @@ chmod +x scripts/manage.sh
 ./scripts/manage.sh up --build
 ./scripts/manage.sh configure-tuya
 ./scripts/manage.sh configure-sync
+./scripts/manage.sh configure-timezone Europe/Moscow
 ./scripts/manage.sh restart
 ./scripts/manage.sh health
 ./scripts/manage.sh url
@@ -114,9 +116,11 @@ cd /opt/SmartLife
 chmod +x scripts/manage.sh
 ./scripts/manage.sh configure-tuya
 ./scripts/manage.sh configure-sync
+./scripts/manage.sh configure-timezone Europe/Moscow
 ./scripts/manage.sh up --build
 ./scripts/manage.sh health
 ./scripts/manage.sh url
+./scripts/manage.sh rebuild-energy
 ```
 
 ## Подсказка для следующего чата
@@ -136,7 +140,8 @@ chmod +x scripts/manage.sh
 ```
 
 
-Обновление v0.2.5
-- версия в футере и `/health` больше не зависит от старого `.env`;
-- интерфейс показывает время в `SMARTLIFE_TIMEZONE` (по умолчанию `Europe/Helsinki`);
-- суточная и месячная агрегация для live-снапшотов считают границы периода по локальной тайзоне, а не по UTC.
+Обновление v0.2.6
+- дефолтный часовой пояс проекта переведён на `Europe/Moscow` (UTC+3);
+- добавлена команда `./scripts/manage.sh configure-timezone Europe/Moscow`;
+- добавлена команда `./scripts/manage.sh rebuild-energy` для пересчёта исторических day/month агрегатов из снапшотов с учётом текущей тайзоны;
+- интерфейс, `/health` и новые агрегаты используют `SMARTLIFE_TIMEZONE` (по умолчанию `Europe/Moscow`).
