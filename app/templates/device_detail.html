@@ -100,7 +100,7 @@
         <tbody>
           {% for item in daily %}
             <tr>
-              <td>{{ item.period_start }}</td>
+              <td>{{ item.period_start|localdate }}</td>
               <td>{{ item.energy_kwh }}</td>
               <td>{{ item.power_w or '—' }}</td>
               <td>{{ item.voltage_v or '—' }}</td>
@@ -134,7 +134,7 @@
         <tbody>
           {% for item in monthly %}
             <tr>
-              <td>{{ item.period_start }}</td>
+              <td>{{ item.period_start|localdate }}</td>
               <td>{{ item.energy_kwh }}</td>
               <td>{{ item.source_note or '—' }}</td>
             </tr>

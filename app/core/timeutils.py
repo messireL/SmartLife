@@ -44,9 +44,16 @@ def local_month_start_from_utc(dt: datetime) -> date:
     return local_dt.date().replace(day=1)
 
 
-def format_local_datetime(dt: datetime | None, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+def format_local_datetime(dt: datetime | None, fmt: str = "%d-%m-%Y %H:%M:%S") -> str:
     local_dt = to_local(dt)
     if local_dt is None:
         return "—"
-    suffix = local_dt.tzname() or ""
-    return f"{local_dt.strftime(fmt)} {suffix}".strip()
+    return local_dt.strftime(fmt)
+
+
+def format_local_date(value: datetime | date | None, fmt: str = "%d-%m-%Y") -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, datetime):
+        value = to_local(value).date()
+    return value.strftime(fmt)
