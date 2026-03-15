@@ -502,18 +502,21 @@ verify_app_ready() {
   local external_url
   external_url="$(health_url)"
 
+  echo "[SmartLife] проверяю готовность приложения внутри контейнера..." >&2
   if ! wait_for_container_http "$internal_url" 45 2; then
     echo "SmartLife внутри контейнера ещё не отвечает на ${internal_url}" >&2
     show_app_logs
     return 1
   fi
+  echo "[SmartLife] приложение внутри контейнера отвечает" >&2
 
-  if ! wait_for_http "$external_url" 30 2; then
-    echo "SmartLife внутри контейнера запущен, но опубликованный URL пока недоступен: $external_url" >&2
-    echo "Проверь bind IP и firewall." >&2
-    show_app_logs
-    return 1
+  echo "[SmartLife] проверяю опубликованный URL: ${external_url}" >&2
+  if ! wait_for_http "$external_url" 8 2; then
+    echo "[SmartLife] опубликованный URL пока не ответил, но контейнер уже жив." >&2
+    echo "[SmartLife] это не блокирует запуск; проверь доступ отдельно через ./scripts/manage.sh health и ./scripts/manage.sh url" >&2
+    return 0
   fi
+  echo "[SmartLife] опубликованный URL отвечает" >&2
 
   return 0
 }
