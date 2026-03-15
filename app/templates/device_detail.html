@@ -79,12 +79,12 @@
         </div>
         <div class="chart-meta">текущая точка {{ device_view.power_chart.latest_value_display }}</div>
       </div>
-      {% if device_view.power_chart.items %}
+      {% if device_view.power_chart["items"] %}
         <div class="line-chart-wrap">
           <svg class="line-chart" viewBox="0 0 760 220" role="img" aria-label="График мощности">
             <polyline class="line-chart-area" points="{{ device_view.power_chart.svg_area_points }}"></polyline>
             <polyline class="line-chart-path" points="{{ device_view.power_chart.svg_points }}"></polyline>
-            {% for point in device_view.power_chart.items %}
+            {% for point in device_view.power_chart["items"] %}
               <circle class="line-chart-dot" cx="{{ point.x }}" cy="{{ point.y }}" r="2.8">
                 <title>{{ point.title }}</title>
               </circle>
@@ -114,7 +114,7 @@
       </div>
       {% if device_view.daily_chart.has_data %}
         <div class="bar-chart compact-bars">
-          {% for item in device_view.daily_chart.items %}
+          {% for item in device_view.daily_chart["items"] %}
             <div class="bar-item" title="{{ item.title }}">
               <div class="bar-value small">{{ item.value_display }}</div>
               <div class="bar-track"><div class="bar-fill warning" style="height: {{ item.pct }}%"></div></div>
@@ -136,7 +136,7 @@
       </div>
       {% if device_view.monthly_chart.has_data %}
         <div class="bar-chart compact-bars">
-          {% for item in device_view.monthly_chart.items %}
+          {% for item in device_view.monthly_chart["items"] %}
             <div class="bar-item" title="{{ item.title }}">
               <div class="bar-value small">{{ item.value_display }}</div>
               <div class="bar-track"><div class="bar-fill accent" style="height: {{ item.pct }}%"></div></div>

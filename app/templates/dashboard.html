@@ -122,7 +122,7 @@
       </div>
       {% if dashboard_panels.daily_totals_chart.has_data %}
         <div class="bar-chart">
-          {% for item in dashboard_panels.daily_totals_chart.items %}
+          {% for item in dashboard_panels.daily_totals_chart["items"] %}
             <div class="bar-item" title="{{ item.title }}">
               <div class="bar-value">{{ item.value_display }}</div>
               <div class="bar-track"><div class="bar-fill" style="height: {{ item.pct }}%"></div></div>
@@ -144,7 +144,7 @@
       </div>
       {% if dashboard_panels.current_power_chart.has_data %}
         <div class="bar-chart compact-bars">
-          {% for item in dashboard_panels.current_power_chart.items %}
+          {% for item in dashboard_panels.current_power_chart["items"] %}
             <div class="bar-item" title="{{ item.title }}">
               <div class="bar-value small">{{ item.value_display }}</div>
               <div class="bar-track"><div class="bar-fill accent" style="height: {{ item.pct }}%"></div></div>
@@ -166,7 +166,7 @@
       </div>
       {% if dashboard_panels.top_today_chart.has_data %}
         <div class="bar-chart compact-bars">
-          {% for item in dashboard_panels.top_today_chart.items %}
+          {% for item in dashboard_panels.top_today_chart["items"] %}
             <div class="bar-item" title="{{ item.title }}">
               <div class="bar-value small">{{ item.value_display }}</div>
               <div class="bar-track"><div class="bar-fill warning" style="height: {{ item.pct }}%"></div></div>
