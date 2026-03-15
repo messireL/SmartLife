@@ -70,13 +70,15 @@ def get_devices_for_ui(
 
 
 def get_room_choices(db: Session) -> list[str]:
-    rows = db.execute(
-        select(_display_room_expr())
+    room_expr = func.nullif(_display_room_expr(), "").label("room_name")
+    room_subquery = (
+        select(room_expr)
         .where(Device.is_deleted.is_(False))
-        .where(_display_room_expr().is_not(None))
+        .where(room_expr.is_not(None))
         .distinct()
-        .order_by(_display_room_expr().asc())
-    ).all()
+        .subquery()
+    )
+    rows = db.execute(select(room_subquery.c.room_name).order_by(room_subquery.c.room_name.asc())).all()
     return [row[0] for row in rows if row[0]]
 
 
