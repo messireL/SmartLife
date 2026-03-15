@@ -373,17 +373,23 @@ def _sync_legacy_tariff_keys(db: Session, plan: TariffPlan) -> bool:
     return changed
 
 
-def get_tariff_plan_for_date(db: Session, local_date: date | None = None) -> TariffPlan:
-    bootstrap_runtime_settings(db)
-    local_date = local_date or _today_local_date()
-    plans = _read_tariff_history(db)
+def _select_tariff_plan(local_date: date, plans: list[TariffPlan]) -> TariffPlan | None:
     if not plans:
-        seeded = _plan_from_values(_first_day_of_month(local_date), _legacy_tariff_values(db))
-        return seeded
+        return None
     eligible = [plan for plan in plans if plan.effective_from_date <= local_date]
     if eligible:
         return sorted(eligible, key=lambda plan: plan.effective_from_date)[-1]
     return sorted(plans, key=lambda plan: plan.effective_from_date)[0]
+
+
+def get_tariff_plan_for_date(db: Session, local_date: date | None = None) -> TariffPlan:
+    bootstrap_runtime_settings(db)
+    local_date = local_date or _today_local_date()
+    plans = _read_tariff_history(db)
+    selected = _select_tariff_plan(local_date, plans)
+    if selected is not None:
+        return selected
+    return _plan_from_values(_first_day_of_month(local_date), _legacy_tariff_values(db))
 
 
 def get_next_scheduled_tariff_plan(db: Session, local_date: date | None = None) -> TariffPlan | None:
@@ -414,8 +420,12 @@ def get_tariff_editor_plan(db: Session, local_date: date | None = None) -> Tarif
 def _build_runtime_config(db: Session) -> RuntimeConfig:
     settings = get_settings()
     today = _today_local_date()
-    active_plan = get_tariff_plan_for_date(db, today)
-    history = tuple(sorted(_read_tariff_history(db), key=lambda plan: plan.effective_from_date))
+    history_list = sorted(_read_tariff_history(db), key=lambda plan: plan.effective_from_date)
+    active_plan = _select_tariff_plan(today, history_list)
+    if active_plan is None:
+        active_plan = _plan_from_values(_first_day_of_month(today), _legacy_tariff_values(db))
+        history_list = [active_plan]
+    history = tuple(history_list)
     return RuntimeConfig(
         provider=get_setting_value(db, RUNTIME_KEY_PROVIDER, settings.smartlife_provider or ProviderType.DEMO.value),
         tuya_base_url=get_setting_value(db, RUNTIME_KEY_TUYA_BASE_URL, settings.smartlife_tuya_base_url or "https://openapi.tuyaeu.com"),
@@ -462,11 +472,12 @@ def bootstrap_runtime_settings(db: Session) -> RuntimeConfig:
     plans = _read_tariff_history(db)
     if not plans:
         initial_plan = _plan_from_values(_first_day_of_month(_today_local_date()), _legacy_tariff_values(db))
-        _write_tariff_history(db, [initial_plan])
+        plans = [initial_plan]
+        _write_tariff_history(db, plans)
         _sync_legacy_tariff_keys(db, initial_plan)
         changed = True
     else:
-        active_plan = get_tariff_plan_for_date(db, _today_local_date())
+        active_plan = _select_tariff_plan(_today_local_date(), plans) or plans[0]
         changed = _sync_legacy_tariff_keys(db, active_plan) or changed
 
     if changed:
@@ -475,8 +486,7 @@ def bootstrap_runtime_settings(db: Session) -> RuntimeConfig:
 
 
 def get_runtime_config(db: Session) -> RuntimeConfig:
-    bootstrap_runtime_settings(db)
-    return _build_runtime_config(db)
+    return bootstrap_runtime_settings(db)
 
 
 def get_runtime_provider_name(db: Session) -> str:
