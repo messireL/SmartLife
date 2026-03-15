@@ -229,7 +229,6 @@ configure_runtime() {
   load_env
   ensure_secrets
 
-  upsert_env COMPOSE_IGNORE_ORPHANS "${COMPOSE_IGNORE_ORPHANS:-true}"
   upsert_env SMARTLIFE_NETWORK_MODE "${SMARTLIFE_NETWORK_MODE:-$DEFAULT_NETWORK_MODE}"
   upsert_env SMARTLIFE_LAN_ONLY "${SMARTLIFE_LAN_ONLY:-yes}"
   upsert_env SMARTLIFE_LAN_SUBNET_PREFIX "${SMARTLIFE_LAN_SUBNET_PREFIX:-$DEFAULT_LAN_SUBNET_PREFIX}"
@@ -426,7 +425,7 @@ configure_demo() {
 }
 
 compose() {
-  docker compose "$@"
+  env -u COMPOSE_IGNORE_ORPHANS docker compose "$@"
 }
 
 health_url() {

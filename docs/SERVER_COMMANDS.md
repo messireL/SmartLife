@@ -48,3 +48,6 @@ cd /opt/SmartLife
 cd /opt/SmartLife
 ./scripts/manage.sh cleanup-docker
 ```
+
+
+Примечание: manage.sh в новых релизах принудительно убирает COMPOSE_IGNORE_ORPHANS из окружения перед вызовом docker compose, чтобы не конфликтовать с --remove-orphans.
