@@ -27,6 +27,7 @@ def _apply_postgres_migrations() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS current_a NUMERIC(12,3)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS energy_total_kwh NUMERIC(14,3)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS fault_code VARCHAR(255)",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_status_at TIMESTAMP",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_status_payload TEXT",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE",
