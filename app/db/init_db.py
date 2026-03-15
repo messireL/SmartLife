@@ -71,6 +71,14 @@ def _apply_postgres_migrations() -> None:
         "CREATE INDEX IF NOT EXISTS ix_device_command_logs_status ON device_command_logs(status)",
         "CREATE INDEX IF NOT EXISTS ix_device_command_logs_provider ON device_command_logs(provider)",
         "CREATE INDEX IF NOT EXISTS ix_device_command_logs_requested_at ON device_command_logs(requested_at)",
+        "CREATE TABLE IF NOT EXISTS app_settings ("
+        "id SERIAL PRIMARY KEY, "
+        "key VARCHAR(128) NOT NULL UNIQUE, "
+        "value TEXT NULL, "
+        "created_at TIMESTAMP DEFAULT NOW(), "
+        "updated_at TIMESTAMP DEFAULT NOW()"
+        ")",
+        "CREATE INDEX IF NOT EXISTS ix_app_settings_key ON app_settings(key)",
     ]
     with engine.begin() as connection:
         for statement in statements:

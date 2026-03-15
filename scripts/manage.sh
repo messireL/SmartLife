@@ -9,6 +9,16 @@ DEFAULT_PORT="13443"
 DEFAULT_NETWORK_MODE="lan"
 DEFAULT_LAN_SUBNET_PREFIX="192.168."
 
+
+prepare_terminal_and_docker() {
+  if [[ -t 1 ]]; then
+    clear >/dev/null 2>&1 || true
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    docker container prune -f >/dev/null 2>&1 || true
+  fi
+}
+
 copy_env_template() {
   if [[ ! -f "$ENV_FILE" ]]; then
     cp "$ROOT_DIR/.env.example" "$ENV_FILE"
@@ -70,9 +80,6 @@ ensure_secrets() {
   mkdir -p "$SECRETS_DIR"
   ensure_secret_file app_secret_key "$(random_secret)"
   ensure_secret_file db_password "$(random_secret)"
-  ensure_secret_file smartlife_tuya_access_id ""
-  ensure_secret_file smartlife_tuya_access_secret ""
-  ensure_secret_file smartlife_tuya_project_code ""
   ensure_secret_file smartlife_xiaomi_username ""
   ensure_secret_file smartlife_xiaomi_password ""
   ensure_secret_file smartlife_xiaomi_device_token ""
@@ -206,6 +213,7 @@ configure_runtime() {
   load_env
   ensure_secrets
 
+  upsert_env COMPOSE_IGNORE_ORPHANS "${COMPOSE_IGNORE_ORPHANS:-true}"
   upsert_env SMARTLIFE_NETWORK_MODE "${SMARTLIFE_NETWORK_MODE:-$DEFAULT_NETWORK_MODE}"
   upsert_env SMARTLIFE_LAN_ONLY "${SMARTLIFE_LAN_ONLY:-yes}"
   upsert_env SMARTLIFE_LAN_SUBNET_PREFIX "${SMARTLIFE_LAN_SUBNET_PREFIX:-$DEFAULT_LAN_SUBNET_PREFIX}"
@@ -277,6 +285,34 @@ choose_tuya_base_url() {
   esac
 }
 
+store_runtime_tuya_config() {
+  local base_url="$1"
+  local access_id="$2"
+  local access_secret="$3"
+  local project_code="$4"
+
+  compose build app >/dev/null
+  compose up -d db >/dev/null
+  wait_for_db_ready 45 >/dev/null
+  compose run --rm --no-deps \
+    -e SMARTLIFE_TUYA_BOOTSTRAP_ACCESS_ID="$access_id" \
+    -e SMARTLIFE_TUYA_BOOTSTRAP_ACCESS_SECRET="$access_secret" \
+    -e SMARTLIFE_TUYA_BOOTSTRAP_BASE_URL="$base_url" \
+    -e SMARTLIFE_TUYA_BOOTSTRAP_PROJECT_CODE="$project_code" \
+    app python -m app.commands.configure_runtime_provider tuya \
+      --base-url "$base_url" \
+      --access-id "$access_id" \
+      --access-secret "$access_secret" \
+      --project-code "$project_code" >/dev/null
+}
+
+store_runtime_demo_config() {
+  compose build app >/dev/null
+  compose up -d db >/dev/null
+  wait_for_db_ready 45 >/dev/null
+  compose run --rm --no-deps app python -m app.commands.configure_runtime_provider demo >/dev/null
+}
+
 configure_tuya() {
   copy_env_template
   load_env
@@ -286,37 +322,29 @@ configure_tuya() {
   local base_url
   base_url="$(choose_tuya_base_url)"
 
-  local current_id current_secret current_project
-  current_id="$(read_secret_file smartlife_tuya_access_id)"
-  current_secret="$(read_secret_file smartlife_tuya_access_secret)"
-  current_project="$(read_secret_file smartlife_tuya_project_code)"
+  local current_id=""
+  local current_secret=""
+  local current_project=""
 
   local access_id=""
   read -r -p "Tuya Access ID [${current_id:-пусто}]: " access_id
-  access_id="${access_id:-$current_id}"
 
   local access_secret=""
-  read -r -s -p "Tuya Access Secret [скрыто, Enter = оставить как есть]: " access_secret
+  read -r -s -p "Tuya Access Secret [скрыто]: " access_secret
   echo >&2
-  access_secret="${access_secret:-$current_secret}"
 
   local project_code=""
-  read -r -p "Tuya Project ID/Code [${current_project:-необязательно}]: " project_code
-  project_code="${project_code:-$current_project}"
+  read -r -p "Tuya Project ID/Code [необязательно]: " project_code
 
   if [[ -z "$access_id" || -z "$access_secret" ]]; then
     echo "Tuya Access ID и Access Secret обязательны." >&2
     exit 1
   fi
 
-  write_secret_file smartlife_tuya_access_id "$access_id"
-  write_secret_file smartlife_tuya_access_secret "$access_secret"
-  write_secret_file smartlife_tuya_project_code "$project_code"
-
   upsert_env SMARTLIFE_PROVIDER tuya_cloud
-  upsert_env SMARTLIFE_TUYA_BASE_URL "$base_url"
+  store_runtime_tuya_config "$base_url" "$access_id" "$access_secret" "$project_code"
 
-  echo "Tuya Cloud настроен. Провайдер переключён на tuya_cloud, endpoint=${base_url}" >&2
+  echo "Tuya Cloud настроен. Провайдер переключён на tuya_cloud, настройки подключения записаны в PostgreSQL." >&2
 }
 
 configure_sync() {
@@ -377,7 +405,8 @@ configure_demo() {
   ensure_secrets
   configure_runtime
   upsert_env SMARTLIFE_PROVIDER demo
-  echo "Провайдер переключён на demo." >&2
+  store_runtime_demo_config
+  echo "Провайдер переключён на demo. Значение провайдера сохранено в PostgreSQL." >&2
 }
 
 compose() {
@@ -551,6 +580,8 @@ restore_db() {
   echo "Восстановление завершено из файла: $backup_file" >&2
 }
 
+prepare_terminal_and_docker()
+
 case "${1:-}" in
   configure)
     configure_runtime yes
@@ -579,7 +610,7 @@ case "${1:-}" in
     if [[ "$*" == *"--build"* ]]; then
       autobackup_before "pre_up_build"
     fi
-    compose up -d "$@"
+    compose up -d --remove-orphans "$@"
     show_banner
     verify_app_ready
     ;;

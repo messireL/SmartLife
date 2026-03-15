@@ -19,15 +19,24 @@
   </article>
 
   <article class="card">
-    <div class="section-header"><h2>Провайдер и фоновые джобы</h2></div>
+    <div class="section-header"><h2>Провайдер, облако и фоновые джобы</h2></div>
     <div class="status-stack">
-      <div class="status-row"><span class="muted">Провайдер</span><span>{{ settings.smartlife_provider }}</span></div>
+      <div class="status-row"><span class="muted">Провайдер</span><span>{{ runtime.provider if runtime else settings.smartlife_provider }}</span></div>
+      <div class="status-row"><span class="muted">Tuya endpoint (DB)</span><span>{{ runtime.tuya_base_url if runtime else settings.smartlife_tuya_base_url }}</span></div>
+      <div class="status-row"><span class="muted">Tuya Access ID (DB)</span><span>{{ runtime.tuya_access_id_masked if runtime else "не задан" }}</span></div>
+      <div class="status-row"><span class="muted">Tuya Access Secret (DB)</span><span>{{ runtime.tuya_access_secret_masked if runtime else "не задан" }}</span></div>
+      <div class="status-row"><span class="muted">Tuya Project Code (DB)</span><span>{{ runtime.tuya_project_code if runtime and runtime.tuya_project_code else "не задан" }}</span></div>
       <div class="status-row"><span class="muted">Фоновая синхронизация</span><span>{% if sync_overview.background_sync_enabled %}да{% else %}нет{% endif %}</span></div>
       <div class="status-row"><span class="muted">Стартовый прогон</span><span>{% if sync_overview.sync_on_startup %}да{% else %}нет{% endif %}</span></div>
       <div class="status-row"><span class="muted">Интервал</span><span>{{ sync_overview.sync_interval_seconds }} сек</span></div>
       <div class="status-row"><span class="muted">Health</span><span><a href="/health">/health</a></span></div>
     </div>
   </article>
+</section>
+
+<section class="card">
+  <div class="section-header"><h2>Где хранятся облачные настройки</h2></div>
+  <div class="muted">Параметры подключения к облаку теперь хранятся в PostgreSQL (`app_settings`), а не в `.env`. Команда `configure-tuya` записывает их в базу. Legacy secrets остаются только как одноразовый источник для первого импорта при обновлении старого стенда.</div>
 </section>
 
 <section class="card">

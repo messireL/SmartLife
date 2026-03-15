@@ -9,6 +9,7 @@ from app.core.version import APP_VERSION
 from app.db.models import BucketType, Device, DeviceCommandLog, DeviceStatusSnapshot, EnergySample, SyncRun
 from app.db.session import get_db
 from app.services.dashboard_service import get_sync_overview
+from app.services.runtime_config_service import get_runtime_config
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -203,13 +204,14 @@ def sync_runs(limit: int = 20, db: Session = Depends(get_db)):
 @router.get("/health")
 def health(db: Session = Depends(get_db)):
     settings = get_settings()
+    runtime = get_runtime_config(db)
     overview = get_sync_overview(db)
     last_run = overview["last_run"]
     return {
         "status": "ok",
         "service": settings.app_name,
         "version": APP_VERSION,
-        "provider": settings.smartlife_provider,
+        "provider": runtime.provider,
         "base_url": settings.app_base_url,
         "timezone": settings.timezone,
         "sync_interval_seconds": settings.smartlife_sync_interval_seconds,

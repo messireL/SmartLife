@@ -18,6 +18,7 @@ from app.db.models import ProviderType
 from app.db.session import SessionLocal
 from app.services.sync_scheduler import run_background_sync_loop, stop_background_task
 from app.services.device_admin_service import purge_demo_devices, restore_non_demo_deleted_devices
+from app.services.runtime_config_service import bootstrap_runtime_settings, get_runtime_config
 
 
 settings = get_settings()
@@ -27,8 +28,9 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    if settings.smartlife_provider != ProviderType.DEMO.value:
-        with SessionLocal() as db:
+    with SessionLocal() as db:
+        runtime = bootstrap_runtime_settings(db)
+        if runtime.provider != ProviderType.DEMO.value:
             restore_non_demo_deleted_devices(db)
             purge_demo_devices(db)
     stop_event = asyncio.Event()
@@ -51,11 +53,13 @@ app.include_router(api_router)
 
 @app.get("/health")
 def root_health():
+    with SessionLocal() as db:
+        runtime = get_runtime_config(db)
     return {
         "status": "ok",
         "service": settings.app_name,
         "version": APP_VERSION,
-        "provider": settings.smartlife_provider,
+        "provider": runtime.provider,
         "timezone": settings.timezone,
         "background_sync_enabled": settings.smartlife_background_sync_enabled,
         "sync_on_startup": settings.smartlife_sync_on_startup,

@@ -18,7 +18,7 @@ ZERO = Decimal("0.000")
 
 
 def sync_from_provider(db: Session) -> dict:
-    provider = get_provider()
+    provider = get_provider(db)
     devices = provider.get_devices()
     daily_samples = provider.get_daily_energy_samples()
     monthly_samples = provider.get_monthly_energy_samples()

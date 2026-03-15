@@ -32,7 +32,7 @@ def set_device_switch_state(db: Session, device_id: int, desired_state: bool, *,
     if device is None or device.is_deleted:
         raise DeviceControlError('device not found')
 
-    provider = get_provider()
+    provider = get_provider(db)
     if getattr(provider, 'provider_name', None) != device.provider:
         raise DeviceControlError('active provider does not match selected device provider')
 

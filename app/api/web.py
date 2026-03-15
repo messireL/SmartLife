@@ -23,6 +23,7 @@ from app.services.device_control_service import DeviceControlError, get_recent_c
 from app.services.device_query_service import get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
+from app.services.runtime_config_service import get_runtime_config
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -44,7 +45,7 @@ NAV_ITEMS = [
 ]
 
 
-def _base_context(*, request: Request, active_nav: str, page_title: str, flash: str | None = None, refresh_seconds: int | None = None, auto_refresh: bool = False) -> dict:
+def _base_context(*, request: Request, active_nav: str, page_title: str, flash: str | None = None, refresh_seconds: int | None = None, auto_refresh: bool = False, runtime: object | None = None) -> dict:
     return {
         "request": request,
         "settings": settings,
@@ -55,13 +56,15 @@ def _base_context(*, request: Request, active_nav: str, page_title: str, flash: 
         "flash": flash or request.query_params.get("flash"),
         "refresh_seconds": refresh_seconds,
         "auto_refresh": auto_refresh,
+        "runtime": runtime,
     }
 
 
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
-    context = _base_context(request=request, active_nav="overview", page_title="Главная", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
+    runtime = get_runtime_config(db)
+    context = _base_context(request=request, active_nav="overview", page_title="Главная", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -99,7 +102,8 @@ def devices_page(
     )
     hidden_total = db.execute(select(Device).where(Device.is_hidden.is_(True), Device.is_deleted.is_(False))).scalars().all()
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
-    context = _base_context(request=request, active_nav="devices", page_title="Устройства", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
+    runtime = get_runtime_config(db)
+    context = _base_context(request=request, active_nav="devices", page_title="Устройства", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
     context.update(
         {
             "devices": devices,
@@ -125,7 +129,8 @@ def devices_page(
 @router.get("/rooms", response_class=HTMLResponse)
 def rooms_page(request: Request, auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
-    context = _base_context(request=request, active_nav="rooms", page_title="Комнаты", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
+    runtime = get_runtime_config(db)
+    context = _base_context(request=request, active_nav="rooms", page_title="Комнаты", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -138,7 +143,8 @@ def rooms_page(request: Request, auto_refresh: bool = Query(default=True), db: S
 @router.get("/consumption", response_class=HTMLResponse)
 def consumption_page(request: Request, auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
-    context = _base_context(request=request, active_nav="consumption", page_title="Потребление", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
+    runtime = get_runtime_config(db)
+    context = _base_context(request=request, active_nav="consumption", page_title="Потребление", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -154,7 +160,8 @@ def sync_page(request: Request, auto_refresh: bool = Query(default=True), db: Se
         select(SyncRun).order_by(SyncRun.started_at.desc(), SyncRun.id.desc()).limit(20)
     ).scalars().all()
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
-    context = _base_context(request=request, active_nav="sync", page_title="Синхронизация", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
+    runtime = get_runtime_config(db)
+    context = _base_context(request=request, active_nav="sync", page_title="Синхронизация", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
     context.update(
         {
             "sync_overview": get_sync_overview(db),
@@ -167,7 +174,8 @@ def sync_page(request: Request, auto_refresh: bool = Query(default=True), db: Se
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: Session = Depends(get_db)):
-    context = _base_context(request=request, active_nav="settings", page_title="Настройки")
+    runtime = get_runtime_config(db)
+    context = _base_context(request=request, active_nav="settings", page_title="Настройки", runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -179,7 +187,8 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/backups", response_class=HTMLResponse)
 def backups_page(request: Request, db: Session = Depends(get_db)):
-    context = _base_context(request=request, active_nav="backups", page_title="Резервные копии")
+    runtime = get_runtime_config(db)
+    context = _base_context(request=request, active_nav="backups", page_title="Резервные копии", runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -193,14 +202,16 @@ def backups_page(request: Request, db: Session = Depends(get_db)):
 def device_detail(device_id: int, request: Request, tab: str = Query(default="overview"), auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     device = db.get(Device, device_id)
     if device is None or device.is_deleted:
-        return templates.TemplateResponse(request, "not_found.html", _base_context(request=request, active_nav="devices", page_title="Не найдено"), status_code=404)
+        runtime = get_runtime_config(db)
+        return templates.TemplateResponse(request, "not_found.html", _base_context(request=request, active_nav="devices", page_title="Не найдено", runtime=runtime), status_code=404)
 
     if tab not in {"overview", "charts", "history", "control"}:
         tab = "overview"
 
     view_model = get_device_dashboard(db, device)
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
-    context = _base_context(request=request, active_nav="devices", page_title=device.display_name, refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
+    runtime = get_runtime_config(db)
+    context = _base_context(request=request, active_nav="devices", page_title=device.display_name, refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
     context.update(
         {
             "device": device,

@@ -38,7 +38,7 @@
         </nav>
         <div class="sidebar-note">
           <div class="muted tiny">Провайдер</div>
-          <div>{{ settings.smartlife_provider }}</div>
+          <div>{{ runtime.provider if runtime else settings.smartlife_provider }}</div>
           <div class="muted tiny spaced">LAN URL</div>
           <div><a href="{{ settings.app_base_url }}">{{ settings.app_base_url }}</a></div>
         </div>

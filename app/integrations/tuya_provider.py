@@ -12,7 +12,8 @@ from uuid import uuid4
 
 import httpx
 
-from app.core.config import get_settings
+from app.db.session import SessionLocal
+from app.services.runtime_config_service import get_runtime_config
 from app.db.models import ProviderType
 from app.integrations.base import DeviceProvider, ProviderDevice, ProviderEnergySample, ProviderStatusSnapshot
 
@@ -40,15 +41,16 @@ class TuyaCloudProvider(DeviceProvider):
     provider_name = ProviderType.TUYA_CLOUD
 
     def __init__(self) -> None:
-        settings = get_settings()
-        access_id = settings.smartlife_tuya_access_id.strip()
-        access_secret = settings.smartlife_tuya_access_secret.strip()
+        with SessionLocal() as db:
+            runtime = get_runtime_config(db)
+        access_id = runtime.tuya_access_id.strip()
+        access_secret = runtime.tuya_access_secret.strip()
         if not access_id or not access_secret:
             raise ValueError(
-                "Tuya Cloud provider is selected, but secrets/smartlife_tuya_access_id or secrets/smartlife_tuya_access_secret are empty."
+                "Tuya Cloud provider is selected, but cloud settings in DB are incomplete (Access ID / Secret)."
             )
         self.client = TuyaOpenApiClient(
-            base_url=settings.smartlife_tuya_base_url,
+            base_url=runtime.tuya_base_url,
             access_id=access_id,
             access_secret=access_secret,
         )
