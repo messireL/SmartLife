@@ -708,6 +708,9 @@ case "$COMMAND" in
   shell)
     compose exec app bash
     ;;
+  runtime-info)
+    compose exec app python -m app.commands.runtime_info
+    ;;
   health)
     if ! verify_app_ready; then
       exit 1
@@ -718,7 +721,7 @@ case "$COMMAND" in
     echo "$(show_url)"
     ;;
   *)
-    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--no-build]|down|build|logs|restart|ps|sync|rebuild-energy|cleanup-demo|cleanup-docker|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|health|url}"
+    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--no-build]|down|build|logs|restart|ps|sync|rebuild-energy|cleanup-demo|cleanup-docker|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|runtime-info|health|url}"
     exit 1
     ;;
 esac

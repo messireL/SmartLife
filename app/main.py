@@ -19,6 +19,7 @@ from app.db.session import SessionLocal
 from app.services.sync_scheduler import run_background_sync_loop, stop_background_task
 from app.services.device_admin_service import purge_demo_devices, restore_non_demo_deleted_devices
 from app.services.runtime_config_service import bootstrap_runtime_settings, get_runtime_config
+from app.services.runtime_diagnostics_service import ensure_runtime_startup_ready, get_runtime_diagnostics
 
 
 settings = get_settings()
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
     init_db()
     with SessionLocal() as db:
         runtime = bootstrap_runtime_settings(db)
+        ensure_runtime_startup_ready(db)
         if runtime.provider != ProviderType.DEMO.value:
             restore_non_demo_deleted_devices(db)
             purge_demo_devices(db)
@@ -55,17 +57,27 @@ app.include_router(api_router)
 def root_health():
     with SessionLocal() as db:
         runtime = get_runtime_config(db)
+        diagnostics = get_runtime_diagnostics(db)
     return {
-        "status": "ok",
+        "status": diagnostics.status,
         "service": settings.app_name,
         "version": APP_VERSION,
         "provider": runtime.provider,
+        "provider_configured": diagnostics.provider_configured,
         "tariff_mode": runtime.tariff_mode,
         "tariff_display": runtime.tariff_display,
+        "tariff_active_from": runtime.tariff_effective_from,
+        "tariff_history_count": diagnostics.tariff_history_count,
+        "tariff_change_target_month": diagnostics.tariff_change_target_month,
+        "next_tariff_effective_from": diagnostics.next_tariff_effective_from,
         "timezone": settings.timezone,
         "background_sync_enabled": settings.smartlife_background_sync_enabled,
         "sync_on_startup": settings.smartlife_sync_on_startup,
         "sync_interval_seconds": settings.smartlife_sync_interval_seconds,
+        "database_ready": diagnostics.schema_ready,
+        "runtime_ready": diagnostics.runtime_ready,
+        "schema_issues": diagnostics.schema_issues,
+        "warnings": diagnostics.warnings,
     }
 
 

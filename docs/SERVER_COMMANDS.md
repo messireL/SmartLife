@@ -8,6 +8,7 @@ git pull --ff-only
 chmod +x scripts/manage.sh
 ./scripts/manage.sh up
 ./scripts/manage.sh health
+./scripts/manage.sh runtime-info
 ./scripts/manage.sh url
 ```
 
@@ -19,6 +20,7 @@ cd /opt/SmartLife
 ./scripts/manage.sh configure-tuya
 ./scripts/manage.sh up
 ./scripts/manage.sh health
+./scripts/manage.sh runtime-info
 ./scripts/manage.sh url
 ```
 
@@ -36,10 +38,11 @@ cd /opt/SmartLife
 ./scripts/manage.sh restore-db backups/db/<file>.dump
 ```
 
-## Часовой пояс и пересчёт энергии
+## Часовой пояс, диагностика и пересчёт энергии
 ```bash
 cd /opt/SmartLife
 ./scripts/manage.sh configure-timezone Europe/Moscow
+./scripts/manage.sh runtime-info
 ./scripts/manage.sh rebuild-energy
 ```
 
@@ -62,3 +65,8 @@ cd /opt/SmartLife
 ## Обновление v0.9.2
 - После обновления зайди в Настройки и проверь активный тариф и, при необходимости, план на следующий месяц.
 - Разбивка kWh по зонам работает даже при нулевых ценах.
+
+
+## Обновление v0.9.3
+- После обновления можно быстро проверить runtime через `./scripts/manage.sh runtime-info`.
+- `./scripts/manage.sh health` теперь показывает расширенную картину по тарифу, схеме БД и предупреждениям.

@@ -10,6 +10,7 @@ from app.db.models import BucketType, Device, DeviceCommandLog, DeviceStatusSnap
 from app.db.session import get_db
 from app.services.dashboard_service import get_dashboard_summary, get_sync_overview
 from app.services.runtime_config_service import get_runtime_config
+from app.services.runtime_diagnostics_service import get_runtime_diagnostics
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -152,6 +153,14 @@ def device_commands(device_id: int, limit: int = 20, db: Session = Depends(get_d
         }
         for item in items
     ]
+
+
+
+
+@router.get("/runtime/diagnostics")
+def runtime_diagnostics(db: Session = Depends(get_db)):
+    diagnostics = get_runtime_diagnostics(db)
+    return diagnostics.to_dict()
 
 
 @router.get("/sync/status")

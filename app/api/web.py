@@ -32,6 +32,7 @@ from app.services.runtime_config_service import (
     get_tariff_change_target_month,
     get_tariff_editor_plan,
 )
+from app.services.runtime_diagnostics_service import get_runtime_diagnostics
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")

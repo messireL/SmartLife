@@ -39,6 +39,42 @@
   </article>
 </section>
 
+
+<section class="card">
+  <div class="section-header"><h2>Диагностика runtime и БД</h2><a class="text-link" href="/api/runtime/diagnostics">/api/runtime/diagnostics</a></div>
+  <div class="status-stack">
+    <div class="status-row"><span class="muted">Общий статус</span><span>{% if diagnostics.status == "ok" %}ok{% else %}error{% endif %}</span></div>
+    <div class="status-row"><span class="muted">Схема БД</span><span>{% if diagnostics.schema_ready %}готова{% else %}есть проблемы{% endif %}</span></div>
+    <div class="status-row"><span class="muted">Runtime тарифов</span><span>{% if diagnostics.runtime_ready %}готов{% else %}не готов{% endif %}</span></div>
+    <div class="status-row"><span class="muted">Локальная дата</span><span>{{ diagnostics.today_local_date }}</span></div>
+    <div class="status-row"><span class="muted">Текущий тарифный месяц</span><span>{{ diagnostics.current_month_start }}</span></div>
+    <div class="status-row"><span class="muted">Через форму изменится с</span><span>{{ diagnostics.tariff_change_target_month }}</span></div>
+    <div class="status-row"><span class="muted">Планов в истории</span><span>{{ diagnostics.tariff_history_count }}</span></div>
+    <div class="status-row"><span class="muted">Записей app_settings</span><span>{{ diagnostics.app_settings_count if diagnostics.app_settings_count is not none else '—' }}</span></div>
+    {% if diagnostics.next_tariff_effective_from %}
+    <div class="status-row"><span class="muted">Следующий тарифный план</span><span>{{ diagnostics.next_tariff_effective_from }}</span></div>
+    {% endif %}
+  </div>
+
+  {% if diagnostics.schema_issues %}
+  <div class="muted" style="margin-top:16px;">Найдены проблемы схемы:</div>
+  <ul class="compact-list">
+    {% for issue in diagnostics.schema_issues %}<li>{{ issue }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if diagnostics.warnings %}
+  <div class="muted" style="margin-top:16px;">Предупреждения:</div>
+  <ul class="compact-list">
+    {% for issue in diagnostics.warnings %}<li>{{ issue }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if diagnostics.active_plan %}
+  <div class="muted" style="margin-top:16px;">Активный план: {{ runtime.tariff_mode_label }} · {{ runtime.tariff_display }} · с {{ runtime.tariff_effective_from_label }}</div>
+  {% endif %}
+</section>
+
 <section class="card">
   <div class="section-header"><h2>Где хранятся облачные настройки</h2></div>
   <div class="muted">Параметры подключения к облаку теперь хранятся в PostgreSQL (`app_settings`), а не в `.env`. Команда `configure-tuya` записывает их в базу. Legacy secrets остаются только как одноразовый источник для первого импорта при обновлении старого стенда.</div>
