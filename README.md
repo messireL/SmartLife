@@ -154,3 +154,8 @@ cd /opt/SmartLife
 Актуальное состояние проекта поддерживается в файле:
 
 `docs/TRANSFER_TO_NEW_CHAT.md`
+
+
+## Патч v0.5.2
+
+На существующей PostgreSQL базе добавлена миграция `ALTER TABLE devices ADD COLUMN IF NOT EXISTS notes TEXT`, чтобы релизы v0.5.x не падали с `Internal Server Error` из-за отсутствующего столбца `devices.notes`.
