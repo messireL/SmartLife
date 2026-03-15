@@ -23,7 +23,7 @@ from app.services.device_control_service import DeviceControlError, get_recent_c
 from app.services.device_query_service import get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
-from app.services.runtime_config_service import get_runtime_config
+from app.services.runtime_config_service import configure_demo_provider, configure_tuya_cloud, get_runtime_config
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -183,6 +183,43 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
         }
     )
     return templates.TemplateResponse(request, "settings.html", context)
+
+
+@router.post("/settings/runtime-cloud")
+def update_runtime_cloud_settings(
+    provider: str = Form(default="tuya_cloud"),
+    tuya_base_url: str = Form(default="https://openapi.tuyaeu.com"),
+    tuya_access_id: str = Form(default=""),
+    tuya_access_secret: str = Form(default=""),
+    tuya_project_code: str = Form(default=""),
+    db: Session = Depends(get_db),
+):
+    runtime = get_runtime_config(db)
+    provider = (provider or "").strip()
+
+    if provider == "demo":
+        configure_demo_provider(db)
+        flash = "Провайдер переключён на demo. Tuya-настройки сохранены в БД и могут быть включены позже."
+        return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
+
+    base_url = (tuya_base_url or "").strip() or runtime.tuya_base_url or "https://openapi.tuyaeu.com"
+    access_id = (tuya_access_id or "").strip() or runtime.tuya_access_id
+    access_secret = (tuya_access_secret or "").strip() or runtime.tuya_access_secret
+    project_code = (tuya_project_code or "").strip()
+
+    if not access_id or not access_secret:
+        flash = "Tuya Access ID и Access Secret обязательны. Secret можно оставить пустым только если он уже сохранён в БД."
+        return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
+
+    configure_tuya_cloud(
+        db,
+        base_url=base_url,
+        access_id=access_id,
+        access_secret=access_secret,
+        project_code=project_code,
+    )
+    flash = "Облачные настройки сохранены в PostgreSQL. Провайдер переключён на tuya_cloud."
+    return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 
 @router.get("/backups", response_class=HTMLResponse)

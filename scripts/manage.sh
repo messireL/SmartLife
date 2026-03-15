@@ -10,13 +10,29 @@ DEFAULT_NETWORK_MODE="lan"
 DEFAULT_LAN_SUBNET_PREFIX="192.168."
 
 
-prepare_terminal_and_docker() {
+clear_screen_if_tty() {
   if [[ -t 1 ]]; then
-    clear >/dev/null 2>&1 || true
+    clear || true
   fi
+}
+
+prune_stopped_containers() {
   if command -v docker >/dev/null 2>&1; then
-    docker container prune -f >/dev/null 2>&1 || true
+    echo "[SmartLife] preflight: cleaning stopped Docker containers" >&2
+    docker container prune -f || true
   fi
+}
+
+preflight_for_command() {
+  local cmd="$1"
+  case "$cmd" in
+    up|build|restart|configure|configure-tuya|configure-demo|configure-sync|configure-timezone|cleanup-docker)
+      clear_screen_if_tty
+      prune_stopped_containers
+      ;;
+    *)
+      ;;
+  esac
 }
 
 copy_env_template() {
@@ -580,9 +596,10 @@ restore_db() {
   echo "Восстановление завершено из файла: $backup_file" >&2
 }
 
-prepare_terminal_and_docker()
+COMMAND="${1:-}"
+preflight_for_command "$COMMAND"
 
-case "${1:-}" in
+case "$COMMAND" in
   configure)
     configure_runtime yes
     show_banner
@@ -654,6 +671,9 @@ case "${1:-}" in
   backup-list)
     backup_list
     ;;
+  cleanup-docker)
+    echo "[SmartLife] Docker cleanup completed." >&2
+    ;;
   restore-db)
     shift || true
     restore_db "${1:-}"
@@ -671,7 +691,7 @@ case "${1:-}" in
     echo "$(show_url)"
     ;;
   *)
-    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--build]|down|build|logs|restart|ps|sync|rebuild-energy|cleanup-demo|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|health|url}"
+    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--build]|down|build|logs|restart|ps|sync|rebuild-energy|cleanup-demo|cleanup-docker|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|health|url}"
     exit 1
     ;;
 esac

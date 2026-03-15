@@ -40,6 +40,39 @@
 </section>
 
 <section class="card">
+  <div class="section-header"><h2>Изменить настройки облака</h2></div>
+  <form class="stack-form" method="post" action="/settings/runtime-cloud">
+    <label>
+      <span>Провайдер</span>
+      <select name="provider">
+        <option value="tuya_cloud" {% if runtime and runtime.provider == "tuya_cloud" %}selected{% endif %}>tuya_cloud</option>
+        <option value="demo" {% if runtime and runtime.provider == "demo" %}selected{% endif %}>demo</option>
+      </select>
+    </label>
+    <label>
+      <span>Tuya OpenAPI endpoint</span>
+      <input type="url" name="tuya_base_url" value="{{ runtime.tuya_base_url if runtime else settings.smartlife_tuya_base_url }}" placeholder="https://openapi.tuyaeu.com">
+    </label>
+    <label>
+      <span>Tuya Access ID</span>
+      <input type="text" name="tuya_access_id" value="{{ runtime.tuya_access_id if runtime else "" }}" autocomplete="off">
+    </label>
+    <label>
+      <span>Tuya Access Secret</span>
+      <input type="password" name="tuya_access_secret" value="" autocomplete="new-password" placeholder="Оставь пустым, чтобы сохранить текущий secret">
+    </label>
+    <label>
+      <span>Tuya Project ID / Code</span>
+      <input type="text" name="tuya_project_code" value="{{ runtime.tuya_project_code if runtime else "" }}" autocomplete="off">
+    </label>
+    <div class="muted">Настройки сохраняются в PostgreSQL (`app_settings`). Secret в форме обратно не показывается; пустое поле оставит текущий secret без изменений.</div>
+    <div class="form-actions">
+      <button class="button-primary" type="submit">Сохранить настройки облака</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
   <div class="section-header"><h2>Подсказка по бэкапам</h2><a class="text-link" href="/backups">Открыть резервные копии</a></div>
   <pre class="command-block">./scripts/manage.sh backup-db
 ./scripts/manage.sh backup-list

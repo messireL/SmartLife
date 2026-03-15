@@ -165,3 +165,12 @@ Tuya Cloud settings теперь хранятся в PostgreSQL (`app_settings`)
 
 - `docs/TRANSFER_TO_NEW_CHAT.md` — файл для переноса проекта в новый чат;
 - `docs/SERVER_COMMANDS.md` — постоянно обновляемая шпаргалка по серверным командам и обновлению.
+
+
+## Обновление и обслуживание
+
+Сервер обновляется через git: `git pull --ff-only`, затем `./scripts/manage.sh up --build`.
+
+Для ручной очистки остановленных контейнеров есть команда `./scripts/manage.sh cleanup-docker`.
+
+Cloud-настройки Tuya хранятся в PostgreSQL и могут меняться как через `./scripts/manage.sh configure-tuya`, так и через раздел **Настройки** в веб-интерфейсе.
