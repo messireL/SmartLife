@@ -1,18 +1,22 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, Request
+from urllib.parse import quote_plus
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import BucketType, Device, EnergySample
+from app.core.config import get_settings
+from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
 from app.db.session import get_db
 from app.services.dashboard_service import get_dashboard_summary
 from app.services.sync_service import sync_from_provider
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+settings = get_settings()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -27,6 +31,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "devices": devices,
             "request": request,
             "flash": request.query_params.get("flash"),
+            "settings": settings,
         },
     )
 
@@ -51,18 +56,37 @@ def device_detail(device_id: int, request: Request, db: Session = Depends(get_db
         .limit(12)
     ).scalars().all()
 
+    snapshots = db.execute(
+        select(DeviceStatusSnapshot)
+        .where(DeviceStatusSnapshot.device_id == device.id)
+        .order_by(DeviceStatusSnapshot.recorded_at.desc(), DeviceStatusSnapshot.id.desc())
+        .limit(20)
+    ).scalars().all()
+
     return templates.TemplateResponse(
         request,
         "device_detail.html",
-        {"request": request, "device": device, "daily": daily, "monthly": monthly},
+        {
+            "request": request,
+            "device": device,
+            "daily": daily,
+            "monthly": monthly,
+            "snapshots": snapshots,
+            "settings": settings,
+        },
     )
 
 
-@router.post("/actions/sync-demo")
-def sync_demo(db: Session = Depends(get_db)):
-    result = sync_from_provider(db)
-    flash = (
-        f"Synchronized provider={result['provider']} devices={result['devices_total']} "
-        f"daily={result['daily_samples_total']} monthly={result['monthly_samples_total']}"
-    )
-    return RedirectResponse(url=f"/?flash={flash}", status_code=303)
+@router.post("/actions/sync-provider")
+def sync_provider_action(db: Session = Depends(get_db)):
+    try:
+        result = sync_from_provider(db)
+        flash = (
+            f"Synchronized provider={result['provider']} devices={result['devices_total']} "
+            f"daily={result['daily_samples_total']} monthly={result['monthly_samples_total']} "
+            f"snapshots={result['snapshots_total']} aggregated={result['aggregated_energy_updates']}"
+        )
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash = f"Sync failed: {exc}"
+    return RedirectResponse(url=f"/?flash={quote_plus(flash)}", status_code=303)

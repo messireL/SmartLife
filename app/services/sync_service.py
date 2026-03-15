@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import BucketType, Device, EnergySample
-from app.integrations.base import ProviderDevice, ProviderEnergySample
+from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
+from app.integrations.base import ProviderDevice, ProviderEnergySample, ProviderStatusSnapshot
 from app.integrations.registry import get_provider
+
+
+ZERO = Decimal("0.000")
 
 
 def sync_from_provider(db: Session) -> dict:
@@ -15,10 +20,18 @@ def sync_from_provider(db: Session) -> dict:
     devices = provider.get_devices()
     daily_samples = provider.get_daily_energy_samples()
     monthly_samples = provider.get_monthly_energy_samples()
+    snapshots = provider.get_status_snapshots(devices)
 
     device_map = _upsert_devices(db, devices)
     inserted_daily = _upsert_energy_samples(db, BucketType.DAY, daily_samples, device_map)
     inserted_monthly = _upsert_energy_samples(db, BucketType.MONTH, monthly_samples, device_map)
+    aggregate_from_snapshots = len(daily_samples) == 0 and len(monthly_samples) == 0
+    inserted_snapshots, aggregated_deltas = _store_status_snapshots(
+        db,
+        snapshots,
+        device_map,
+        aggregate_energy=aggregate_from_snapshots,
+    )
     db.commit()
 
     return {
@@ -26,7 +39,10 @@ def sync_from_provider(db: Session) -> dict:
         "devices_total": len(devices),
         "daily_samples_total": inserted_daily,
         "monthly_samples_total": inserted_monthly,
+        "snapshots_total": inserted_snapshots,
+        "aggregated_energy_updates": aggregated_deltas,
     }
+
 
 
 def _upsert_devices(db: Session, devices: Iterable[ProviderDevice]) -> dict[str, Device]:
@@ -40,9 +56,12 @@ def _upsert_devices(db: Session, devices: Iterable[ProviderDevice]) -> dict[str,
             db.add(device)
         device.name = item.name
         device.model = item.model
+        device.product_id = item.product_id
+        device.product_name = item.product_name
         device.category = item.category
         device.room_name = item.room_name
         device.location_name = item.location_name
+        device.icon_url = item.icon_url
         device.is_online = item.is_online
         device.last_seen_at = item.last_seen_at
         device.notes = item.notes
@@ -51,10 +70,11 @@ def _upsert_devices(db: Session, devices: Iterable[ProviderDevice]) -> dict[str,
     return device_map
 
 
+
 def _upsert_energy_samples(
     db: Session,
     bucket_type: BucketType,
-    samples: Iterable[ProviderEnergySample],
+    samples: Sequence[ProviderEnergySample],
     device_map: dict[str, Device],
 ) -> int:
     upserted = 0
@@ -79,3 +99,125 @@ def _upsert_energy_samples(
         sample.source_note = item.source_note
         upserted += 1
     return upserted
+
+
+
+def _store_status_snapshots(
+    db: Session,
+    snapshots: Sequence[ProviderStatusSnapshot],
+    device_map: dict[str, Device],
+    *,
+    aggregate_energy: bool,
+) -> tuple[int, int]:
+    inserted = 0
+    aggregated = 0
+
+    for item in snapshots:
+        device = device_map.get(item.external_id)
+        if device is None:
+            continue
+
+        previous = db.execute(
+            select(DeviceStatusSnapshot)
+            .where(DeviceStatusSnapshot.device_id == device.id)
+            .order_by(DeviceStatusSnapshot.recorded_at.desc(), DeviceStatusSnapshot.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        snapshot = DeviceStatusSnapshot(
+            device_id=device.id,
+            recorded_at=item.recorded_at,
+            switch_on=item.switch_on,
+            power_w=item.power_w,
+            voltage_v=item.voltage_v,
+            current_a=item.current_a,
+            energy_total_kwh=item.energy_total_kwh,
+            fault_code=item.fault_code,
+            source_note=item.source_note,
+            raw_payload=item.raw_payload,
+        )
+        db.add(snapshot)
+
+        device.switch_on = item.switch_on
+        device.current_power_w = item.power_w
+        device.current_voltage_v = item.voltage_v
+        device.current_a = item.current_a
+        device.energy_total_kwh = item.energy_total_kwh
+        device.fault_code = item.fault_code
+        device.last_status_at = item.recorded_at
+        device.last_status_payload = item.raw_payload
+        if item.recorded_at:
+            device.last_seen_at = item.recorded_at
+
+        inserted += 1
+
+        if not aggregate_energy:
+            continue
+        if item.energy_total_kwh is None or previous is None or previous.energy_total_kwh is None:
+            continue
+
+        delta = (item.energy_total_kwh - previous.energy_total_kwh).quantize(Decimal("0.001"))
+        if delta <= ZERO:
+            continue
+
+        _increment_aggregate(
+            db,
+            device=device,
+            bucket_type=BucketType.DAY,
+            period_start=item.recorded_at.date(),
+            delta_kwh=delta,
+            power_w=item.power_w,
+            voltage_v=item.voltage_v,
+            current_a=item.current_a,
+            source_note=item.source_note or "live energy delta",
+        )
+        _increment_aggregate(
+            db,
+            device=device,
+            bucket_type=BucketType.MONTH,
+            period_start=item.recorded_at.date().replace(day=1),
+            delta_kwh=delta,
+            power_w=item.power_w,
+            voltage_v=item.voltage_v,
+            current_a=item.current_a,
+            source_note=item.source_note or "live energy delta",
+        )
+        aggregated += 2
+
+    return inserted, aggregated
+
+
+
+def _increment_aggregate(
+    db: Session,
+    *,
+    device: Device,
+    bucket_type: BucketType,
+    period_start: date,
+    delta_kwh: Decimal,
+    power_w: Decimal | None,
+    voltage_v: Decimal | None,
+    current_a: Decimal | None,
+    source_note: str,
+) -> None:
+    sample = db.execute(
+        select(EnergySample).where(
+            EnergySample.device_id == device.id,
+            EnergySample.bucket_type == bucket_type,
+            EnergySample.period_start == period_start,
+        )
+    ).scalar_one_or_none()
+    if sample is None:
+        sample = EnergySample(
+            device_id=device.id,
+            bucket_type=bucket_type,
+            period_start=period_start,
+            energy_kwh=ZERO,
+        )
+        db.add(sample)
+
+    sample.energy_kwh = (Decimal(sample.energy_kwh or ZERO) + delta_kwh).quantize(Decimal("0.001"))
+    sample.power_w = power_w
+    sample.voltage_v = voltage_v
+    sample.current_a = current_a
+    sample.source_note = source_note

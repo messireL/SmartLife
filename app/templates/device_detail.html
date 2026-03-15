@@ -4,24 +4,79 @@
     <div class="section-header">
       <div>
         <h1>{{ device.name }}</h1>
-        <div class="muted">{{ device.provider.value }} · {{ device.model or 'unknown model' }}</div>
+        <div class="muted">{{ device.provider.value }} · {{ device.product_name or device.model or 'unknown model' }}</div>
       </div>
-      <div>
+      <div class="status-pair">
         {% if device.is_online %}
           <span class="badge online">online</span>
         {% else %}
           <span class="badge offline">offline</span>
         {% endif %}
+        {% if device.switch_on is sameas true %}
+          <span class="badge on">relay on</span>
+        {% elif device.switch_on is sameas false %}
+          <span class="badge off">relay off</span>
+        {% endif %}
       </div>
     </div>
 
-    <div class="detail-grid">
+    <div class="detail-grid metrics-grid">
       <div><span class="muted">Комната:</span> {{ device.room_name or '—' }}</div>
       <div><span class="muted">Локация:</span> {{ device.location_name or '—' }}</div>
       <div><span class="muted">Категория:</span> {{ device.category or '—' }}</div>
+      <div><span class="muted">Product ID:</span> {{ device.product_id or '—' }}</div>
       <div><span class="muted">External ID:</span> {{ device.external_id }}</div>
       <div><span class="muted">Последняя активность:</span> {{ device.last_seen_at or '—' }}</div>
-      <div><span class="muted">Описание:</span> {{ device.notes or '—' }}</div>
+      <div><span class="muted">Последний статус:</span> {{ device.last_status_at or '—' }}</div>
+      <div><span class="muted">Суммарно, kWh:</span> {{ device.energy_total_kwh or '—' }}</div>
+      <div><span class="muted">Мощность, W:</span> {{ device.current_power_w or '—' }}</div>
+      <div><span class="muted">Напряжение, V:</span> {{ device.current_voltage_v or '—' }}</div>
+      <div><span class="muted">Ток, A:</span> {{ device.current_a or '—' }}</div>
+      <div><span class="muted">Fault:</span> {{ device.fault_code or '0' }}</div>
+      <div class="span-2"><span class="muted">Описание:</span> {{ device.notes or '—' }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Живые статусы</h2>
+      <div class="muted">Последние 20 снапшотов</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Время</th>
+            <th>Реле</th>
+            <th>W</th>
+            <th>V</th>
+            <th>A</th>
+            <th>Всего, kWh</th>
+            <th>Fault</th>
+            <th>Источник</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in snapshots %}
+            <tr>
+              <td>{{ item.recorded_at }}</td>
+              <td>
+                {% if item.switch_on is sameas true %}on{% elif item.switch_on is sameas false %}off{% else %}—{% endif %}
+              </td>
+              <td>{{ item.power_w or '—' }}</td>
+              <td>{{ item.voltage_v or '—' }}</td>
+              <td>{{ item.current_a or '—' }}</td>
+              <td>{{ item.energy_total_kwh or '—' }}</td>
+              <td>{{ item.fault_code or '0' }}</td>
+              <td>{{ item.source_note or '—' }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="8" class="muted">Снапшотов ещё нет.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </section>
 
@@ -52,6 +107,10 @@
               <td>{{ item.current_a or '—' }}</td>
               <td>{{ item.source_note or '—' }}</td>
             </tr>
+          {% else %}
+            <tr>
+              <td colspan="6" class="muted">Дневная статистика пока не накопилась.</td>
+            </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -78,6 +137,10 @@
               <td>{{ item.period_start }}</td>
               <td>{{ item.energy_kwh }}</td>
               <td>{{ item.source_note or '—' }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="3" class="muted">Месячная статистика пока не накопилась.</td>
             </tr>
           {% endfor %}
         </tbody>

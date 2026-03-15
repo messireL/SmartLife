@@ -4,6 +4,31 @@
     <div class="flash">{{ flash }}</div>
   {% endif %}
 
+  <section class="card access-card">
+    <div>
+      <h2>LAN-доступ</h2>
+      <p class="muted">Сервис ориентирован на локальную сеть и по умолчанию публикуется на адресе сервера из диапазона 192.168.x.x.</p>
+    </div>
+    <div class="access-grid">
+      <div>
+        <div class="muted tiny">URL</div>
+        <div class="access-value"><a href="{{ settings.app_base_url }}">{{ settings.app_base_url }}</a></div>
+      </div>
+      <div>
+        <div class="muted tiny">Режим сети</div>
+        <div class="access-value">{{ settings.network_mode }}</div>
+      </div>
+      <div>
+        <div class="muted tiny">Bind IP</div>
+        <div class="access-value">{{ settings.bind_ip }}</div>
+      </div>
+      <div>
+        <div class="muted tiny">Порт</div>
+        <div class="access-value">{{ settings.public_port }}</div>
+      </div>
+    </div>
+  </section>
+
   <section class="summary-grid">
     <article class="card stat-card">
       <div class="muted">Устройств</div>
@@ -14,6 +39,10 @@
       <div class="stat-value">{{ summary.online_total }}</div>
     </article>
     <article class="card stat-card">
+      <div class="muted">Включено</div>
+      <div class="stat-value">{{ summary.powered_on_total }}</div>
+    </article>
+    <article class="card stat-card">
       <div class="muted">Сегодня, kWh</div>
       <div class="stat-value">{{ summary.day_total_kwh }}</div>
     </article>
@@ -21,16 +50,31 @@
       <div class="muted">Текущий месяц, kWh</div>
       <div class="stat-value">{{ summary.month_total_kwh }}</div>
     </article>
+    <article class="card stat-card">
+      <div class="muted">Текущая нагрузка, W</div>
+      <div class="stat-value">{{ summary.live_power_total_w }}</div>
+    </article>
   </section>
 
   <section class="card toolbar">
     <div>
-      <h2>Быстрый старт</h2>
-      <p class="muted">Для первого запуска можно заполнить проект демо-данными и проверить UI, API и расчёт метрик.</p>
+      <h2>Синхронизация</h2>
+      {% if settings.smartlife_provider == 'demo' %}
+        <p class="muted">Сейчас активен demo-провайдер. Можно быстро проверить UI и расчёты, не трогая настоящие устройства.</p>
+      {% elif settings.smartlife_provider == 'tuya_cloud' %}
+        <p class="muted">Активен Tuya Cloud. Синхронизация подтягивает список устройств, текущие статусы и накапливает расход по счётчику <code>add_ele</code>.</p>
+      {% else %}
+        <p class="muted">Активен провайдер {{ settings.smartlife_provider }}. Синхронизация выполнит импорт доступных устройств и живых статусов.</p>
+      {% endif %}
     </div>
-    <form method="post" action="/actions/sync-demo">
-      <button type="submit">Загрузить demo-данные</button>
-    </form>
+    <div class="toolbar-actions">
+      <form method="post" action="/actions/sync-provider">
+        <button type="submit">Синхронизировать сейчас</button>
+      </form>
+      {% if settings.smartlife_provider == 'demo' %}
+        <div class="muted tiny">Подсказка: для Tuya переключи провайдер через <code>./scripts/manage.sh configure-tuya</code></div>
+      {% endif %}
+    </div>
   </section>
 
   <section class="card">
@@ -46,18 +90,23 @@
               <th>Устройство</th>
               <th>Провайдер</th>
               <th>Комната</th>
-              <th>Категория</th>
-              <th>Статус</th>
-              <th>Последняя активность</th>
+              <th>Онлайн</th>
+              <th>Реле</th>
+              <th>Мощность</th>
+              <th>Напряжение</th>
+              <th>Всего, kWh</th>
+              <th>Последний статус</th>
             </tr>
           </thead>
           <tbody>
             {% for device in devices %}
               <tr>
-                <td><a href="/devices/{{ device.id }}">{{ device.name }}</a><div class="tiny muted">{{ device.model or '—' }}</div></td>
+                <td>
+                  <a href="/devices/{{ device.id }}">{{ device.name }}</a>
+                  <div class="tiny muted">{{ device.product_name or device.model or '—' }}</div>
+                </td>
                 <td>{{ device.provider.value }}</td>
                 <td>{{ device.room_name or '—' }}</td>
-                <td>{{ device.category or '—' }}</td>
                 <td>
                   {% if device.is_online %}
                     <span class="badge online">online</span>
@@ -65,14 +114,26 @@
                     <span class="badge offline">offline</span>
                   {% endif %}
                 </td>
-                <td>{{ device.last_seen_at or '—' }}</td>
+                <td>
+                  {% if device.switch_on is sameas true %}
+                    <span class="badge on">on</span>
+                  {% elif device.switch_on is sameas false %}
+                    <span class="badge off">off</span>
+                  {% else %}
+                    <span class="muted">—</span>
+                  {% endif %}
+                </td>
+                <td>{{ device.current_power_w or '—' }}</td>
+                <td>{{ device.current_voltage_v or '—' }}</td>
+                <td>{{ device.energy_total_kwh or '—' }}</td>
+                <td>{{ device.last_status_at or device.last_seen_at or '—' }}</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     {% else %}
-      <div class="empty-state">Пока пусто. Нажми «Загрузить demo-данные» и приложение сразу оживёт.</div>
+      <div class="empty-state">Пока пусто. Нажми «Синхронизировать сейчас» и приложение подтянет demo-данные или живые статусы из Tuya.</div>
     {% endif %}
   </section>
 {% endblock %}

@@ -13,3 +13,5 @@ htmlcov/
 .coverage
 .DS_Store
 postgres_data/
+secrets/*
+!secrets/.gitkeep

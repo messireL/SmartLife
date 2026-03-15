@@ -17,42 +17,101 @@
 
 ## Что уже сделано в текущем состоянии
 
-Версия: `v0.1.0`
+Версия: `v0.2.0`
 
-Сделан стартовый MVP-каркас:
-- FastAPI-приложение с веб-интерфейсом и JSON API;
-- PostgreSQL-модели для устройств и энергометрик;
-- главная панель со сводкой по устройствам и энергопотреблению;
-- карточка устройства с дневной и месячной статистикой;
-- demo-провайдер для тестового наполнения;
-- задел под интеграции `tuya_cloud` и `xiaomi_miio`;
-- Docker Compose и `scripts/manage.sh`.
+Сделано:
+- стартовый MVP-каркас FastAPI + PostgreSQL + Docker Compose;
+- изоляция Docker-окружения через отдельный compose project name, volume и network;
+- секреты вынесены из `.env` в файловую директорию `secrets/`;
+- LAN-first мастер первого запуска с приоритетом адресов `192.168.x.x` и портом по умолчанию `13443`;
+- режим `LAN-only`, не позволяющий случайно публиковать сервис на `0.0.0.0`;
+- demo-провайдер с тестовыми устройствами и метриками;
+- первая рабочая интеграция `tuya_cloud`;
+- импорт списка устройств из Tuya cloud project через `GET /v2.0/cloud/thing/device`;
+- чтение спецификации устройства через `GET /v1.0/iot-03/devices/{device_id}/specification`;
+- чтение текущего статуса через `GET /v1.0/iot-03/devices/{device_id}/status`;
+- сохранение живых снапшотов статуса в таблицу `device_status_snapshots`;
+- сохранение текущих live-метрик прямо в карточке устройства (`switch_on`, `current_power_w`, `current_voltage_v`, `current_a`, `energy_total_kwh`, `fault_code`);
+- расчёт суточного и месячного расхода по счётчику `add_ele` на своей стороне без Tuya Power Management;
+- команда `./scripts/manage.sh configure-tuya` для записи `Access ID / Access Secret` в `secrets/` и переключения провайдера на `tuya_cloud`;
+- команда `./scripts/manage.sh sync` для ручной синхронизации;
+- веб-панель со списком устройств, live-статусами, суммарной нагрузкой и историей снапшотов.
 
 ## Текущее поведение
 
-Сейчас проект по умолчанию работает через `SMARTLIFE_PROVIDER=demo` и умеет:
-- подняться в Docker;
-- создать таблицы;
-- загрузить demo-устройства;
-- показать дневные и месячные значения энергопотребления.
+Сейчас проект умеет работать в двух режимах:
+
+### 1. `SMARTLIFE_PROVIDER=demo`
+- быстрый запуск без реальных устройств;
+- загрузка demo-устройств и истории энергометрик;
+- проверка UI, API и расчётов.
+
+### 2. `SMARTLIFE_PROVIDER=tuya_cloud`
+- чтение Tuya Access ID / Access Secret из `secrets/`;
+- запрос access token;
+- импорт устройств из проекта Tuya;
+- чтение live-статусов розеток и других устройств;
+- накопление снапшотов и расчёт day/month по `add_ele`.
+
+## Важные детали по Tuya
+
+Проверенная модель розетки уже отдаёт нужные поля:
+- `switch_1`
+- `add_ele`
+- `cur_current`
+- `cur_power`
+- `cur_voltage`
+- `fault`
+
+Нормализация значений:
+- `add_ele / 1000` → `kWh`
+- `cur_power / 10` → `W`
+- `cur_voltage / 10` → `V`
+- `cur_current / 1000` → `A`
+
+Логика расчёта расхода:
+- каждый sync сохраняет новый снапшот;
+- берётся разница `energy_total_kwh` между новым и предыдущим снапшотом;
+- в day/month идёт только положительная дельта;
+- если счётчик сбросился назад, отрицательная дельта игнорируется.
 
 ## Что важно помнить дальше
 
-Следующий крупный шаг — подключение реальных источников данных:
-1. Tuya / Smart Life Cloud API;
-2. Xiaomi Mi Home / miIO локально;
-3. нормальная синхронизация устройств, комнат, статусов и энергометрик;
-4. планировщик фоновой синхронизации;
-5. графики, фильтры, управление устройствами.
+Следующие крупные шаги:
+1. фоновый планировщик синхронизации вместо ручного `manage.sh sync`;
+2. графики по мощности и потреблению;
+3. фильтры по комнатам/типам устройств;
+4. управление устройствами (toggle / команды);
+5. полноценная интеграция Xiaomi Mi Home / miIO;
+6. расширенный roadmap по Smart Life / Mi Home устройствам и аналитике.
 
 ## Полезные команды на сервере
 
+### Новый сервер
+
+```bash
+cd /opt
+git clone https://github.com/messireL/SmartLife.git SmartLife
+cd /opt/SmartLife
+chmod +x scripts/manage.sh
+./scripts/manage.sh up --build
+./scripts/manage.sh configure-tuya
+./scripts/manage.sh restart
+./scripts/manage.sh sync
+./scripts/manage.sh health
+./scripts/manage.sh url
+```
+
+### Уже развёрнутый сервер
+
 ```bash
 cd /opt/SmartLife
-cp .env.example .env  # если .env ещё нет
+chmod +x scripts/manage.sh
+./scripts/manage.sh configure-tuya
 ./scripts/manage.sh up --build
-./scripts/manage.sh seed-demo
-./scripts/manage.sh logs
+./scripts/manage.sh sync
+./scripts/manage.sh health
+./scripts/manage.sh url
 ```
 
 ## Подсказка для следующего чата

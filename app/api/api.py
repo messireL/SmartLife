@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import BucketType, Device, EnergySample
+from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
 from app.db.session import get_db
 
 router = APIRouter(prefix="/api", tags=["api"])
@@ -21,11 +21,21 @@ def list_devices(db: Session = Depends(get_db)):
             "provider": device.provider.value,
             "name": device.name,
             "model": device.model,
+            "product_id": device.product_id,
+            "product_name": device.product_name,
             "category": device.category,
             "room_name": device.room_name,
             "location_name": device.location_name,
+            "icon_url": device.icon_url,
             "is_online": device.is_online,
+            "switch_on": device.switch_on,
+            "current_power_w": float(device.current_power_w) if device.current_power_w is not None else None,
+            "current_voltage_v": float(device.current_voltage_v) if device.current_voltage_v is not None else None,
+            "current_a": float(device.current_a) if device.current_a is not None else None,
+            "energy_total_kwh": float(device.energy_total_kwh) if device.energy_total_kwh is not None else None,
+            "fault_code": device.fault_code,
             "last_seen_at": device.last_seen_at.isoformat() if device.last_seen_at else None,
+            "last_status_at": device.last_status_at.isoformat() if device.last_status_at else None,
             "notes": device.notes,
         }
         for device in devices
@@ -50,7 +60,13 @@ def device_energy(device_id: int, period: str = "day", db: Session = Depends(get
     ).scalars().all()
 
     return {
-        "device": {"id": device.id, "name": device.name, "provider": device.provider.value},
+        "device": {
+            "id": device.id,
+            "name": device.name,
+            "provider": device.provider.value,
+            "current_power_w": float(device.current_power_w) if device.current_power_w is not None else None,
+            "energy_total_kwh": float(device.energy_total_kwh) if device.energy_total_kwh is not None else None,
+        },
         "period": bucket.value,
         "items": [
             {
@@ -66,6 +82,38 @@ def device_energy(device_id: int, period: str = "day", db: Session = Depends(get
     }
 
 
+@router.get("/devices/{device_id}/snapshots")
+def device_snapshots(device_id: int, limit: int = 100, db: Session = Depends(get_db)):
+    device = db.get(Device, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="device not found")
+
+    limit = max(1, min(limit, 500))
+    items = db.execute(
+        select(DeviceStatusSnapshot)
+        .where(DeviceStatusSnapshot.device_id == device.id)
+        .order_by(DeviceStatusSnapshot.recorded_at.desc(), DeviceStatusSnapshot.id.desc())
+        .limit(limit)
+    ).scalars().all()
+
+    return {
+        "device": {"id": device.id, "name": device.name, "provider": device.provider.value},
+        "items": [
+            {
+                "recorded_at": item.recorded_at.isoformat(),
+                "switch_on": item.switch_on,
+                "power_w": float(item.power_w) if item.power_w is not None else None,
+                "voltage_v": float(item.voltage_v) if item.voltage_v is not None else None,
+                "current_a": float(item.current_a) if item.current_a is not None else None,
+                "energy_total_kwh": float(item.energy_total_kwh) if item.energy_total_kwh is not None else None,
+                "fault_code": item.fault_code,
+                "source_note": item.source_note,
+            }
+            for item in items
+        ],
+    }
+
+
 @router.get("/health")
 def health():
     settings = get_settings()
@@ -76,4 +124,5 @@ def health():
         "provider": settings.smartlife_provider,
         "base_url": settings.app_base_url,
         "timezone": settings.timezone,
+        "sync_interval_seconds": settings.smartlife_sync_interval_seconds,
     }

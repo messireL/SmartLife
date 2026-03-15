@@ -1,29 +1,44 @@
+name: ${SMARTLIFE_COMPOSE_PROJECT_NAME:-smartlife}
+
 services:
   db:
     image: postgres:16-alpine
-    container_name: smartlife-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: smartlife
-      POSTGRES_USER: smartlife
-      POSTGRES_PASSWORD: smartlife
+      POSTGRES_DB: ${SMARTLIFE_DB_NAME:-smartlife}
+      POSTGRES_USER: ${SMARTLIFE_DB_USER:-smartlife}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     volumes:
-      - ./postgres_data:/var/lib/postgresql/data
+      - smartlife_postgres_data:/var/lib/postgresql/data
+      - ./secrets/db_password:/run/secrets/db_password:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smartlife -d smartlife"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      - smartlife_network
 
   app:
     build:
       context: .
-    container_name: smartlife-app
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./secrets:/app/secrets:ro
     ports:
-      - "18089:18089"
+      - "${SMARTLIFE_BIND_IP:-0.0.0.0}:${SMARTLIFE_PUBLIC_PORT:-13443}:${SMARTLIFE_APP_PORT:-18089}"
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - smartlife_network
+
+volumes:
+  smartlife_postgres_data:
+    name: ${SMARTLIFE_COMPOSE_PROJECT_NAME:-smartlife}_postgres_data
+
+networks:
+  smartlife_network:
+    name: ${SMARTLIFE_COMPOSE_PROJECT_NAME:-smartlife}_network

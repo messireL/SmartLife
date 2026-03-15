@@ -15,4 +15,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN chmod +x /app/scripts/manage.sh
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "18089"]
+CMD ["sh", "-c", "uvicorn app.main:app --host ${SMARTLIFE_APP_HOST:-0.0.0.0} --port ${SMARTLIFE_APP_PORT:-18089}"]

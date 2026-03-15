@@ -1,6 +1,6 @@
 # SmartLife
 
-SmartLife — стартовый MVP веб-приложения для управления устройствами Smart Life / Mi Home, просмотра списка устройств и метрик энергопотребления за день и месяц.
+SmartLife — веб-приложение для управления устройствами Smart Life / Mi Home, просмотра статусов и расчёта энергопотребления за день и месяц.
 
 Стек:
 - Python 3.12
@@ -8,50 +8,145 @@ SmartLife — стартовый MVP веб-приложения для упра
 - PostgreSQL
 - Docker Compose
 
-## Что уже есть
+## Что уже есть в `v0.2.0`
 
-- веб-интерфейс со сводкой и списком устройств;
-- карточка устройства с дневной и месячной статистикой;
-- JSON API для списка устройств и энергометрик;
-- PostgreSQL-модель устройств и энергосэмплов;
-- demo-провайдер для быстрого старта и UX-проверок;
-- архитектурный задел под провайдеры Tuya Cloud и Xiaomi Mi Home / miIO.
+- LAN-first запуск с выбором IP и порта;
+- изолированное Docker-окружение;
+- секреты только в `./secrets`, а не в `.env`;
+- demo-провайдер для быстрого старта;
+- первая рабочая интеграция **Tuya Cloud**;
+- импорт списка устройств из cloud project;
+- опрос живых статусов (`switch_1`, `add_ele`, `cur_power`, `cur_voltage`, `cur_current`, `fault`);
+- накопление снапшотов статуса в PostgreSQL;
+- расчёт расхода **за день** и **за месяц** по счётчику `add_ele` без платного Power Management;
+- веб-панель с живыми метриками и историей снапшотов;
+- JSON API по устройствам, энергостатистике и снапшотам.
 
 ## Быстрый старт
 
+### Новый сервер / чистое развёртывание
+
 ```bash
-cp .env.example .env
+git clone https://github.com/messireL/SmartLife.git /opt/SmartLife
+cd /opt/SmartLife
+chmod +x scripts/manage.sh
 ./scripts/manage.sh up --build
 ./scripts/manage.sh seed-demo
+./scripts/manage.sh health
+./scripts/manage.sh url
 ```
 
-Открыть:
-- UI: `http://localhost:18089/`
-- Health: `http://localhost:18089/health`
-- API devices: `http://localhost:18089/api/devices`
+При первом запуске скрипт сам:
+- создаст `.env` из шаблона;
+- создаст каталог `secrets/`;
+- сгенерирует `secrets/app_secret_key` и `secrets/db_password`;
+- создаст пустые файлы для Tuya / Xiaomi секретов;
+- предложит выбрать IP-адрес из найденных на сервере;
+- по умолчанию отдаст приоритет адресу из `192.168.x.x`;
+- предложит порт публикации (по умолчанию `13443`).
 
-## Провайдеры
+## Где лежат секреты
 
-Сейчас по умолчанию используется `SMARTLIFE_PROVIDER=demo`.
+Секреты не хранятся в `.env`. Они лежат в:
 
-Подготовлены классы для следующих сценариев:
-- `demo` — тестовые устройства и тестовая энергостатика;
-- `tuya_cloud` — каркас для интеграции через Tuya Open API;
-- `xiaomi_miio` — каркас для локальной интеграции Xiaomi/Mi Home.
+```text
+/opt/SmartLife/secrets/
+```
 
-## Важное замечание
+Основные файлы:
+- `app_secret_key`
+- `db_password`
+- `smartlife_tuya_access_id`
+- `smartlife_tuya_access_secret`
+- `smartlife_tuya_project_code`
+- `smartlife_xiaomi_username`
+- `smartlife_xiaomi_password`
+- `smartlife_xiaomi_device_token`
 
-Этот релиз — именно фундамент проекта. Реальные логины, токены, подпись запросов и синхронизация с облаком / локальной сетью для конкретных аккаунтов и устройств будут подключаться следующим релизом, когда будет понятен приоритет: Smart Life / Tuya Cloud, Xiaomi Mi Home локально, или оба направления сразу.
+## Подключение Tuya Cloud
+
+1. На Tuya Developer Platform привяжи Smart Life app account к проекту.
+2. Подготовь `Access ID` и `Access Secret` проекта.
+3. Выполни:
+
+```bash
+cd /opt/SmartLife
+./scripts/manage.sh configure-tuya
+```
+
+Скрипт:
+- предложит региональный `OpenAPI` endpoint;
+- попросит `Access ID` и `Access Secret`;
+- сохранит ключи в `secrets/`;
+- переключит `SMARTLIFE_PROVIDER=tuya_cloud`.
+
+После этого:
+
+```bash
+./scripts/manage.sh up --build
+./scripts/manage.sh sync
+./scripts/manage.sh health
+./scripts/manage.sh url
+```
+
+## Как считается энергопотребление
+
+Для Tuya используется накопительный счётчик `add_ele`.
+
+Логика:
+- каждый опрос сохраняет снапшот статуса;
+- из `add_ele` берётся `energy_total_kwh`;
+- расход = положительная разница между новым и предыдущим снапшотом;
+- день = сумма дельт за текущие сутки;
+- месяц = сумма дельт за текущий месяц.
+
+Если счётчик сбросился назад, отрицательная дельта не учитывается — это защита от перепривязки, сброса устройства или туевской внезапной философии.
+
+## LAN-настройка
+
+Несекретные параметры сети лежат в `.env`:
+
+```env
+SMARTLIFE_NETWORK_MODE=lan
+SMARTLIFE_LAN_ONLY=yes
+SMARTLIFE_LAN_SUBNET_PREFIX=192.168.
+SMARTLIFE_BIND_IP=192.168.1.50
+SMARTLIFE_PUBLIC_PORT=13443
+SMARTLIFE_APP_BASE_URL=http://192.168.1.50:13443
+SMARTLIFE_PROVIDER=tuya_cloud
+SMARTLIFE_TUYA_BASE_URL=https://openapi.tuyaeu.com
+SMARTLIFE_SYNC_INTERVAL_SECONDS=60
+```
+
+Если нужно перенастроить адрес/порт:
+
+```bash
+./scripts/manage.sh configure
+```
 
 ## Управление
 
 ```bash
+./scripts/manage.sh configure
+./scripts/manage.sh configure-tuya
+./scripts/manage.sh configure-demo
 ./scripts/manage.sh up --build
+./scripts/manage.sh sync
+./scripts/manage.sh seed-demo
 ./scripts/manage.sh down
 ./scripts/manage.sh logs
-./scripts/manage.sh seed-demo
 ./scripts/manage.sh shell
+./scripts/manage.sh health
+./scripts/manage.sh url
 ```
+
+## Что ещё не реализовано
+
+- автоматическое фоновое расписание синхронизации;
+- управление устройствами (toggle / send commands);
+- полноценная Xiaomi / Mi Home интеграция;
+- графики и расширенные отчёты;
+- multi-user и роли.
 
 ## Трансфер в новый чат
 
