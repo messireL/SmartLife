@@ -159,3 +159,6 @@ cd /opt/SmartLife
 ## Патч v0.5.2
 
 На существующей PostgreSQL базе добавлена миграция `ALTER TABLE devices ADD COLUMN IF NOT EXISTS notes TEXT`, чтобы релизы v0.5.x не падали с `Internal Server Error` из-за отсутствующего столбца `devices.notes`.
+
+
+Compatibility note: v0.5.4 adds a broader PostgreSQL schema self-heal on startup for older SmartLife databases.

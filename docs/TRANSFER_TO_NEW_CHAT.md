@@ -160,4 +160,7 @@ chmod +x scripts/manage.sh
 
 ## Последний релиз
 - v0.5.1 — исправление 500 на главной/комнатах, когда в комнате не оставалось видимых устройств.
-- v0.5.3 — исправление миграции БД: добавлен столбец `devices.notes`, из-за отсутствия которого на существующей PostgreSQL базе страницы могли падать с Internal Server Error после релиза v0.5.x.
+- v0.5.4 — исправление миграции БД: добавлен столбец `devices.notes`, из-за отсутствия которого на существующей PostgreSQL базе страницы могли падать с Internal Server Error после релиза v0.5.x.
+
+
+Compatibility note: v0.5.4 adds a broader PostgreSQL schema self-heal on startup for older SmartLife databases.
