@@ -6,16 +6,18 @@ cd /opt/SmartLife
 git reset --hard HEAD
 git pull --ff-only
 chmod +x scripts/manage.sh
-./scripts/manage.sh up --build
+./scripts/manage.sh up
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```
+
+`./scripts/manage.sh up` по умолчанию делает rebuild контейнеров. Если когда-нибудь понадобится запуск без rebuild, используй `./scripts/manage.sh up --no-build`.
 
 ## Настройка облака Tuya
 ```bash
 cd /opt/SmartLife
 ./scripts/manage.sh configure-tuya
-./scripts/manage.sh up --build
+./scripts/manage.sh up
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```

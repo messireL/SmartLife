@@ -624,10 +624,22 @@ case "$COMMAND" in
   up)
     shift || true
     configure_runtime
-    if [[ "$*" == *"--build"* ]]; then
-      autobackup_before "pre_up_build"
+    autobackup_before "pre_up"
+    up_args=("$@")
+    build_requested="yes"
+    filtered_args=()
+    for arg in "${up_args[@]}"; do
+      if [[ "$arg" == "--no-build" ]]; then
+        build_requested="no"
+        continue
+      fi
+      filtered_args+=("$arg")
+    done
+    if [[ "$build_requested" == "yes" ]]; then
+      compose up -d --remove-orphans --build "${filtered_args[@]}"
+    else
+      compose up -d --remove-orphans "${filtered_args[@]}"
     fi
-    compose up -d --remove-orphans "$@"
     show_banner
     verify_app_ready
     ;;
@@ -691,7 +703,7 @@ case "$COMMAND" in
     echo "$(show_url)"
     ;;
   *)
-    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--build]|down|build|logs|restart|ps|sync|rebuild-energy|cleanup-demo|cleanup-docker|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|health|url}"
+    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--no-build]|down|build|logs|restart|ps|sync|rebuild-energy|cleanup-demo|cleanup-docker|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|health|url}"
     exit 1
     ;;
 esac

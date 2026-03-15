@@ -8,7 +8,7 @@ SmartLife — веб-приложение для управления устро
 - PostgreSQL
 - Docker Compose
 
-## Что есть в v0.6.0
+## Что есть в v0.6.2
 
 - LAN-first запуск с выбором IP и порта;
 - изолированное Docker-окружение;
@@ -44,7 +44,7 @@ cd /opt
 git clone https://github.com/messireL/SmartLife.git SmartLife
 cd /opt/SmartLife
 chmod +x scripts/manage.sh
-./scripts/manage.sh up --build
+./scripts/manage.sh up
 ./scripts/manage.sh seed-demo
 ./scripts/manage.sh health
 ./scripts/manage.sh url
@@ -56,7 +56,7 @@ chmod +x scripts/manage.sh
 cd /opt/SmartLife
 git pull --ff-only
 chmod +x scripts/manage.sh
-./scripts/manage.sh up --build
+./scripts/manage.sh up
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```
@@ -68,7 +68,7 @@ cd /opt/SmartLife
 ./scripts/manage.sh configure-tuya
 ./scripts/manage.sh configure-sync
 ./scripts/manage.sh configure-timezone Europe/Moscow
-./scripts/manage.sh up --build
+./scripts/manage.sh up
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```
@@ -128,7 +128,7 @@ Tuya Cloud settings теперь хранятся в PostgreSQL (`app_settings`)
 ./scripts/manage.sh configure-demo
 ./scripts/manage.sh configure-sync
 ./scripts/manage.sh configure-timezone Europe/Moscow
-./scripts/manage.sh up --build
+./scripts/manage.sh up
 ./scripts/manage.sh restart
 ./scripts/manage.sh sync
 ./scripts/manage.sh rebuild-energy
