@@ -14,7 +14,10 @@ from app.api.web import router as web_router
 from app.core.config import get_settings
 from app.core.version import APP_VERSION
 from app.db.init_db import init_db
+from app.db.models import ProviderType
+from app.db.session import SessionLocal
 from app.services.sync_scheduler import run_background_sync_loop, stop_background_task
+from app.services.device_admin_service import purge_demo_devices, restore_non_demo_deleted_devices
 
 
 settings = get_settings()
@@ -24,6 +27,10 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    if settings.smartlife_provider != ProviderType.DEMO.value:
+        with SessionLocal() as db:
+            restore_non_demo_deleted_devices(db)
+            purge_demo_devices(db)
     stop_event = asyncio.Event()
     background_task = None
     if settings.smartlife_background_sync_enabled or settings.smartlife_sync_on_startup:

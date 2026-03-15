@@ -29,7 +29,7 @@ def get_recent_command_logs(db: Session, device_id: int, limit: int = 10) -> lis
 
 def set_device_switch_state(db: Session, device_id: int, desired_state: bool, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
     device = db.get(Device, device_id)
-    if device is None:
+    if device is None or device.is_deleted:
         raise DeviceControlError('device not found')
 
     provider = get_provider()

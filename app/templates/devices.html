@@ -4,8 +4,9 @@
   <div class="section-header">
     <div>
       <h1>Устройства</h1>
-      <div class="muted">Список устройств, фильтры и возможность спрятать всякие temp-сюрпризы, если облако решило поиграть в самодеятельность.</div>
+      <div class="muted">Список устройств, фильтры и возможность спрятать всякие temp-сюрпризы, если облако решило поиграть в самодеятельность. Удаление оставили только для demo-истории — реальные устройства лучше не сносить сгоряча.</div>
     </div>
+    <form method="post" action="/actions/sync-provider"><button type="submit">Синхронизировать сейчас</button></form>
   </div>
   <form class="filters" method="get" action="/devices">
     <input class="input" type="text" name="q" value="{{ filters.q }}" placeholder="Поиск по имени, комнате, модели">
@@ -13,6 +14,7 @@
     <label><input type="checkbox" name="only_powered" value="1" {% if filters.only_powered %}checked{% endif %}> Только включённые</label>
     <label><input type="checkbox" name="show_temp" value="1" {% if filters.show_temp %}checked{% endif %}> Показывать temp</label>
     <label><input type="checkbox" name="include_hidden" value="1" {% if filters.include_hidden %}checked{% endif %}> Показывать скрытые</label>
+    <label><input type="checkbox" name="auto_refresh" value="1" {% if filters.auto_refresh %}checked{% endif %}> Автообновление</label>
     <button type="submit">Применить</button>
   </form>
   <div class="muted tiny">Скрытых устройств: {{ hidden_total }}</div>
@@ -29,7 +31,7 @@
           <th>Сейчас, W</th>
           <th>Энергия, kWh</th>
           <th>Статус</th>
-          <th>Действие</th>
+          <th>Действия</th>
         </tr>
       </thead>
       <tbody>
@@ -52,7 +54,9 @@
               {% if device.is_hidden %}
                 <form method="post" action="/devices/{{ device.id }}/unhide"><button type="submit">Показать</button></form>
               {% else %}
-                <form method="post" action="/devices/{{ device.id }}/hide"><button type="submit" class="button-secondary">Скрыть</button></form>
+                <div class="table-actions">
+                  <form method="post" action="/devices/{{ device.id }}/hide"><button type="submit" class="button-secondary">Скрыть</button></form>
+                </div>
               {% endif %}
             </td>
           </tr>

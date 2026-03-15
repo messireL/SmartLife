@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api", tags=["api"])
 
 @router.get("/devices")
 def list_devices(include_hidden: bool = Query(default=False), db: Session = Depends(get_db)):
-    stmt = select(Device)
+    stmt = select(Device).where(Device.is_deleted.is_(False))
     if not include_hidden:
         stmt = stmt.where(Device.is_hidden.is_(False))
     devices = db.execute(stmt.order_by(Device.room_name, Device.name)).scalars().all()
@@ -56,7 +56,7 @@ def device_energy(device_id: int, period: str = "day", db: Session = Depends(get
         raise HTTPException(status_code=400, detail="period must be 'day' or 'month'")
 
     device = db.get(Device, device_id)
-    if device is None:
+    if device is None or device.is_deleted:
         raise HTTPException(status_code=404, detail="device not found")
 
     samples = db.execute(
@@ -92,7 +92,7 @@ def device_energy(device_id: int, period: str = "day", db: Session = Depends(get
 @router.get("/devices/{device_id}/snapshots")
 def device_snapshots(device_id: int, limit: int = 100, db: Session = Depends(get_db)):
     device = db.get(Device, device_id)
-    if device is None:
+    if device is None or device.is_deleted:
         raise HTTPException(status_code=404, detail="device not found")
 
     limit = max(1, min(limit, 500))
@@ -124,7 +124,7 @@ def device_snapshots(device_id: int, limit: int = 100, db: Session = Depends(get
 @router.get("/devices/{device_id}/commands")
 def device_commands(device_id: int, limit: int = 20, db: Session = Depends(get_db)):
     device = db.get(Device, device_id)
-    if device is None:
+    if device is None or device.is_deleted:
         raise HTTPException(status_code=404, detail="device not found")
     limit = max(1, min(limit, 100))
     items = db.execute(

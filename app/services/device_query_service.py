@@ -26,6 +26,7 @@ def get_devices_for_ui(
     hide_temp: bool = True,
 ):
     stmt = select(Device)
+    stmt = stmt.where(Device.is_deleted.is_(False))
     if not include_hidden:
         stmt = stmt.where(Device.is_hidden.is_(False))
     if only_online:

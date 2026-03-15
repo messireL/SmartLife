@@ -51,7 +51,7 @@ def sync_from_provider(db: Session) -> dict:
 
 def _prune_missing_provider_devices(db: Session, provider: ProviderType, devices: Sequence[ProviderDevice]) -> int:
     current_ids = {item.external_id for item in devices}
-    existing = db.execute(select(Device).where(Device.provider == provider)).scalars().all()
+    existing = db.execute(select(Device).where(Device.provider == provider, Device.is_deleted.is_(False))).scalars().all()
     stale_ids = [row.id for row in existing if row.external_id not in current_ids]
     if not stale_ids:
         return 0
@@ -66,6 +66,15 @@ def _upsert_devices(db: Session, devices: Iterable[ProviderDevice]) -> dict[str,
         device = db.execute(
             select(Device).where(Device.provider == item.provider, Device.external_id == item.external_id)
         ).scalar_one_or_none()
+        if device is not None and device.is_deleted:
+            if item.provider == ProviderType.DEMO:
+                continue
+            device.is_deleted = False
+            device.deleted_reason = None
+            device.deleted_at = None
+            if device.hidden_reason == "deleted by user":
+                device.is_hidden = False
+                device.hidden_reason = None
         if device is None:
             device = Device(provider=item.provider, external_id=item.external_id)
             db.add(device)

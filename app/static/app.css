@@ -493,6 +493,16 @@ label {
   background: linear-gradient(135deg, #334155 0%, #475569 100%);
 }
 
+.button-danger {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .text-link {
   color: var(--accent);
   font-size: 14px;

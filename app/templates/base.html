@@ -11,6 +11,7 @@
     <link rel="apple-touch-icon" sizes="192x192" href="/apple-touch-icon.png?v={{ app_settings.app_version }}">
     <link rel="manifest" href="/site.webmanifest?v={{ app_settings.app_version }}">
     <link rel="stylesheet" href="/static/app.css?v={{ app_settings.app_version }}">
+    {% if refresh_seconds %}<meta http-equiv="refresh" content="{{ refresh_seconds }}">{% endif %}
   </head>
   <body>
     <header class="topbar">
@@ -24,6 +25,7 @@
       <div class="topbar-meta">
         <div>{{ settings.bind_ip }}:{{ settings.public_port }}</div>
         <div class="muted tiny">{{ settings.timezone }} · v{{ app_settings.app_version }}</div>
+        {% if auto_refresh %}<div class="muted tiny">Автообновление: {{ refresh_seconds or settings.smartlife_sync_interval_seconds }} сек</div>{% endif %}
       </div>
     </header>
 

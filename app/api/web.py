@@ -41,7 +41,7 @@ NAV_ITEMS = [
 ]
 
 
-def _base_context(*, request: Request, active_nav: str, page_title: str, flash: str | None = None) -> dict:
+def _base_context(*, request: Request, active_nav: str, page_title: str, flash: str | None = None, refresh_seconds: int | None = None, auto_refresh: bool = False) -> dict:
     return {
         "request": request,
         "settings": settings,
@@ -50,12 +50,15 @@ def _base_context(*, request: Request, active_nav: str, page_title: str, flash: 
         "active_nav": active_nav,
         "page_title": page_title,
         "flash": flash or request.query_params.get("flash"),
+        "refresh_seconds": refresh_seconds,
+        "auto_refresh": auto_refresh,
     }
 
 
 @router.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, db: Session = Depends(get_db)):
-    context = _base_context(request=request, active_nav="overview", page_title="Главная")
+def dashboard(request: Request, auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
+    refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
+    context = _base_context(request=request, active_nav="overview", page_title="Главная", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -75,6 +78,7 @@ def devices_page(
     only_powered: bool = Query(default=False),
     include_hidden: bool = Query(default=False),
     show_temp: bool = Query(default=False),
+    auto_refresh: bool = Query(default=True),
     db: Session = Depends(get_db),
 ):
     devices = get_devices_for_ui(
@@ -85,8 +89,9 @@ def devices_page(
         only_powered=only_powered,
         hide_temp=not show_temp,
     )
-    hidden_total = db.execute(select(Device).where(Device.is_hidden.is_(True))).scalars().all()
-    context = _base_context(request=request, active_nav="devices", page_title="Устройства")
+    hidden_total = db.execute(select(Device).where(Device.is_hidden.is_(True), Device.is_deleted.is_(False))).scalars().all()
+    refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
+    context = _base_context(request=request, active_nav="devices", page_title="Устройства", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
     context.update(
         {
             "devices": devices,
@@ -96,6 +101,7 @@ def devices_page(
                 "only_powered": only_powered,
                 "include_hidden": include_hidden,
                 "show_temp": show_temp,
+                "auto_refresh": auto_refresh,
             },
             "hidden_total": len(hidden_total),
             "summary": get_dashboard_summary(db),
@@ -105,8 +111,9 @@ def devices_page(
 
 
 @router.get("/consumption", response_class=HTMLResponse)
-def consumption_page(request: Request, db: Session = Depends(get_db)):
-    context = _base_context(request=request, active_nav="consumption", page_title="Потребление")
+def consumption_page(request: Request, auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
+    refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
+    context = _base_context(request=request, active_nav="consumption", page_title="Потребление", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -117,11 +124,12 @@ def consumption_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/sync", response_class=HTMLResponse)
-def sync_page(request: Request, db: Session = Depends(get_db)):
+def sync_page(request: Request, auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     recent_sync_runs = db.execute(
         select(SyncRun).order_by(SyncRun.started_at.desc(), SyncRun.id.desc()).limit(20)
     ).scalars().all()
-    context = _base_context(request=request, active_nav="sync", page_title="Синхронизация")
+    refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
+    context = _base_context(request=request, active_nav="sync", page_title="Синхронизация", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
     context.update(
         {
             "sync_overview": get_sync_overview(db),
@@ -157,16 +165,17 @@ def backups_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/devices/{device_id}", response_class=HTMLResponse)
-def device_detail(device_id: int, request: Request, tab: str = Query(default="overview"), db: Session = Depends(get_db)):
+def device_detail(device_id: int, request: Request, tab: str = Query(default="overview"), auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     device = db.get(Device, device_id)
-    if device is None:
+    if device is None or device.is_deleted:
         return templates.TemplateResponse(request, "not_found.html", _base_context(request=request, active_nav="devices", page_title="Не найдено"), status_code=404)
 
     if tab not in {"overview", "charts", "history", "control"}:
         tab = "overview"
 
     view_model = get_device_dashboard(db, device)
-    context = _base_context(request=request, active_nav="devices", page_title=device.name)
+    refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
+    context = _base_context(request=request, active_nav="devices", page_title=device.name, refresh_seconds=refresh_seconds, auto_refresh=auto_refresh)
     context.update(
         {
             "device": device,
@@ -176,6 +185,7 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
             "device_view": view_model,
             "active_tab": tab,
             "command_logs": get_recent_command_logs(db, device.id, limit=12),
+            "auto_refresh": auto_refresh,
         }
     )
     return templates.TemplateResponse(request, "device_detail.html", context)
@@ -203,7 +213,7 @@ def sync_provider_action():
 def hide_device_action(device_id: int, db: Session = Depends(get_db)):
     device = db.get(Device, device_id)
     flash = "Устройство не найдено."
-    if device is not None:
+    if device is not None and not device.is_deleted:
         device.is_hidden = True
         device.hidden_reason = "hidden by user"
         db.commit()
@@ -215,12 +225,13 @@ def hide_device_action(device_id: int, db: Session = Depends(get_db)):
 def unhide_device_action(device_id: int, db: Session = Depends(get_db)):
     device = db.get(Device, device_id)
     flash = "Устройство не найдено."
-    if device is not None:
+    if device is not None and not device.is_deleted:
         device.is_hidden = False
         device.hidden_reason = "shown by user"
         db.commit()
         flash = f"Устройство «{device.name}» снова показывается в интерфейсе."
     return RedirectResponse(url=f"/devices?include_hidden=1&flash={quote_plus(flash)}", status_code=303)
+
 
 
 @router.post("/devices/{device_id}/toggle")

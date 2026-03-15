@@ -29,15 +29,15 @@ def get_dashboard_summary(db: Session) -> dict:
     month_start = today.replace(day=1)
 
 
-    devices_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False))) or 0
-    online_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.is_online.is_(True))) or 0
-    powered_on_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.switch_on.is_(True))) or 0
+    devices_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.is_deleted.is_(False))) or 0
+    online_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.is_deleted.is_(False), Device.is_online.is_(True))) or 0
+    powered_on_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.is_deleted.is_(False), Device.switch_on.is_(True))) or 0
 
     day_total = db.scalar(
         select(func.coalesce(func.sum(EnergySample.energy_kwh), ZERO))
         .join(Device, Device.id == EnergySample.device_id)
         .where(
-            Device.is_hidden.is_(False),
+            Device.is_hidden.is_(False), Device.is_deleted.is_(False),
             EnergySample.bucket_type == BucketType.DAY,
             EnergySample.period_start == today,
         )
@@ -47,7 +47,7 @@ def get_dashboard_summary(db: Session) -> dict:
         select(func.coalesce(func.sum(EnergySample.energy_kwh), ZERO))
         .join(Device, Device.id == EnergySample.device_id)
         .where(
-            Device.is_hidden.is_(False),
+            Device.is_hidden.is_(False), Device.is_deleted.is_(False),
             EnergySample.bucket_type == BucketType.MONTH,
             EnergySample.period_start == month_start,
         )
@@ -55,13 +55,13 @@ def get_dashboard_summary(db: Session) -> dict:
 
     live_power_total = db.scalar(
         select(func.coalesce(func.sum(Device.current_power_w), Decimal("0.00"))).where(
-            Device.is_hidden.is_(False), Device.current_power_w.is_not(None)
+            Device.is_hidden.is_(False), Device.is_deleted.is_(False), Device.current_power_w.is_not(None)
         )
     ) or Decimal("0.00")
 
     power_now_total = db.scalar(
         select(func.count()).select_from(Device).where(
-            Device.is_hidden.is_(False), Device.current_power_w.is_not(None), Device.current_power_w > 0
+            Device.is_hidden.is_(False), Device.is_deleted.is_(False), Device.current_power_w.is_not(None), Device.current_power_w > 0
         )
     ) or 0
 
@@ -103,7 +103,7 @@ def get_dashboard_panels(db: Session) -> dict:
         select(EnergySample.period_start, func.coalesce(func.sum(EnergySample.energy_kwh), ZERO))
         .join(Device, Device.id == EnergySample.device_id)
         .where(
-            Device.is_hidden.is_(False),
+            Device.is_hidden.is_(False), Device.is_deleted.is_(False),
             EnergySample.bucket_type == BucketType.DAY,
             EnergySample.period_start >= trend_start,
             EnergySample.period_start <= today,
@@ -127,7 +127,7 @@ def get_dashboard_panels(db: Session) -> dict:
 
     live_now = db.execute(
         select(Device)
-        .where(Device.is_hidden.is_(False), Device.current_power_w.is_not(None), Device.current_power_w > 0)
+        .where(Device.is_hidden.is_(False), Device.is_deleted.is_(False), Device.current_power_w.is_not(None), Device.current_power_w > 0)
         .order_by(Device.current_power_w.desc(), Device.name.asc())
         .limit(8)
     ).scalars().all()
@@ -136,7 +136,7 @@ def get_dashboard_panels(db: Session) -> dict:
         select(Device, EnergySample.energy_kwh)
         .join(EnergySample, EnergySample.device_id == Device.id)
         .where(
-            Device.is_hidden.is_(False),
+            Device.is_hidden.is_(False), Device.is_deleted.is_(False),
             EnergySample.bucket_type == BucketType.DAY,
             EnergySample.period_start == today,
             EnergySample.energy_kwh > 0,
@@ -149,7 +149,7 @@ def get_dashboard_panels(db: Session) -> dict:
         select(Device, EnergySample.energy_kwh)
         .join(EnergySample, EnergySample.device_id == Device.id)
         .where(
-            Device.is_hidden.is_(False),
+            Device.is_hidden.is_(False), Device.is_deleted.is_(False),
             EnergySample.bucket_type == BucketType.MONTH,
             EnergySample.period_start == month_start,
             EnergySample.energy_kwh > 0,

@@ -8,7 +8,7 @@ SmartLife — веб-приложение для управления устро
 - PostgreSQL
 - Docker Compose
 
-## Что есть в v0.4.0
+## Что есть в v0.4.2
 
 - LAN-first запуск с выбором IP и порта;
 - изолированное Docker-окружение;
@@ -26,6 +26,9 @@ SmartLife — веб-приложение для управления устро
 - автобэкап PostgreSQL перед `restart` и `up --build`;
 - команды `backup-db`, `backup-list`, `restore-db`;
 - скрытие temp-устройств по умолчанию и ручное скрытие/возврат устройств из UI;
+- мягкое удаление устройств из SmartLife без их автоматического возвращения при следующей синхронизации;
+- автообновление главных страниц и карточек устройств по интервалу фоновой синхронизации;
+- автоматическая очистка demo-устройств при работе не в demo-режиме и команда cleanup-demo;
 - удаление из БД устройств текущего провайдера, которые больше не приходят с очередной синхронизации.
 
 ## Быстрый старт
@@ -84,6 +87,7 @@ cd /opt/SmartLife
 ./scripts/manage.sh backup-db
 ./scripts/manage.sh backup-list
 ./scripts/manage.sh restore-db backups/db/<file>.dump
+./scripts/manage.sh cleanup-demo
 ```
 
 Важно:
@@ -128,6 +132,7 @@ cd /opt/SmartLife
 ./scripts/manage.sh backup-db
 ./scripts/manage.sh backup-list
 ./scripts/manage.sh restore-db backups/db/<file>.dump
+./scripts/manage.sh cleanup-demo
 ./scripts/manage.sh down
 ./scripts/manage.sh logs
 ./scripts/manage.sh shell
@@ -139,7 +144,6 @@ cd /opt/SmartLife
 
 - полноценная Xiaomi / Mi Home интеграция;
 - расширенное управление устройствами beyond `switch_1`;
-- автообновление страницы в браузере без ручного F5;
 - multi-user и роли.
 
 ## Трансфер в новый чат

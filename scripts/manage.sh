@@ -613,6 +613,9 @@ case "${1:-}" in
   rebuild-energy)
     compose exec app python -m app.commands.rebuild_energy
     ;;
+  cleanup-demo)
+    compose exec app python -m app.commands.cleanup_demo
+    ;;
   backup-db)
     shift || true
     backup_db "${1:-manual}"
@@ -637,7 +640,7 @@ case "${1:-}" in
     echo "$(show_url)"
     ;;
   *)
-    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--build]|down|build|logs|restart|ps|sync|rebuild-energy|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|health|url}"
+    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--build]|down|build|logs|restart|ps|sync|rebuild-energy|cleanup-demo|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|health|url}"
     exit 1
     ;;
 esac

@@ -28,6 +28,10 @@ def _apply_postgres_migrations() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_status_payload TEXT",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS hidden_reason VARCHAR(255)",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS deleted_reason VARCHAR(255)",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP",
+        "CREATE INDEX IF NOT EXISTS ix_devices_is_deleted ON devices(is_deleted)",
         "ALTER TABLE energy_samples ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
         "CREATE TABLE IF NOT EXISTS sync_runs ("
         "id SERIAL PRIMARY KEY, "
