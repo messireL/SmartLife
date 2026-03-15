@@ -10,9 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.timeutils import format_local_date, format_local_datetime
-from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, SyncRun, SyncRunTrigger
+from app.db.models import Device, SyncRun, SyncRunTrigger
 from app.db.session import get_db
-from app.services.dashboard_service import get_dashboard_summary, get_sync_overview
+from app.services.dashboard_service import (
+    get_dashboard_panels,
+    get_dashboard_summary,
+    get_device_dashboard,
+    get_sync_overview,
+)
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
 
 router = APIRouter()
@@ -27,6 +32,7 @@ templates.env.filters["localdate"] = lambda value: format_local_date(value)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     summary = get_dashboard_summary(db)
     sync_overview = get_sync_overview(db)
+    dashboard_panels = get_dashboard_panels(db)
     recent_sync_runs = db.execute(
         select(SyncRun).order_by(SyncRun.started_at.desc(), SyncRun.id.desc()).limit(8)
     ).scalars().all()
@@ -37,6 +43,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         {
             "summary": summary,
             "sync_overview": sync_overview,
+            "dashboard_panels": dashboard_panels,
             "recent_sync_runs": recent_sync_runs,
             "devices": devices,
             "request": request,
@@ -52,36 +59,17 @@ def device_detail(device_id: int, request: Request, db: Session = Depends(get_db
     if device is None:
         return templates.TemplateResponse(request, "not_found.html", {"request": request}, status_code=404)
 
-    daily = db.execute(
-        select(EnergySample)
-        .where(EnergySample.device_id == device.id, EnergySample.bucket_type == BucketType.DAY)
-        .order_by(EnergySample.period_start.desc())
-        .limit(30)
-    ).scalars().all()
-
-    monthly = db.execute(
-        select(EnergySample)
-        .where(EnergySample.device_id == device.id, EnergySample.bucket_type == BucketType.MONTH)
-        .order_by(EnergySample.period_start.desc())
-        .limit(12)
-    ).scalars().all()
-
-    snapshots = db.execute(
-        select(DeviceStatusSnapshot)
-        .where(DeviceStatusSnapshot.device_id == device.id)
-        .order_by(DeviceStatusSnapshot.recorded_at.desc(), DeviceStatusSnapshot.id.desc())
-        .limit(20)
-    ).scalars().all()
-
+    view_model = get_device_dashboard(db, device)
     return templates.TemplateResponse(
         request,
         "device_detail.html",
         {
             "request": request,
             "device": device,
-            "daily": daily,
-            "monthly": monthly,
-            "snapshots": snapshots,
+            "daily": view_model["daily"],
+            "monthly": view_model["monthly"],
+            "snapshots": view_model["snapshots"],
+            "device_view": view_model,
             "settings": settings,
         },
     )

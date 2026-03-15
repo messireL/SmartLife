@@ -3,8 +3,8 @@
   <section class="card">
     <div class="section-header">
       <div>
+        <div class="tiny muted">{{ device.provider.value }} · {{ device.product_name or device.model or 'unknown product' }}</div>
         <h1>{{ device.name }}</h1>
-        <div class="muted">{{ device.provider.value }} · {{ device.product_name or device.model or 'unknown model' }}</div>
       </div>
       <div class="status-pair">
         {% if device.is_online %}
@@ -18,6 +18,39 @@
           <span class="badge off">relay off</span>
         {% endif %}
       </div>
+    </div>
+
+    <div class="summary-grid detail-summary-grid">
+      <article class="card stat-card nested-card">
+        <div class="muted">Сегодня</div>
+        <div class="stat-value compact">{{ device_view.stats.today_kwh }}</div>
+        <div class="tiny muted">kWh</div>
+      </article>
+      <article class="card stat-card nested-card">
+        <div class="muted">Месяц</div>
+        <div class="stat-value compact">{{ device_view.stats.month_kwh }}</div>
+        <div class="tiny muted">kWh</div>
+      </article>
+      <article class="card stat-card nested-card">
+        <div class="muted">Сейчас</div>
+        <div class="stat-value compact">{{ device_view.stats.latest_power_w }}</div>
+        <div class="tiny muted">W</div>
+      </article>
+      <article class="card stat-card nested-card">
+        <div class="muted">Пик по графику</div>
+        <div class="stat-value compact">{{ device_view.stats.peak_power_w }}</div>
+        <div class="tiny muted">W</div>
+      </article>
+      <article class="card stat-card nested-card">
+        <div class="muted">Напряжение</div>
+        <div class="stat-value compact">{{ device_view.stats.latest_voltage_v }}</div>
+        <div class="tiny muted">V</div>
+      </article>
+      <article class="card stat-card nested-card">
+        <div class="muted">Снапшотов</div>
+        <div class="stat-value compact">{{ device_view.stats.snapshots_total }}</div>
+        <div class="tiny muted">в окне графика</div>
+      </article>
     </div>
 
     <div class="detail-grid metrics-grid">
@@ -35,6 +68,86 @@
       <div><span class="muted">Fault:</span> {{ device.fault_code or '0' }}</div>
       <div class="span-2"><span class="muted">Описание:</span> {{ device.notes or '—' }}</div>
     </div>
+  </section>
+
+  <section class="chart-grid chart-grid-main">
+    <article class="card chart-card chart-span-2">
+      <div class="section-header">
+        <div>
+          <h2>График мощности</h2>
+          <div class="muted">Последние {{ device_view.stats.snapshots_total }} снапшотов</div>
+        </div>
+        <div class="chart-meta">текущая точка {{ device_view.power_chart.latest_value_display }}</div>
+      </div>
+      {% if device_view.power_chart.items %}
+        <div class="line-chart-wrap">
+          <svg class="line-chart" viewBox="0 0 760 220" role="img" aria-label="График мощности">
+            <polyline class="line-chart-area" points="{{ device_view.power_chart.svg_area_points }}"></polyline>
+            <polyline class="line-chart-path" points="{{ device_view.power_chart.svg_points }}"></polyline>
+            {% for point in device_view.power_chart.items %}
+              <circle class="line-chart-dot" cx="{{ point.x }}" cy="{{ point.y }}" r="2.8">
+                <title>{{ point.title }}</title>
+              </circle>
+            {% endfor %}
+          </svg>
+          <div class="line-chart-scale">
+            <span>{{ device_view.power_chart.max_value_display }}</span>
+            <span>{{ device_view.power_chart.min_value_display }}</span>
+          </div>
+          <div class="line-chart-labels">
+            {% for label in device_view.power_chart.labels %}
+              <span>{{ label.label }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <div class="empty-state">Для графика мощности пока не хватает снапшотов.</div>
+      {% endif %}
+    </article>
+
+    <article class="card chart-card">
+      <div class="section-header">
+        <div>
+          <h2>Дневной расход</h2>
+          <div class="muted">Последние 14 дней</div>
+        </div>
+      </div>
+      {% if device_view.daily_chart.has_data %}
+        <div class="bar-chart compact-bars">
+          {% for item in device_view.daily_chart.items %}
+            <div class="bar-item" title="{{ item.title }}">
+              <div class="bar-value small">{{ item.value_display }}</div>
+              <div class="bar-track"><div class="bar-fill warning" style="height: {{ item.pct }}%"></div></div>
+              <div class="bar-label">{{ item.label }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">Дневная статистика пока не накопилась.</div>
+      {% endif %}
+    </article>
+
+    <article class="card chart-card">
+      <div class="section-header">
+        <div>
+          <h2>Месячный расход</h2>
+          <div class="muted">Последние 12 месяцев</div>
+        </div>
+      </div>
+      {% if device_view.monthly_chart.has_data %}
+        <div class="bar-chart compact-bars">
+          {% for item in device_view.monthly_chart.items %}
+            <div class="bar-item" title="{{ item.title }}">
+              <div class="bar-value small">{{ item.value_display }}</div>
+              <div class="bar-track"><div class="bar-fill accent" style="height: {{ item.pct }}%"></div></div>
+              <div class="bar-label">{{ item.label }}</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">Месячная статистика пока не накопилась.</div>
+      {% endif %}
+    </article>
   </section>
 
   <section class="card">
@@ -80,71 +193,73 @@
     </div>
   </section>
 
-  <section class="card">
-    <div class="section-header">
-      <h2>Дневное энергопотребление</h2>
-      <div class="muted">Последние 30 дней</div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Дата</th>
-            <th>kWh</th>
-            <th>W</th>
-            <th>V</th>
-            <th>A</th>
-            <th>Источник</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in daily %}
+  <section class="chart-grid">
+    <section class="card">
+      <div class="section-header">
+        <h2>Дневное энергопотребление</h2>
+        <div class="muted">Последние 30 дней</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td>{{ item.period_start|localdate }}</td>
-              <td>{{ item.energy_kwh }}</td>
-              <td>{{ item.power_w or '—' }}</td>
-              <td>{{ item.voltage_v or '—' }}</td>
-              <td>{{ item.current_a or '—' }}</td>
-              <td>{{ item.source_note or '—' }}</td>
+              <th>Дата</th>
+              <th>kWh</th>
+              <th>W</th>
+              <th>V</th>
+              <th>A</th>
+              <th>Источник</th>
             </tr>
-          {% else %}
-            <tr>
-              <td colspan="6" class="muted">Дневная статистика пока не накопилась.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
+          </thead>
+          <tbody>
+            {% for item in daily %}
+              <tr>
+                <td>{{ item.period_start|localdate }}</td>
+                <td>{{ item.energy_kwh }}</td>
+                <td>{{ item.power_w or '—' }}</td>
+                <td>{{ item.voltage_v or '—' }}</td>
+                <td>{{ item.current_a or '—' }}</td>
+                <td>{{ item.source_note or '—' }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="6" class="muted">Дневная статистика пока не накопилась.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
 
-  <section class="card">
-    <div class="section-header">
-      <h2>Месячное энергопотребление</h2>
-      <div class="muted">Последние 12 месяцев</div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Месяц</th>
-            <th>kWh</th>
-            <th>Источник</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in monthly %}
+    <section class="card">
+      <div class="section-header">
+        <h2>Месячное энергопотребление</h2>
+        <div class="muted">Последние 12 месяцев</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td>{{ item.period_start|localdate }}</td>
-              <td>{{ item.energy_kwh }}</td>
-              <td>{{ item.source_note or '—' }}</td>
+              <th>Месяц</th>
+              <th>kWh</th>
+              <th>Источник</th>
             </tr>
-          {% else %}
-            <tr>
-              <td colspan="3" class="muted">Месячная статистика пока не накопилась.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {% for item in monthly %}
+              <tr>
+                <td>{{ item.period_start|localdate }}</td>
+                <td>{{ item.energy_kwh }}</td>
+                <td>{{ item.source_note or '—' }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="3" class="muted">Месячная статистика пока не накопилась.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
   </section>
 {% endblock %}
