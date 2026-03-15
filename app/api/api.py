@@ -18,18 +18,20 @@ def list_devices(include_hidden: bool = Query(default=False), db: Session = Depe
     stmt = select(Device).where(Device.is_deleted.is_(False))
     if not include_hidden:
         stmt = stmt.where(Device.is_hidden.is_(False))
-    devices = db.execute(stmt.order_by(Device.room_name, Device.name)).scalars().all()
+    devices = db.execute(stmt.order_by(Device.custom_room_name, Device.room_name, Device.custom_name, Device.name)).scalars().all()
     return [
         {
             "id": device.id,
             "external_id": device.external_id,
             "provider": device.provider.value,
             "name": device.name,
+            "display_name": device.display_name,
             "model": device.model,
             "product_id": device.product_id,
             "product_name": device.product_name,
             "category": device.category,
             "room_name": device.room_name,
+            "display_room_name": device.display_room_name,
             "location_name": device.location_name,
             "icon_url": device.icon_url,
             "is_online": device.is_online,
@@ -70,6 +72,7 @@ def device_energy(device_id: int, period: str = "day", db: Session = Depends(get
         "device": {
             "id": device.id,
             "name": device.name,
+            "display_name": device.display_name,
             "provider": device.provider.value,
             "current_power_w": float(device.current_power_w) if device.current_power_w is not None else None,
             "energy_total_kwh": float(device.energy_total_kwh) if device.energy_total_kwh is not None else None,
@@ -104,7 +107,8 @@ def device_snapshots(device_id: int, limit: int = 100, db: Session = Depends(get
     ).scalars().all()
 
     return {
-        "device": {"id": device.id, "name": device.name, "provider": device.provider.value},
+        "device": {"id": device.id, "name": device.name,
+            "display_name": device.display_name, "provider": device.provider.value},
         "items": [
             {
                 "recorded_at": item.recorded_at.isoformat(),

@@ -15,9 +15,11 @@ def init_db() -> None:
 
 def _apply_postgres_migrations() -> None:
     statements = [
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS custom_name VARCHAR(255)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS product_id VARCHAR(128)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS product_name VARCHAR(255)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS icon_url VARCHAR(512)",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS custom_room_name VARCHAR(128)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS switch_on BOOLEAN",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS current_power_w NUMERIC(12,2)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS current_voltage_v NUMERIC(12,2)",

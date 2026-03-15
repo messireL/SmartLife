@@ -3,7 +3,7 @@
 <section class="card page-hero">
   <div class="section-header">
     <div>
-      <h1>{{ device.name }}</h1>
+      <h1>{{ device.display_name }}</h1>
       <div class="muted">{{ device.model or device.product_name or 'Устройство без модели' }} · {{ device.provider.value }}</div>
     </div>
     <div class="status-pair">
@@ -31,27 +31,48 @@
   <section class="grid-2">
     <article class="card"><div class="section-header"><h2>Паспорт</h2></div>
       <div class="status-stack">
-        <div class="status-row"><span class="muted">Внешний ID</span><span>{{ device.external_id }}</span></div>
-        <div class="status-row"><span class="muted">Комната</span><span>{{ device.room_name or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Локальное имя</span><span>{{ device.custom_name or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Имя провайдера</span><span>{{ device.name }}</span></div>
+        <div class="status-row"><span class="muted">Локальная комната</span><span>{{ device.custom_room_name or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Комната провайдера</span><span>{{ device.room_name or '—' }}</span></div>
         <div class="status-row"><span class="muted">Категория</span><span>{{ device.category or '—' }}</span></div>
         <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
         <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
       </div>
     </article>
-    <article class="card"><div class="section-header"><h2>Последние снапшоты</h2><a class="text-link" href="/devices/{{ device.id }}?tab=history&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Полная история</a></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Время</th><th>W</th><th>V</th><th>A</th><th>kWh</th></tr></thead>
-          <tbody>
-            {% for item in snapshots[:8] %}
-              <tr><td>{{ item.recorded_at|localdt }}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td></tr>
-            {% else %}
-              <tr><td colspan="5" class="muted">Снапшотов пока нет.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+    <article class="card"><div class="section-header"><h2>Локальные настройки</h2></div>
+      <form class="form-stack" method="post" action="/devices/{{ device.id }}/save-meta">
+        <input type="hidden" name="source_tab" value="overview">
+        <label>Локальное имя
+          <input class="input" type="text" name="custom_name" value="{{ device.custom_name or '' }}" placeholder="Например: Розетка чайника">
+        </label>
+        <label>Локальная комната
+          <input class="input" list="room-choices" type="text" name="custom_room_name" value="{{ device.custom_room_name or '' }}" placeholder="Например: Кухня">
+        </label>
+        <label>Заметки
+          <textarea class="input" name="notes" rows="4" placeholder="Любые свои пометки">{{ device.notes or '' }}</textarea>
+        </label>
+        <button type="submit">Сохранить</button>
+      </form>
+      <datalist id="room-choices">
+        {% for item in room_choices %}<option value="{{ item }}">{% endfor %}
+      </datalist>
     </article>
+  </section>
+
+  <section class="card"><div class="section-header"><h2>Последние снапшоты</h2><a class="text-link" href="/devices/{{ device.id }}?tab=history&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Полная история</a></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Время</th><th>W</th><th>V</th><th>A</th><th>kWh</th></tr></thead>
+        <tbody>
+          {% for item in snapshots[:8] %}
+            <tr><td>{{ item.recorded_at|localdt }}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td></tr>
+          {% else %}
+            <tr><td colspan="5" class="muted">Снапшотов пока нет.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </section>
 {% elif active_tab == 'charts' %}
   <section class="chart-grid chart-grid-main">

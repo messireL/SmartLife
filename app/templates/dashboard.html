@@ -72,8 +72,8 @@
         <tbody>
           {% for device in devices %}
             <tr>
-              <td><a href="/devices/{{ device.id }}">{{ device.name }}</a></td>
-              <td>{{ device.room_name or '—' }}</td>
+              <td><a href="/devices/{{ device.id }}">{{ device.display_name }}</a></td>
+              <td>{{ device.display_room_name or '—' }}</td>
               <td>{{ device.current_power_w or '—' }}</td>
               <td>
                 {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card page-hero">
+  <div class="section-header">
+    <div>
+      <h1>Комнаты</h1>
+      <div class="muted">Комнатный взгляд на дом: сколько устройств живёт в каждой зоне, кто сейчас тянет нагрузку и где уже пора подозрительно посмотреть на розетки.</div>
+    </div>
+    <a class="text-link" href="/devices">К списку устройств</a>
+  </div>
+</section>
+
+<section class="summary-grid">
+  <article class="card stat-card"><div class="muted">Устройств</div><div class="stat-value">{{ summary.devices_total }}</div></article>
+  <article class="card stat-card"><div class="muted">Комнат</div><div class="stat-value">{{ rooms|length }}</div></article>
+  <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ summary.day_total_kwh }}</div></article>
+  <article class="card stat-card"><div class="muted">Текущая нагрузка, W</div><div class="stat-value">{{ summary.live_power_total_w }}</div></article>
+</section>
+
+<section class="rooms-grid">
+  {% for room in rooms %}
+    <article class="card room-card">
+      <div class="section-header">
+        <div>
+          <h2>{{ room.name }}</h2>
+          <div class="muted">{{ room.devices_total }} устройств · онлайн {{ room.online_total }} · включено {{ room.powered_total }}</div>
+        </div>
+        <a class="text-link" href="/devices?room_filter={{ room.name|urlq }}">Открыть</a>
+      </div>
+      <div class="status-stack">
+        <div class="status-row"><span class="muted">Сейчас, W</span><span>{{ room.live_power_w }}</span></div>
+        <div class="status-row"><span class="muted">Сегодня, kWh</span><span>{{ room.today_kwh }}</span></div>
+        <div class="status-row"><span class="muted">Месяц, kWh</span><span>{{ room.month_kwh }}</span></div>
+      </div>
+      <div class="room-top-list">
+        {% for device in room.top_devices %}
+          <div class="room-top-item">
+            <a href="/devices/{{ device.id }}">{{ device.display_name }}</a>
+            <span>{{ device.current_power_w or '—' }} W</span>
+          </div>
+        {% else %}
+          <div class="muted">Пока тихо, как в библиотеке.</div>
+        {% endfor %}
+      </div>
+    </article>
+  {% else %}
+    <article class="card empty-state">Комнаты пока не определены. Можно задать локальную комнату прямо на странице устройства или массово через список устройств.</article>
+  {% endfor %}
+</section>
+{% endblock %}

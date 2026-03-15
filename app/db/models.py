@@ -60,11 +60,13 @@ class Device(Base):
     external_id: Mapped[str] = mapped_column(String(128), index=True)
     provider: Mapped[ProviderType] = mapped_column(Enum(ProviderType, name="provider_type"), index=True)
     name: Mapped[str] = mapped_column(String(255))
+    custom_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     product_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     product_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     category: Mapped[str | None] = mapped_column(String(128), nullable=True)
     room_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    custom_room_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     location_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     icon_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -97,6 +99,16 @@ class Device(Base):
     )
 
     __table_args__ = (UniqueConstraint("provider", "external_id", name="uq_devices_provider_external_id"),)
+
+    @property
+    def display_name(self) -> str:
+        value = (self.custom_name or "").strip()
+        return value or self.name
+
+    @property
+    def display_room_name(self) -> str | None:
+        value = (self.custom_room_name or "").strip()
+        return value or self.room_name
 
 
 class EnergySample(Base):

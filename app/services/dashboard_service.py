@@ -161,10 +161,10 @@ def get_dashboard_panels(db: Session) -> dict:
     current_power_chart = build_bar_chart(
         [
             {
-                "label": (device.name[:14] + "…") if len(device.name) > 15 else device.name,
+                "label": (device.display_name[:14] + "…") if len(device.display_name) > 15 else device.display_name,
                 "value": device.current_power_w,
                 "value_display": f"{_quantize(device.current_power_w)} W",
-                "title": f"{device.name} — {_quantize(device.current_power_w)} W",
+                "title": f"{device.display_name} — {_quantize(device.current_power_w)} W",
             }
             for device in live_now
         ],
@@ -174,10 +174,10 @@ def get_dashboard_panels(db: Session) -> dict:
     top_today_chart = build_bar_chart(
         [
             {
-                "label": (device.name[:14] + "…") if len(device.name) > 15 else device.name,
+                "label": (device.display_name[:14] + "…") if len(device.display_name) > 15 else device.display_name,
                 "value": energy,
                 "value_display": f"{energy:.3f} kWh",
-                "title": f"{device.name} — {energy:.3f} kWh",
+                "title": f"{device.display_name} — {energy:.3f} kWh",
             }
             for device, energy in top_today_rows
         ],
