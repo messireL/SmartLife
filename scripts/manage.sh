@@ -210,6 +210,8 @@ configure_runtime() {
   upsert_env SMARTLIFE_NETWORK_MODE "${SMARTLIFE_NETWORK_MODE:-$DEFAULT_NETWORK_MODE}"
   upsert_env SMARTLIFE_LAN_ONLY "${SMARTLIFE_LAN_ONLY:-yes}"
   upsert_env SMARTLIFE_LAN_SUBNET_PREFIX "${SMARTLIFE_LAN_SUBNET_PREFIX:-$DEFAULT_LAN_SUBNET_PREFIX}"
+  upsert_env SMARTLIFE_APP_HOST "0.0.0.0"
+  upsert_env SMARTLIFE_APP_PORT "${SMARTLIFE_APP_PORT:-18089}"
   upsert_env SMARTLIFE_SYNC_INTERVAL_SECONDS "${SMARTLIFE_SYNC_INTERVAL_SECONDS:-60}"
   upsert_env SMARTLIFE_BACKGROUND_SYNC_ENABLED "${SMARTLIFE_BACKGROUND_SYNC_ENABLED:-yes}"
   upsert_env SMARTLIFE_SYNC_ON_STARTUP "${SMARTLIFE_SYNC_ON_STARTUP:-yes}"
@@ -396,8 +398,51 @@ show_banner() {
   echo
   echo "SmartLife готов в локальной сети: $(show_url)"
   echo "Режим: ${SMARTLIFE_NETWORK_MODE:-$DEFAULT_NETWORK_MODE}; bind IP: ${SMARTLIFE_BIND_IP:-127.0.0.1}; port: ${SMARTLIFE_PUBLIC_PORT:-$DEFAULT_PORT}; provider: ${SMARTLIFE_PROVIDER:-demo}"
+  echo "Внутренний bind приложения: ${SMARTLIFE_APP_HOST:-0.0.0.0}:${SMARTLIFE_APP_PORT:-18089}"
   echo "Фоновая синхронизация: ${SMARTLIFE_BACKGROUND_SYNC_ENABLED:-yes}; стартовый прогон: ${SMARTLIFE_SYNC_ON_STARTUP:-yes}; интервал: ${SMARTLIFE_SYNC_INTERVAL_SECONDS:-60}s"
   echo
+}
+
+wait_for_http() {
+  local url="$1"
+  local attempts="${2:-30}"
+  local sleep_seconds="${3:-2}"
+  local i
+  for ((i=1; i<=attempts; i++)); do
+    if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$sleep_seconds"
+  done
+  return 1
+}
+
+show_app_logs() {
+  echo >&2
+  echo "Последние логи app:" >&2
+  compose logs --tail=200 app >&2 || true
+  echo >&2
+}
+
+verify_app_ready() {
+  local internal_url="http://127.0.0.1:${SMARTLIFE_APP_PORT:-18089}/health"
+  local external_url
+  external_url="$(health_url)"
+
+  if ! compose exec -T app sh -lc "curl -fsS --max-time 5 '$internal_url' >/dev/null"; then
+    echo "SmartLife внутри контейнера ещё не отвечает на ${internal_url}" >&2
+    show_app_logs
+    return 1
+  fi
+
+  if ! wait_for_http "$external_url" 20 2; then
+    echo "SmartLife внутри контейнера запущен, но опубликованный URL пока недоступен: $external_url" >&2
+    echo "Проверь, что выбранный bind IP реально назначен серверу и не блокируется firewall." >&2
+    show_app_logs
+    return 1
+  fi
+
+  return 0
 }
 
 case "${1:-}" in
@@ -422,6 +467,7 @@ case "${1:-}" in
     configure_runtime
     compose up -d "$@"
     show_banner
+    verify_app_ready
     ;;
   down)
     compose down
@@ -452,7 +498,10 @@ case "${1:-}" in
     compose exec app bash
     ;;
   health)
-    curl -fsS "$(health_url)" || true
+    if ! verify_app_ready; then
+      exit 1
+    fi
+    curl -fsS "$(health_url)"
     ;;
   url)
     echo "$(show_url)"

@@ -29,6 +29,12 @@ services:
       - ./secrets:/app/secrets:ro
     ports:
       - "${SMARTLIFE_BIND_IP:-0.0.0.0}:${SMARTLIFE_PUBLIC_PORT:-13443}:${SMARTLIFE_APP_PORT:-18089}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${SMARTLIFE_APP_PORT:-18089}/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     depends_on:
       db:
         condition: service_healthy
