@@ -211,6 +211,8 @@ configure_runtime() {
   upsert_env SMARTLIFE_LAN_ONLY "${SMARTLIFE_LAN_ONLY:-yes}"
   upsert_env SMARTLIFE_LAN_SUBNET_PREFIX "${SMARTLIFE_LAN_SUBNET_PREFIX:-$DEFAULT_LAN_SUBNET_PREFIX}"
   upsert_env SMARTLIFE_SYNC_INTERVAL_SECONDS "${SMARTLIFE_SYNC_INTERVAL_SECONDS:-60}"
+  upsert_env SMARTLIFE_BACKGROUND_SYNC_ENABLED "${SMARTLIFE_BACKGROUND_SYNC_ENABLED:-yes}"
+  upsert_env SMARTLIFE_SYNC_ON_STARTUP "${SMARTLIFE_SYNC_ON_STARTUP:-yes}"
 
   load_env
 
@@ -320,6 +322,52 @@ configure_tuya() {
   echo "Дальше можно запустить ./scripts/manage.sh up --build и ./scripts/manage.sh sync" >&2
 }
 
+configure_sync() {
+  copy_env_template
+  load_env
+  ensure_secrets
+  configure_runtime
+
+  local current_enabled="${SMARTLIFE_BACKGROUND_SYNC_ENABLED:-yes}"
+  local enabled=""
+  read -r -p "Включить фоновую синхронизацию [${current_enabled}]: " enabled
+  enabled="${enabled:-$current_enabled}"
+  case "$enabled" in
+    yes|no|true|false|1|0) ;;
+    *)
+      echo "Используй yes/no." >&2
+      exit 1
+      ;;
+  esac
+
+  local current_startup="${SMARTLIFE_SYNC_ON_STARTUP:-yes}"
+  local startup=""
+  read -r -p "Запускать синхронизацию сразу при старте приложения [${current_startup}]: " startup
+  startup="${startup:-$current_startup}"
+  case "$startup" in
+    yes|no|true|false|1|0) ;;
+    *)
+      echo "Используй yes/no." >&2
+      exit 1
+      ;;
+  esac
+
+  local current_interval="${SMARTLIFE_SYNC_INTERVAL_SECONDS:-60}"
+  local interval=""
+  read -r -p "Интервал фоновой синхронизации в секундах [${current_interval}]: " interval
+  interval="${interval:-$current_interval}"
+  if ! [[ "$interval" =~ ^[0-9]+$ ]] || (( interval < 15 )); then
+    echo "Интервал должен быть целым числом не меньше 15 секунд." >&2
+    exit 1
+  fi
+
+  upsert_env SMARTLIFE_BACKGROUND_SYNC_ENABLED "$enabled"
+  upsert_env SMARTLIFE_SYNC_ON_STARTUP "$startup"
+  upsert_env SMARTLIFE_SYNC_INTERVAL_SECONDS "$interval"
+
+  echo "Настройки синхронизации обновлены: background=${enabled}, startup=${startup}, interval=${interval}s" >&2
+}
+
 configure_demo() {
   copy_env_template
   load_env
@@ -348,6 +396,7 @@ show_banner() {
   echo
   echo "SmartLife готов в локальной сети: $(show_url)"
   echo "Режим: ${SMARTLIFE_NETWORK_MODE:-$DEFAULT_NETWORK_MODE}; bind IP: ${SMARTLIFE_BIND_IP:-127.0.0.1}; port: ${SMARTLIFE_PUBLIC_PORT:-$DEFAULT_PORT}; provider: ${SMARTLIFE_PROVIDER:-demo}"
+  echo "Фоновая синхронизация: ${SMARTLIFE_BACKGROUND_SYNC_ENABLED:-yes}; стартовый прогон: ${SMARTLIFE_SYNC_ON_STARTUP:-yes}; интервал: ${SMARTLIFE_SYNC_INTERVAL_SECONDS:-60}s"
   echo
 }
 
@@ -362,6 +411,10 @@ case "${1:-}" in
     ;;
   configure-demo)
     configure_demo
+    show_banner
+    ;;
+  configure-sync)
+    configure_sync
     show_banner
     ;;
   up)
@@ -405,7 +458,7 @@ case "${1:-}" in
     echo "$(show_url)"
     ;;
   *)
-    echo "Usage: $0 {configure|configure-tuya|configure-demo|up [--build]|down|build|logs|restart|ps|sync|seed-demo|shell|health|url}"
+    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|up [--build]|down|build|logs|restart|ps|sync|seed-demo|shell|health|url}"
     exit 1
     ;;
 esac

@@ -27,6 +27,22 @@ def _apply_postgres_migrations() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_status_at TIMESTAMP",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_status_payload TEXT",
         "ALTER TABLE energy_samples ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
+        "CREATE TABLE IF NOT EXISTS sync_runs ("
+        "id SERIAL PRIMARY KEY, "
+        "provider VARCHAR(64) NOT NULL, "
+        "trigger VARCHAR(32) NOT NULL, "
+        "status VARCHAR(32) NOT NULL, "
+        "started_at TIMESTAMP NOT NULL, "
+        "finished_at TIMESTAMP NULL, "
+        "duration_ms INTEGER NULL, "
+        "result_summary TEXT NULL, "
+        "error_message TEXT NULL, "
+        "created_at TIMESTAMP DEFAULT NOW()"
+        ")",
+        "CREATE INDEX IF NOT EXISTS ix_sync_runs_provider ON sync_runs(provider)",
+        "CREATE INDEX IF NOT EXISTS ix_sync_runs_trigger ON sync_runs(trigger)",
+        "CREATE INDEX IF NOT EXISTS ix_sync_runs_status ON sync_runs(status)",
+        "CREATE INDEX IF NOT EXISTS ix_sync_runs_started_at ON sync_runs(started_at)",
     ]
     with engine.begin() as connection:
         for statement in statements:

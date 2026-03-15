@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = Field(default="SmartLife", validation_alias="SMARTLIFE_APP_NAME")
-    app_version: str = Field(default="0.2.0", validation_alias="SMARTLIFE_APP_VERSION")
+    app_version: str = Field(default="0.2.1", validation_alias="SMARTLIFE_APP_VERSION")
     app_host: str = Field(default="0.0.0.0", validation_alias="SMARTLIFE_APP_HOST")
     app_port: int = Field(default=18089, validation_alias="SMARTLIFE_APP_PORT")
     app_base_url: str = Field(default="http://192.168.1.100:13443", validation_alias="SMARTLIFE_APP_BASE_URL")
@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     smartlife_provider: str = Field(default="demo", validation_alias="SMARTLIFE_PROVIDER")
     smartlife_tuya_base_url: str = Field(default="https://openapi.tuyaeu.com", validation_alias="SMARTLIFE_TUYA_BASE_URL")
     smartlife_sync_interval_seconds: int = Field(default=60, validation_alias="SMARTLIFE_SYNC_INTERVAL_SECONDS")
+    smartlife_background_sync_enabled: bool = Field(default=True, validation_alias="SMARTLIFE_BACKGROUND_SYNC_ENABLED")
+    smartlife_sync_on_startup: bool = Field(default=True, validation_alias="SMARTLIFE_SYNC_ON_STARTUP")
     smartlife_xiaomi_region: str = Field(default="cn", validation_alias="SMARTLIFE_XIAOMI_REGION")
     smartlife_xiaomi_device_ip: str = Field(default="", validation_alias="SMARTLIFE_XIAOMI_DEVICE_IP")
     timezone: str = Field(default="Europe/Helsinki", validation_alias="SMARTLIFE_TIMEZONE")

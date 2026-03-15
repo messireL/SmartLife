@@ -4,17 +4,24 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>SmartLife</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="shortcut icon" href="/static/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
     <link rel="stylesheet" href="/static/app.css">
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <a class="brand" href="/">SmartLife</a>
-        <div class="subtitle">Устройства Smart Life / Mi Home</div>
+      <div class="brand-wrap">
+        <img class="brand-logo" src="/static/icon.svg" alt="SmartLife logo">
+        <div>
+          <a class="brand" href="/">SmartLife</a>
+          <div class="subtitle">Устройства Smart Life / Mi Home</div>
+        </div>
       </div>
       <nav class="navlinks">
         <a href="/">Панель</a>
         <a href="/api/devices">API</a>
+        <a href="/api/sync/status">Sync</a>
         <a href="/health">Health</a>
       </nav>
     </header>

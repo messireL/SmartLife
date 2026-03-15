@@ -6,7 +6,9 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import BucketType, Device, EnergySample
+from app.core.config import get_settings
+from app.db.models import BucketType, Device, EnergySample, SyncRun, SyncRunStatus
+from app.services.sync_runner import is_sync_running
 
 
 ZERO = Decimal("0.000")
@@ -46,4 +48,21 @@ def get_dashboard_summary(db: Session) -> dict:
         "day_total_kwh": day_total,
         "month_total_kwh": month_total,
         "live_power_total_w": live_power_total,
+    }
+
+
+
+def get_sync_overview(db: Session) -> dict:
+    settings = get_settings()
+    last_run = db.execute(select(SyncRun).order_by(SyncRun.started_at.desc(), SyncRun.id.desc()).limit(1)).scalar_one_or_none()
+    success_total = db.scalar(select(func.count()).select_from(SyncRun).where(SyncRun.status == SyncRunStatus.SUCCESS)) or 0
+    error_total = db.scalar(select(func.count()).select_from(SyncRun).where(SyncRun.status == SyncRunStatus.ERROR)) or 0
+    return {
+        "background_sync_enabled": settings.smartlife_background_sync_enabled,
+        "sync_on_startup": settings.smartlife_sync_on_startup,
+        "sync_interval_seconds": settings.smartlife_sync_interval_seconds,
+        "is_running_now": is_sync_running(),
+        "last_run": last_run,
+        "success_total": success_total,
+        "error_total": error_total,
     }

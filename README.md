@@ -8,19 +8,22 @@ SmartLife — веб-приложение для управления устро
 - PostgreSQL
 - Docker Compose
 
-## Что уже есть в `v0.2.0`
+## Что уже есть в `v0.2.1`
 
 - LAN-first запуск с выбором IP и порта;
 - изолированное Docker-окружение;
 - секреты только в `./secrets`, а не в `.env`;
 - demo-провайдер для быстрого старта;
-- первая рабочая интеграция **Tuya Cloud**;
+- рабочая интеграция **Tuya Cloud**;
 - импорт списка устройств из cloud project;
 - опрос живых статусов (`switch_1`, `add_ele`, `cur_power`, `cur_voltage`, `cur_current`, `fault`);
 - накопление снапшотов статуса в PostgreSQL;
 - расчёт расхода **за день** и **за месяц** по счётчику `add_ele` без платного Power Management;
+- автоматическая фоновая синхронизация по расписанию;
+- журнал последних циклов синхронизации в UI и API;
+- иконка проекта и favicon;
 - веб-панель с живыми метриками и историей снапшотов;
-- JSON API по устройствам, энергостатистике и снапшотам.
+- JSON API по устройствам, энергостатистике, снапшотам и синхронизации.
 
 ## Быстрый старт
 
@@ -83,10 +86,16 @@ cd /opt/SmartLife
 После этого:
 
 ```bash
+./scripts/manage.sh configure-sync
 ./scripts/manage.sh up --build
-./scripts/manage.sh sync
 ./scripts/manage.sh health
 ./scripts/manage.sh url
+```
+
+Ручной запуск синхронизации по-прежнему доступен:
+
+```bash
+./scripts/manage.sh sync
 ```
 
 ## Как считается энергопотребление
@@ -116,6 +125,8 @@ SMARTLIFE_APP_BASE_URL=http://192.168.1.50:13443
 SMARTLIFE_PROVIDER=tuya_cloud
 SMARTLIFE_TUYA_BASE_URL=https://openapi.tuyaeu.com
 SMARTLIFE_SYNC_INTERVAL_SECONDS=60
+SMARTLIFE_BACKGROUND_SYNC_ENABLED=yes
+SMARTLIFE_SYNC_ON_STARTUP=yes
 ```
 
 Если нужно перенастроить адрес/порт:
@@ -124,12 +135,19 @@ SMARTLIFE_SYNC_INTERVAL_SECONDS=60
 ./scripts/manage.sh configure
 ```
 
+Если нужно перенастроить фоновые циклы:
+
+```bash
+./scripts/manage.sh configure-sync
+```
+
 ## Управление
 
 ```bash
 ./scripts/manage.sh configure
 ./scripts/manage.sh configure-tuya
 ./scripts/manage.sh configure-demo
+./scripts/manage.sh configure-sync
 ./scripts/manage.sh up --build
 ./scripts/manage.sh sync
 ./scripts/manage.sh seed-demo
@@ -142,7 +160,6 @@ SMARTLIFE_SYNC_INTERVAL_SECONDS=60
 
 ## Что ещё не реализовано
 
-- автоматическое фоновое расписание синхронизации;
 - управление устройствами (toggle / send commands);
 - полноценная Xiaomi / Mi Home интеграция;
 - графики и расширенные отчёты;

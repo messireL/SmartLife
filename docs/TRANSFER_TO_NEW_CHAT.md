@@ -17,7 +17,7 @@
 
 ## Что уже сделано в текущем состоянии
 
-Версия: `v0.2.0`
+Версия: `v0.2.1`
 
 Сделано:
 - стартовый MVP-каркас FastAPI + PostgreSQL + Docker Compose;
@@ -26,15 +26,17 @@
 - LAN-first мастер первого запуска с приоритетом адресов `192.168.x.x` и портом по умолчанию `13443`;
 - режим `LAN-only`, не позволяющий случайно публиковать сервис на `0.0.0.0`;
 - demo-провайдер с тестовыми устройствами и метриками;
-- первая рабочая интеграция `tuya_cloud`;
+- рабочая интеграция `tuya_cloud`;
 - импорт списка устройств из Tuya cloud project через `GET /v2.0/cloud/thing/device`;
 - чтение спецификации устройства через `GET /v1.0/iot-03/devices/{device_id}/specification`;
 - чтение текущего статуса через `GET /v1.0/iot-03/devices/{device_id}/status`;
 - сохранение живых снапшотов статуса в таблицу `device_status_snapshots`;
 - сохранение текущих live-метрик прямо в карточке устройства (`switch_on`, `current_power_w`, `current_voltage_v`, `current_a`, `energy_total_kwh`, `fault_code`);
 - расчёт суточного и месячного расхода по счётчику `add_ele` на своей стороне без Tuya Power Management;
-- команда `./scripts/manage.sh configure-tuya` для записи `Access ID / Access Secret` в `secrets/` и переключения провайдера на `tuya_cloud`;
-- команда `./scripts/manage.sh sync` для ручной синхронизации;
+- фоновый планировщик синхронизации по расписанию внутри приложения;
+- журнал синхронизаций в UI и API (`/api/sync/status`, `/api/sync/runs`);
+- команда `./scripts/manage.sh configure-sync` для настройки интервала и поведения фонового цикла;
+- иконка проекта и favicon в `app/static/`;
 - веб-панель со списком устройств, live-статусами, суммарной нагрузкой и историей снапшотов.
 
 ## Текущее поведение
@@ -51,7 +53,8 @@
 - запрос access token;
 - импорт устройств из проекта Tuya;
 - чтение live-статусов розеток и других устройств;
-- накопление снапшотов и расчёт day/month по `add_ele`.
+- накопление снапшотов и расчёт day/month по `add_ele`;
+- автоматическая фоновая синхронизация при старте и далее по интервалу.
 
 ## Важные детали по Tuya
 
@@ -78,12 +81,12 @@
 ## Что важно помнить дальше
 
 Следующие крупные шаги:
-1. фоновый планировщик синхронизации вместо ручного `manage.sh sync`;
-2. графики по мощности и потреблению;
-3. фильтры по комнатам/типам устройств;
-4. управление устройствами (toggle / команды);
-5. полноценная интеграция Xiaomi Mi Home / miIO;
-6. расширенный roadmap по Smart Life / Mi Home устройствам и аналитике.
+1. графики по мощности и потреблению;
+2. фильтры по комнатам/типам устройств;
+3. управление устройствами (toggle / команды);
+4. полноценная интеграция Xiaomi Mi Home / miIO;
+5. расширенный roadmap по Smart Life / Mi Home устройствам и аналитике;
+6. при желании — отдельный экран настроек интеграции и синхронизации в самом UI.
 
 ## Полезные команды на сервере
 
@@ -96,8 +99,8 @@ cd /opt/SmartLife
 chmod +x scripts/manage.sh
 ./scripts/manage.sh up --build
 ./scripts/manage.sh configure-tuya
+./scripts/manage.sh configure-sync
 ./scripts/manage.sh restart
-./scripts/manage.sh sync
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```
@@ -108,8 +111,8 @@ chmod +x scripts/manage.sh
 cd /opt/SmartLife
 chmod +x scripts/manage.sh
 ./scripts/manage.sh configure-tuya
+./scripts/manage.sh configure-sync
 ./scripts/manage.sh up --build
-./scripts/manage.sh sync
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```

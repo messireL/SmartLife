@@ -5,9 +5,12 @@
   {% endif %}
 
   <section class="card access-card">
-    <div>
-      <h2>LAN-доступ</h2>
-      <p class="muted">Сервис ориентирован на локальную сеть и по умолчанию публикуется на адресе сервера из диапазона 192.168.x.x.</p>
+    <div class="section-header">
+      <div>
+        <h1>Панель SmartLife</h1>
+        <div class="muted">LAN-first управление устройствами и сбор энергометрик по Tuya / Smart Life / Mi Home.</div>
+      </div>
+      <div class="muted tiny">Версия {{ settings.app_version }}</div>
     </div>
     <div class="access-grid">
       <div>
@@ -60,21 +63,90 @@
     <div>
       <h2>Синхронизация</h2>
       {% if settings.smartlife_provider == 'demo' %}
-        <p class="muted">Сейчас активен demo-провайдер. Можно быстро проверить UI и расчёты, не трогая настоящие устройства.</p>
+        <p class="muted">Активен demo-провайдер. Фоновая синхронизация может крутиться автоматически и пополнять тестовые данные без ручного пинка.</p>
       {% elif settings.smartlife_provider == 'tuya_cloud' %}
-        <p class="muted">Активен Tuya Cloud. Синхронизация подтягивает список устройств, текущие статусы и накапливает расход по счётчику <code>add_ele</code>.</p>
+        <p class="muted">Активен Tuya Cloud. Фоновый цикл подтягивает устройства и статусы по расписанию, а расход считает по счётчику <code>add_ele</code>.</p>
       {% else %}
-        <p class="muted">Активен провайдер {{ settings.smartlife_provider }}. Синхронизация выполнит импорт доступных устройств и живых статусов.</p>
+        <p class="muted">Активен провайдер {{ settings.smartlife_provider }}. Фоновые циклы синхронизации включаются настройками приложения.</p>
       {% endif %}
     </div>
     <div class="toolbar-actions">
       <form method="post" action="/actions/sync-provider">
         <button type="submit">Синхронизировать сейчас</button>
       </form>
-      {% if settings.smartlife_provider == 'demo' %}
-        <div class="muted tiny">Подсказка: для Tuya переключи провайдер через <code>./scripts/manage.sh configure-tuya</code></div>
-      {% endif %}
+      <div class="muted tiny">Фон: {% if sync_overview.background_sync_enabled %}включён{% else %}выключен{% endif %} · интервал {{ sync_overview.sync_interval_seconds }} сек · запуск при старте {% if sync_overview.sync_on_startup %}да{% else %}нет{% endif %}</div>
     </div>
+  </section>
+
+  <section class="summary-grid sync-grid">
+    <article class="card sync-card">
+      <div class="muted">Сейчас</div>
+      <div class="status-pair sync-state-row">
+        {% if sync_overview.is_running_now %}
+          <span class="badge running">sync running</span>
+        {% else %}
+          <span class="badge idle">idle</span>
+        {% endif %}
+        <span class="muted tiny">provider={{ settings.smartlife_provider }}</span>
+      </div>
+      <div class="tiny muted">Последний запуск: {{ sync_overview.last_run.started_at if sync_overview.last_run else '—' }}</div>
+    </article>
+    <article class="card sync-card">
+      <div class="muted">Успешных циклов</div>
+      <div class="stat-value compact">{{ sync_overview.success_total }}</div>
+    </article>
+    <article class="card sync-card">
+      <div class="muted">Ошибок</div>
+      <div class="stat-value compact">{{ sync_overview.error_total }}</div>
+    </article>
+    <article class="card sync-card">
+      <div class="muted">Последний статус</div>
+      <div class="sync-last-status">
+        {% if sync_overview.last_run %}
+          <span class="badge {{ sync_overview.last_run.status.value }}">{{ sync_overview.last_run.status.value }}</span>
+          <div class="tiny muted">{{ sync_overview.last_run.duration_ms or '—' }} ms</div>
+        {% else %}
+          <span class="muted">—</span>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+
+  <section class="card">
+    <div class="section-header">
+      <h2>Журнал синхронизаций</h2>
+      <div class="muted">Последние {{ recent_sync_runs|length }} циклов</div>
+    </div>
+    {% if recent_sync_runs %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Старт</th>
+              <th>Триггер</th>
+              <th>Статус</th>
+              <th>Длительность</th>
+              <th>Результат</th>
+              <th>Ошибка</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in recent_sync_runs %}
+              <tr>
+                <td>{{ item.started_at }}</td>
+                <td>{{ item.trigger.value }}</td>
+                <td><span class="badge {{ item.status.value }}">{{ item.status.value }}</span></td>
+                <td>{{ item.duration_ms or '—' }} ms</td>
+                <td><code class="json-snippet">{{ item.result_summary or '—' }}</code></td>
+                <td>{{ item.error_message or '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">Журнал ещё пустой. Первый фоновый цикл заполнит его сам.</div>
+    {% endif %}
   </section>
 
   <section class="card">

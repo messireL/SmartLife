@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     Text,
@@ -30,6 +31,20 @@ class ProviderType(StrEnum):
 class BucketType(StrEnum):
     DAY = "day"
     MONTH = "month"
+
+
+class SyncRunStatus(StrEnum):
+    RUNNING = "running"
+    SUCCESS = "success"
+    ERROR = "error"
+    SKIPPED = "skipped"
+
+
+class SyncRunTrigger(StrEnum):
+    MANUAL = "manual"
+    BACKGROUND = "background"
+    STARTUP = "startup"
+    CLI = "cli"
 
 
 class Device(Base):
@@ -107,3 +122,18 @@ class DeviceStatusSnapshot(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
     device: Mapped[Device] = relationship(back_populates="status_snapshots")
+
+
+class SyncRun(Base):
+    __tablename__ = "sync_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(64), index=True)
+    trigger: Mapped[SyncRunTrigger] = mapped_column(Enum(SyncRunTrigger, name="sync_run_trigger"), index=True)
+    status: Mapped[SyncRunStatus] = mapped_column(Enum(SyncRunStatus, name="sync_run_status"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())

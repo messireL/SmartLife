@@ -5,8 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
+from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, SyncRun
 from app.db.session import get_db
+from app.services.dashboard_service import get_sync_overview
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -114,9 +115,58 @@ def device_snapshots(device_id: int, limit: int = 100, db: Session = Depends(get
     }
 
 
+@router.get("/sync/status")
+def sync_status(db: Session = Depends(get_db)):
+    overview = get_sync_overview(db)
+    last_run = overview["last_run"]
+    return {
+        "background_sync_enabled": overview["background_sync_enabled"],
+        "sync_on_startup": overview["sync_on_startup"],
+        "sync_interval_seconds": overview["sync_interval_seconds"],
+        "is_running_now": overview["is_running_now"],
+        "success_total": overview["success_total"],
+        "error_total": overview["error_total"],
+        "last_run": {
+            "id": last_run.id,
+            "provider": last_run.provider,
+            "trigger": last_run.trigger.value,
+            "status": last_run.status.value,
+            "started_at": last_run.started_at.isoformat() if last_run.started_at else None,
+            "finished_at": last_run.finished_at.isoformat() if last_run.finished_at else None,
+            "duration_ms": last_run.duration_ms,
+            "result_summary": last_run.result_summary,
+            "error_message": last_run.error_message,
+        }
+        if last_run
+        else None,
+    }
+
+
+@router.get("/sync/runs")
+def sync_runs(limit: int = 20, db: Session = Depends(get_db)):
+    limit = max(1, min(limit, 100))
+    items = db.execute(select(SyncRun).order_by(SyncRun.started_at.desc(), SyncRun.id.desc()).limit(limit)).scalars().all()
+    return [
+        {
+            "id": item.id,
+            "provider": item.provider,
+            "trigger": item.trigger.value,
+            "status": item.status.value,
+            "started_at": item.started_at.isoformat() if item.started_at else None,
+            "finished_at": item.finished_at.isoformat() if item.finished_at else None,
+            "duration_ms": item.duration_ms,
+            "result_summary": item.result_summary,
+            "error_message": item.error_message,
+        }
+        for item in items
+    ]
+
+
 @router.get("/health")
-def health():
+def health(db: Session = Depends(get_db)):
     settings = get_settings()
+    overview = get_sync_overview(db)
+    last_run = overview["last_run"]
     return {
         "status": "ok",
         "service": settings.app_name,
@@ -125,4 +175,9 @@ def health():
         "base_url": settings.app_base_url,
         "timezone": settings.timezone,
         "sync_interval_seconds": settings.smartlife_sync_interval_seconds,
+        "background_sync_enabled": settings.smartlife_background_sync_enabled,
+        "sync_on_startup": settings.smartlife_sync_on_startup,
+        "sync_running_now": overview["is_running_now"],
+        "last_sync_status": last_run.status.value if last_run else None,
+        "last_sync_started_at": last_run.started_at.isoformat() if last_run and last_run.started_at else None,
     }

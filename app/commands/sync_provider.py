@@ -1,13 +1,10 @@
-from app.db.init_db import init_db
-from app.db.session import SessionLocal
-from app.services.sync_service import sync_from_provider
+from app.db.models import SyncRunTrigger
+from app.services.sync_runner import run_sync_job
 
 
 def main() -> None:
-    init_db()
-    with SessionLocal() as db:
-        result = sync_from_provider(db)
-        print(result)
+    result = run_sync_job(trigger=SyncRunTrigger.CLI, fail_if_running=True)
+    print(result)
 
 
 if __name__ == "__main__":

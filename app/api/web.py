@@ -9,10 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
+from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, SyncRun, SyncRunTrigger
 from app.db.session import get_db
-from app.services.dashboard_service import get_dashboard_summary
-from app.services.sync_service import sync_from_provider
+from app.services.dashboard_service import get_dashboard_summary, get_sync_overview
+from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -22,12 +22,18 @@ settings = get_settings()
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     summary = get_dashboard_summary(db)
+    sync_overview = get_sync_overview(db)
+    recent_sync_runs = db.execute(
+        select(SyncRun).order_by(SyncRun.started_at.desc(), SyncRun.id.desc()).limit(8)
+    ).scalars().all()
     devices = db.execute(select(Device).order_by(Device.room_name, Device.name)).scalars().all()
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "summary": summary,
+            "sync_overview": sync_overview,
+            "recent_sync_runs": recent_sync_runs,
             "devices": devices,
             "request": request,
             "flash": request.query_params.get("flash"),
@@ -78,15 +84,18 @@ def device_detail(device_id: int, request: Request, db: Session = Depends(get_db
 
 
 @router.post("/actions/sync-provider")
-def sync_provider_action(db: Session = Depends(get_db)):
+def sync_provider_action():
     try:
-        result = sync_from_provider(db)
+        outcome = run_sync_job(trigger=SyncRunTrigger.MANUAL, fail_if_running=True)
+        result = outcome["result"]
         flash = (
-            f"Synchronized provider={result['provider']} devices={result['devices_total']} "
+            f"Синхронизация завершена: provider={result['provider']} devices={result['devices_total']} "
             f"daily={result['daily_samples_total']} monthly={result['monthly_samples_total']} "
-            f"snapshots={result['snapshots_total']} aggregated={result['aggregated_energy_updates']}"
+            f"snapshots={result['snapshots_total']} aggregated={result['aggregated_energy_updates']} "
+            f"за {outcome['duration_ms']} ms"
         )
+    except SyncAlreadyRunningError:
+        flash = "Синхронизация уже выполняется в фоне. Подожди завершения текущего цикла."
     except Exception as exc:  # noqa: BLE001
-        db.rollback()
         flash = f"Sync failed: {exc}"
     return RedirectResponse(url=f"/?flash={quote_plus(flash)}", status_code=303)
