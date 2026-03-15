@@ -60,6 +60,8 @@ def root_health():
         "service": settings.app_name,
         "version": APP_VERSION,
         "provider": runtime.provider,
+        "tariff_mode": runtime.tariff_mode,
+        "tariff_display": runtime.tariff_display,
         "timezone": settings.timezone,
         "background_sync_enabled": settings.smartlife_background_sync_enabled,
         "sync_on_startup": settings.smartlife_sync_on_startup,

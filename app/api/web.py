@@ -226,23 +226,75 @@ def update_runtime_cloud_settings(
 
 @router.post("/settings/tariff")
 def update_tariff_settings(
-    tariff_price_per_kwh: str = Form(default="0.00"),
+    tariff_mode: str = Form(default="flat"),
     tariff_currency: str = Form(default="₽"),
+    tariff_flat_price_per_kwh: str = Form(default="0.00"),
+    tariff_two_day_price_per_kwh: str = Form(default="0.00"),
+    tariff_two_night_price_per_kwh: str = Form(default="0.00"),
+    tariff_two_day_start: str = Form(default="07:00"),
+    tariff_two_night_start: str = Form(default="23:00"),
+    tariff_three_day_price_per_kwh: str = Form(default="0.00"),
+    tariff_three_night_price_per_kwh: str = Form(default="0.00"),
+    tariff_three_peak_price_per_kwh: str = Form(default="0.00"),
+    tariff_three_day_start: str = Form(default="07:00"),
+    tariff_three_night_start: str = Form(default="23:00"),
+    tariff_three_peak_morning_start: str = Form(default="07:00"),
+    tariff_three_peak_morning_end: str = Form(default="10:00"),
+    tariff_three_peak_evening_start: str = Form(default="17:00"),
+    tariff_three_peak_evening_end: str = Form(default="21:00"),
     db: Session = Depends(get_db),
 ):
-    raw_price = (tariff_price_per_kwh or "0.00").strip().replace(",", ".")
-    try:
-        from decimal import Decimal, InvalidOperation
-        price = Decimal(raw_price)
-        if price < 0:
-            raise InvalidOperation
-        normalized = f"{price.quantize(Decimal('0.01'))}"
-    except Exception:
-        flash = "Тариф должен быть неотрицательным числом, например 7.35"
+    from datetime import time
+    from decimal import Decimal, InvalidOperation
+
+    def _normalize_price(raw: str, label: str) -> str:
+        raw = (raw or "0.00").strip().replace(",", ".")
+        try:
+            price = Decimal(raw)
+            if price < 0:
+                raise InvalidOperation
+            return f"{price.quantize(Decimal('0.01'))}"
+        except Exception:
+            raise ValueError(f"Поле «{label}» должно быть неотрицательным числом, например 7.35")
+
+    def _normalize_time(raw: str, label: str) -> str:
+        raw = (raw or "").strip()
+        try:
+            hh, mm = raw.split(":", 1)
+            parsed = time(int(hh), int(mm))
+            return parsed.strftime("%H:%M")
+        except Exception:
+            raise ValueError(f"Поле «{label}» должно быть в формате ЧЧ:ММ, например 23:00")
+
+    mode = (tariff_mode or "flat").strip()
+    if mode not in {"flat", "two_zone", "three_zone"}:
+        flash = "Неизвестный режим тарифа. Используй flat, two_zone или three_zone."
         return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
-    configure_tariff_settings(db, price_per_kwh=normalized, currency=(tariff_currency or "₽").strip() or "₽")
-    flash = "Тариф электроэнергии сохранён в PostgreSQL и сразу используется в сводке и графиках."
+    try:
+        values = {
+            "tariff.mode": mode,
+            "tariff.currency": (tariff_currency or "₽").strip() or "₽",
+            "tariff.flat.price_per_kwh": _normalize_price(tariff_flat_price_per_kwh, "Единый тариф"),
+            "tariff.two_zone.day_price_per_kwh": _normalize_price(tariff_two_day_price_per_kwh, "Двухзонный день"),
+            "tariff.two_zone.night_price_per_kwh": _normalize_price(tariff_two_night_price_per_kwh, "Двухзонная ночь"),
+            "tariff.two_zone.day_start": _normalize_time(tariff_two_day_start, "Начало дня (2 зоны)"),
+            "tariff.two_zone.night_start": _normalize_time(tariff_two_night_start, "Начало ночи (2 зоны)"),
+            "tariff.three_zone.day_price_per_kwh": _normalize_price(tariff_three_day_price_per_kwh, "Трёхзонный день"),
+            "tariff.three_zone.night_price_per_kwh": _normalize_price(tariff_three_night_price_per_kwh, "Трёхзонная ночь"),
+            "tariff.three_zone.peak_price_per_kwh": _normalize_price(tariff_three_peak_price_per_kwh, "Трёхзонный пик"),
+            "tariff.three_zone.day_start": _normalize_time(tariff_three_day_start, "Начало дня (3 зоны)"),
+            "tariff.three_zone.night_start": _normalize_time(tariff_three_night_start, "Начало ночи (3 зоны)"),
+            "tariff.three_zone.peak_morning_start": _normalize_time(tariff_three_peak_morning_start, "Пик 1 старт"),
+            "tariff.three_zone.peak_morning_end": _normalize_time(tariff_three_peak_morning_end, "Пик 1 конец"),
+            "tariff.three_zone.peak_evening_start": _normalize_time(tariff_three_peak_evening_start, "Пик 2 старт"),
+            "tariff.three_zone.peak_evening_end": _normalize_time(tariff_three_peak_evening_end, "Пик 2 конец"),
+        }
+    except ValueError as exc:
+        return RedirectResponse(url=f"/settings?flash={quote_plus(str(exc))}", status_code=303)
+
+    configure_tariff_settings(db, values=values)
+    flash = "Тариф электроэнергии сохранён в PostgreSQL. Поддерживаются единый, двухзонный и трёхзонный режимы по времени суток."
     return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 

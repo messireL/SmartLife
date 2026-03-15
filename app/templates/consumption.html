@@ -17,6 +17,44 @@
   <article class="card stat-card"><div class="muted">Активных сейчас</div><div class="stat-value">{{ summary.power_now_total }}</div></article>
 </section>
 
+<section class="grid-2">
+  <article class="card">
+    <div class="section-header"><div><h2>Тариф и зоны сегодня</h2><div class="muted">{{ summary.tariff_mode_label }} · {{ summary.tariff_display }}</div></div></div>
+    {% if summary.tariff_windows %}
+      <ul class="compact-list">
+        {% for line in summary.tariff_windows %}<li>{{ line }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Зона</th><th>Тариф</th><th>kWh</th><th>{{ summary.tariff_currency }}</th></tr></thead>
+        <tbody>
+          {% for item in summary.day_zone_costs %}
+            <tr><td>{{ item.label }}</td><td>{{ item.rate }}</td><td>{{ item.energy_kwh }}</td><td>{{ item.cost }}</td></tr>
+          {% else %}
+            <tr><td colspan="4" class="muted">За сегодня по зонам пока пусто.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+  <article class="card">
+    <div class="section-header"><div><h2>Зоны с начала месяца</h2><div class="muted">Стоимость собирается по времени снапшотов, а не по одной усреднённой цифре.</div></div></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Зона</th><th>Тариф</th><th>kWh</th><th>{{ summary.tariff_currency }}</th></tr></thead>
+        <tbody>
+          {% for item in summary.month_zone_costs %}
+            <tr><td>{{ item.label }}</td><td>{{ item.rate }}</td><td>{{ item.energy_kwh }}</td><td>{{ item.cost }}</td></tr>
+          {% else %}
+            <tr><td colspan="4" class="muted">За месяц по зонам пока пусто.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>
+
 <section class="chart-grid chart-grid-main">
   <article class="card chart-card chart-span-2">
     <div class="section-header"><div><h2>Общий расход за 14 дней</h2><div class="muted">{{ dashboard_panels.trend_period_label }}</div></div></div>

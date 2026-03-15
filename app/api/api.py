@@ -224,4 +224,7 @@ def health(db: Session = Depends(get_db)):
         "last_sync_started_at": last_run.started_at.isoformat() if last_run and last_run.started_at else None,
         "tariff_price_per_kwh": float(summary["tariff_price_per_kwh"]),
         "tariff_currency": summary["tariff_currency"],
+        "tariff_mode": summary["tariff_mode"],
+        "tariff_mode_label": summary["tariff_mode_label"],
+        "tariff_display": summary["tariff_display"],
     }

@@ -10,12 +10,11 @@ from app.core.config import get_settings
 from app.core.timeutils import format_local_date, format_local_datetime, local_today
 from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, SyncRun, SyncRunStatus
 from app.services.chart_service import build_bar_chart, build_line_chart
-from app.services.sync_runner import is_sync_running
 from app.services.runtime_config_service import get_runtime_config
-
+from app.services.sync_runner import is_sync_running
+from app.services.tariff_service import calculate_tariff_costs
 
 ZERO = Decimal("0.000")
-
 
 
 def _quantize(value: Decimal | None, places: str = "0.00") -> Decimal:
@@ -24,17 +23,20 @@ def _quantize(value: Decimal | None, places: str = "0.00") -> Decimal:
     return value.quantize(Decimal(places))
 
 
-
 def _money(value: Decimal | None) -> Decimal:
     return _quantize(value, "0.00")
+
+
+def _visible_device_ids(db: Session) -> list[int]:
+    return list(
+        db.scalars(select(Device.id).where(Device.is_hidden.is_(False), Device.is_deleted.is_(False))).all()
+    )
 
 
 def get_dashboard_summary(db: Session) -> dict:
     today = local_today()
     month_start = today.replace(day=1)
     runtime = get_runtime_config(db)
-    tariff_price = runtime.tariff_price_decimal
-
 
     devices_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.is_deleted.is_(False))) or 0
     online_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.is_deleted.is_(False), Device.is_online.is_(True))) or 0
@@ -72,8 +74,7 @@ def get_dashboard_summary(db: Session) -> dict:
         )
     ) or 0
 
-    day_cost = (day_total or ZERO) * tariff_price
-    month_cost = (month_total or ZERO) * tariff_price
+    tariff_costs = calculate_tariff_costs(db, runtime, device_ids=_visible_device_ids(db))
 
     return {
         "devices_total": devices_total,
@@ -81,15 +82,19 @@ def get_dashboard_summary(db: Session) -> dict:
         "powered_on_total": powered_on_total,
         "day_total_kwh": _quantize(day_total, "0.000"),
         "month_total_kwh": _quantize(month_total, "0.000"),
-        "day_total_cost": _money(day_cost),
-        "month_total_cost": _money(month_cost),
-        "tariff_price_per_kwh": runtime.tariff_price_decimal,
+        "day_total_cost": _money(tariff_costs["today_total_cost"]),
+        "month_total_cost": _money(tariff_costs["month_total_cost"]),
+        "day_zone_costs": tariff_costs["today_zones"],
+        "month_zone_costs": tariff_costs["month_zones"],
+        "tariff_price_per_kwh": runtime.tariff_primary_price_decimal,
         "tariff_currency": runtime.tariff_currency,
         "tariff_display": runtime.tariff_display,
+        "tariff_mode": runtime.tariff_mode,
+        "tariff_mode_label": runtime.tariff_mode_label,
+        "tariff_windows": runtime.tariff_windows,
         "live_power_total_w": _quantize(live_power_total),
         "power_now_total": power_now_total,
     }
-
 
 
 def get_sync_overview(db: Session) -> dict:
@@ -108,11 +113,9 @@ def get_sync_overview(db: Session) -> dict:
     }
 
 
-
 def get_dashboard_panels(db: Session) -> dict:
     today = local_today()
     runtime = get_runtime_config(db)
-    tariff_price = runtime.tariff_price_decimal
     month_start = today.replace(day=1)
     trend_start = today - timedelta(days=13)
 
@@ -175,6 +178,8 @@ def get_dashboard_panels(db: Session) -> dict:
         .limit(8)
     ).all()
 
+    cost_data = calculate_tariff_costs(db, runtime, device_ids=_visible_device_ids(db))["per_device"]
+
     current_power_chart = build_bar_chart(
         [
             {
@@ -202,11 +207,19 @@ def get_dashboard_panels(db: Session) -> dict:
     )
 
     top_cost_today_rows = [
-        {"device": device, "energy_kwh": energy, "cost": _money(energy * tariff_price)}
+        {
+            "device": device,
+            "energy_kwh": energy,
+            "cost": _money(cost_data.get(device.id, {}).get("today_cost", Decimal("0.00"))),
+        }
         for device, energy in top_today_rows
     ]
     top_cost_month_rows = [
-        {"device": device, "energy_kwh": energy, "cost": _money(energy * tariff_price)}
+        {
+            "device": device,
+            "energy_kwh": energy,
+            "cost": _money(cost_data.get(device.id, {}).get("month_cost", Decimal("0.00"))),
+        }
         for device, energy in top_month_rows
     ]
 
@@ -218,16 +231,16 @@ def get_dashboard_panels(db: Session) -> dict:
         "top_today": top_cost_today_rows,
         "top_month": top_cost_month_rows,
         "tariff_display": runtime.tariff_display,
+        "tariff_mode_label": runtime.tariff_mode_label,
+        "tariff_windows": runtime.tariff_windows,
         "tariff_currency": runtime.tariff_currency,
         "trend_period_label": f"{format_local_date(trend_start)} — {format_local_date(today)}",
     }
 
 
-
 def get_device_dashboard(db: Session, device: Device) -> dict:
     today = local_today()
     runtime = get_runtime_config(db)
-    tariff_price = runtime.tariff_price_decimal
     month_start = today.replace(day=1)
 
     daily_rows = db.execute(
@@ -301,6 +314,8 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
         suffix=" kWh",
     )
 
+    cost_data = calculate_tariff_costs(db, runtime, device_ids=[device.id])["per_device"].get(device.id, {})
+
     return {
         "daily": daily_rows,
         "monthly": monthly_rows,
@@ -311,10 +326,13 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
         "stats": {
             "today_kwh": _quantize(today_energy, "0.000"),
             "month_kwh": _quantize(month_energy, "0.000"),
-            "today_cost": _money(today_energy * tariff_price),
-            "month_cost": _money(month_energy * tariff_price),
+            "today_cost": _money(cost_data.get("today_cost", Decimal("0.00"))),
+            "month_cost": _money(cost_data.get("month_cost", Decimal("0.00"))),
+            "today_zone_costs": cost_data.get("today_zones_list", []),
+            "month_zone_costs": cost_data.get("month_zones_list", []),
             "tariff_display": runtime.tariff_display,
             "tariff_currency": runtime.tariff_currency,
+            "tariff_mode_label": runtime.tariff_mode_label,
             "latest_power_w": _quantize(device.current_power_w),
             "latest_voltage_v": _quantize(device.current_voltage_v),
             "peak_power_w": _quantize(max(power_values) if power_values else Decimal("0.00")),

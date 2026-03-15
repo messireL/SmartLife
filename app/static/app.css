@@ -653,3 +653,25 @@ label {
 .stack-form label { display: grid; gap: 6px; }
 .stack-form input, .stack-form select, .stack-form textarea { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.14); background: rgba(15,23,42,.5); color: inherit; }
 .form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.compact-list {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.compact-list li {
+  margin: 4px 0;
+}
+
+@media (max-width: 920px) {
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}

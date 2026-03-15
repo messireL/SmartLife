@@ -60,6 +60,27 @@
     </article>
   </section>
 
+  <section class="grid-2">
+    <article class="card"><div class="section-header"><h2>Стоимость по зонам сегодня</h2></div>
+      <div class="table-wrap"><table><thead><tr><th>Зона</th><th>Тариф</th><th>kWh</th><th>{{ device_view.stats.tariff_currency }}</th></tr></thead><tbody>
+        {% for item in device_view.stats.today_zone_costs %}
+          <tr><td>{{ item.label }}</td><td>{{ item.rate }}</td><td>{{ item.energy_kwh }}</td><td>{{ item.cost }}</td></tr>
+        {% else %}
+          <tr><td colspan="4" class="muted">За сегодня по зонам пока пусто.</td></tr>
+        {% endfor %}
+      </tbody></table></div>
+    </article>
+    <article class="card"><div class="section-header"><h2>Стоимость по зонам за месяц</h2></div>
+      <div class="table-wrap"><table><thead><tr><th>Зона</th><th>Тариф</th><th>kWh</th><th>{{ device_view.stats.tariff_currency }}</th></tr></thead><tbody>
+        {% for item in device_view.stats.month_zone_costs %}
+          <tr><td>{{ item.label }}</td><td>{{ item.rate }}</td><td>{{ item.energy_kwh }}</td><td>{{ item.cost }}</td></tr>
+        {% else %}
+          <tr><td colspan="4" class="muted">За месяц по зонам пока пусто.</td></tr>
+        {% endfor %}
+      </tbody></table></div>
+    </article>
+  </section>
+
   <section class="card"><div class="section-header"><h2>Последние снапшоты</h2><a class="text-link" href="/devices/{{ device.id }}?tab=history&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Полная история</a></div>
     <div class="table-wrap">
       <table>
