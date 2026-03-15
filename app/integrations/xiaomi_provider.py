@@ -20,3 +20,6 @@ class XiaomiMiioProvider(DeviceProvider):
 
     def get_status_snapshots(self, devices):
         raise NotImplementedError("Xiaomi live status sync is not wired yet.")
+
+    def send_switch_command(self, device_id: str, switch_on: bool) -> dict:
+        raise NotImplementedError("Xiaomi device control is not wired yet.")

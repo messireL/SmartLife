@@ -28,30 +28,41 @@ def get_dashboard_summary(db: Session) -> dict:
     today = local_today()
     month_start = today.replace(day=1)
 
-    devices_total = db.scalar(select(func.count()).select_from(Device)) or 0
-    online_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_online.is_(True))) or 0
-    powered_on_total = db.scalar(select(func.count()).select_from(Device).where(Device.switch_on.is_(True))) or 0
+
+    devices_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False))) or 0
+    online_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.is_online.is_(True))) or 0
+    powered_on_total = db.scalar(select(func.count()).select_from(Device).where(Device.is_hidden.is_(False), Device.switch_on.is_(True))) or 0
 
     day_total = db.scalar(
-        select(func.coalesce(func.sum(EnergySample.energy_kwh), ZERO)).where(
+        select(func.coalesce(func.sum(EnergySample.energy_kwh), ZERO))
+        .join(Device, Device.id == EnergySample.device_id)
+        .where(
+            Device.is_hidden.is_(False),
             EnergySample.bucket_type == BucketType.DAY,
             EnergySample.period_start == today,
         )
     ) or ZERO
 
     month_total = db.scalar(
-        select(func.coalesce(func.sum(EnergySample.energy_kwh), ZERO)).where(
+        select(func.coalesce(func.sum(EnergySample.energy_kwh), ZERO))
+        .join(Device, Device.id == EnergySample.device_id)
+        .where(
+            Device.is_hidden.is_(False),
             EnergySample.bucket_type == BucketType.MONTH,
             EnergySample.period_start == month_start,
         )
     ) or ZERO
 
     live_power_total = db.scalar(
-        select(func.coalesce(func.sum(Device.current_power_w), Decimal("0.00"))).where(Device.current_power_w.is_not(None))
+        select(func.coalesce(func.sum(Device.current_power_w), Decimal("0.00"))).where(
+            Device.is_hidden.is_(False), Device.current_power_w.is_not(None)
+        )
     ) or Decimal("0.00")
 
     power_now_total = db.scalar(
-        select(func.count()).select_from(Device).where(Device.current_power_w.is_not(None), Device.current_power_w > 0)
+        select(func.count()).select_from(Device).where(
+            Device.is_hidden.is_(False), Device.current_power_w.is_not(None), Device.current_power_w > 0
+        )
     ) or 0
 
     return {
@@ -90,7 +101,9 @@ def get_dashboard_panels(db: Session) -> dict:
 
     day_rows = db.execute(
         select(EnergySample.period_start, func.coalesce(func.sum(EnergySample.energy_kwh), ZERO))
+        .join(Device, Device.id == EnergySample.device_id)
         .where(
+            Device.is_hidden.is_(False),
             EnergySample.bucket_type == BucketType.DAY,
             EnergySample.period_start >= trend_start,
             EnergySample.period_start <= today,
@@ -114,7 +127,7 @@ def get_dashboard_panels(db: Session) -> dict:
 
     live_now = db.execute(
         select(Device)
-        .where(Device.current_power_w.is_not(None), Device.current_power_w > 0)
+        .where(Device.is_hidden.is_(False), Device.current_power_w.is_not(None), Device.current_power_w > 0)
         .order_by(Device.current_power_w.desc(), Device.name.asc())
         .limit(8)
     ).scalars().all()
@@ -122,7 +135,12 @@ def get_dashboard_panels(db: Session) -> dict:
     top_today_rows = db.execute(
         select(Device, EnergySample.energy_kwh)
         .join(EnergySample, EnergySample.device_id == Device.id)
-        .where(EnergySample.bucket_type == BucketType.DAY, EnergySample.period_start == today, EnergySample.energy_kwh > 0)
+        .where(
+            Device.is_hidden.is_(False),
+            EnergySample.bucket_type == BucketType.DAY,
+            EnergySample.period_start == today,
+            EnergySample.energy_kwh > 0,
+        )
         .order_by(EnergySample.energy_kwh.desc(), Device.name.asc())
         .limit(8)
     ).all()
@@ -130,7 +148,12 @@ def get_dashboard_panels(db: Session) -> dict:
     top_month_rows = db.execute(
         select(Device, EnergySample.energy_kwh)
         .join(EnergySample, EnergySample.device_id == Device.id)
-        .where(EnergySample.bucket_type == BucketType.MONTH, EnergySample.period_start == month_start, EnergySample.energy_kwh > 0)
+        .where(
+            Device.is_hidden.is_(False),
+            EnergySample.bucket_type == BucketType.MONTH,
+            EnergySample.period_start == month_start,
+            EnergySample.energy_kwh > 0,
+        )
         .order_by(EnergySample.energy_kwh.desc(), Device.name.asc())
         .limit(8)
     ).all()

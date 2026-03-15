@@ -1,265 +1,150 @@
 {% extends "base.html" %}
 {% block content %}
-  <section class="card">
-    <div class="section-header">
-      <div>
-        <div class="tiny muted">{{ device.provider.value }} · {{ device.product_name or device.model or 'unknown product' }}</div>
-        <h1>{{ device.name }}</h1>
-      </div>
-      <div class="status-pair">
-        {% if device.is_online %}
-          <span class="badge online">online</span>
-        {% else %}
-          <span class="badge offline">offline</span>
-        {% endif %}
-        {% if device.switch_on is sameas true %}
-          <span class="badge on">relay on</span>
-        {% elif device.switch_on is sameas false %}
-          <span class="badge off">relay off</span>
-        {% endif %}
-      </div>
+<section class="card page-hero">
+  <div class="section-header">
+    <div>
+      <h1>{{ device.name }}</h1>
+      <div class="muted">{{ device.model or device.product_name or 'Устройство без модели' }} · {{ device.provider.value }}</div>
     </div>
+    <div class="status-pair">
+      {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}
+      {% if device.switch_on is sameas true %}<span class="badge on">on</span>{% elif device.switch_on is sameas false %}<span class="badge off">off</span>{% else %}<span class="badge warning">unknown</span>{% endif %}
+    </div>
+  </div>
+  <nav class="tabs">
+    <a class="tab-link {% if active_tab == 'overview' %}active{% endif %}" href="/devices/{{ device.id }}?tab=overview">Обзор</a>
+    <a class="tab-link {% if active_tab == 'charts' %}active{% endif %}" href="/devices/{{ device.id }}?tab=charts">Графики</a>
+    <a class="tab-link {% if active_tab == 'history' %}active{% endif %}" href="/devices/{{ device.id }}?tab=history">История</a>
+    <a class="tab-link {% if active_tab == 'control' %}active{% endif %}" href="/devices/{{ device.id }}?tab=control">Управление</a>
+  </nav>
+</section>
 
-    <div class="summary-grid detail-summary-grid">
-      <article class="card stat-card nested-card">
-        <div class="muted">Сегодня</div>
-        <div class="stat-value compact">{{ device_view.stats.today_kwh }}</div>
-        <div class="tiny muted">kWh</div>
-      </article>
-      <article class="card stat-card nested-card">
-        <div class="muted">Месяц</div>
-        <div class="stat-value compact">{{ device_view.stats.month_kwh }}</div>
-        <div class="tiny muted">kWh</div>
-      </article>
-      <article class="card stat-card nested-card">
-        <div class="muted">Сейчас</div>
-        <div class="stat-value compact">{{ device_view.stats.latest_power_w }}</div>
-        <div class="tiny muted">W</div>
-      </article>
-      <article class="card stat-card nested-card">
-        <div class="muted">Пик по графику</div>
-        <div class="stat-value compact">{{ device_view.stats.peak_power_w }}</div>
-        <div class="tiny muted">W</div>
-      </article>
-      <article class="card stat-card nested-card">
-        <div class="muted">Напряжение</div>
-        <div class="stat-value compact">{{ device_view.stats.latest_voltage_v }}</div>
-        <div class="tiny muted">V</div>
-      </article>
-      <article class="card stat-card nested-card">
-        <div class="muted">Снапшотов</div>
-        <div class="stat-value compact">{{ device_view.stats.snapshots_total }}</div>
-        <div class="tiny muted">в окне графика</div>
-      </article>
-    </div>
-
-    <div class="detail-grid metrics-grid">
-      <div><span class="muted">Комната:</span> {{ device.room_name or '—' }}</div>
-      <div><span class="muted">Локация:</span> {{ device.location_name or '—' }}</div>
-      <div><span class="muted">Категория:</span> {{ device.category or '—' }}</div>
-      <div><span class="muted">Product ID:</span> {{ device.product_id or '—' }}</div>
-      <div><span class="muted">External ID:</span> {{ device.external_id }}</div>
-      <div><span class="muted">Последняя активность:</span> {{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</div>
-      <div><span class="muted">Последний статус:</span> {{ device.last_status_at|localdt if device.last_status_at else '—' }}</div>
-      <div><span class="muted">Суммарно, kWh:</span> {{ device.energy_total_kwh or '—' }}</div>
-      <div><span class="muted">Мощность, W:</span> {{ device.current_power_w or '—' }}</div>
-      <div><span class="muted">Напряжение, V:</span> {{ device.current_voltage_v or '—' }}</div>
-      <div><span class="muted">Ток, A:</span> {{ device.current_a or '—' }}</div>
-      <div><span class="muted">Fault:</span> {{ device.fault_code or '0' }}</div>
-      <div class="span-2"><span class="muted">Описание:</span> {{ device.notes or '—' }}</div>
-    </div>
+{% if active_tab == 'overview' %}
+  <section class="summary-grid metrics-grid">
+    <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ device_view.stats.today_kwh }}</div></article>
+    <article class="card stat-card"><div class="muted">Месяц, kWh</div><div class="stat-value">{{ device_view.stats.month_kwh }}</div></article>
+    <article class="card stat-card"><div class="muted">Сейчас, W</div><div class="stat-value">{{ device_view.stats.latest_power_w }}</div></article>
+    <article class="card stat-card"><div class="muted">Напряжение, V</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div></article>
   </section>
 
+  <section class="grid-2">
+    <article class="card"><div class="section-header"><h2>Паспорт</h2></div>
+      <div class="status-stack">
+        <div class="status-row"><span class="muted">Внешний ID</span><span>{{ device.external_id }}</span></div>
+        <div class="status-row"><span class="muted">Комната</span><span>{{ device.room_name or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Категория</span><span>{{ device.category or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
+        <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
+      </div>
+    </article>
+    <article class="card"><div class="section-header"><h2>Последние снапшоты</h2><a class="text-link" href="/devices/{{ device.id }}?tab=history">Полная история</a></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Время</th><th>W</th><th>V</th><th>A</th><th>kWh</th></tr></thead>
+          <tbody>
+            {% for item in snapshots[:8] %}
+              <tr><td>{{ item.recorded_at|localdt }}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td></tr>
+            {% else %}
+              <tr><td colspan="5" class="muted">Снапшотов пока нет.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </section>
+{% elif active_tab == 'charts' %}
   <section class="chart-grid chart-grid-main">
     <article class="card chart-card chart-span-2">
-      <div class="section-header">
-        <div>
-          <h2>График мощности</h2>
-          <div class="muted">Последние {{ device_view.stats.snapshots_total }} снапшотов</div>
-        </div>
-        <div class="chart-meta">текущая точка {{ device_view.power_chart.latest_value_display }}</div>
-      </div>
-      {% if device_view.power_chart["items"] %}
+      <div class="section-header"><div><h2>Мощность по времени</h2><div class="muted">Последние 120 снапшотов</div></div></div>
+      {% if device_view.power_chart.has_data %}
         <div class="line-chart-wrap">
           <svg class="line-chart" viewBox="0 0 760 220" role="img" aria-label="График мощности">
-            <polyline class="line-chart-area" points="{{ device_view.power_chart.svg_area_points }}"></polyline>
+            <polygon class="line-chart-area" points="{{ device_view.power_chart.svg_area_points }}"></polygon>
             <polyline class="line-chart-path" points="{{ device_view.power_chart.svg_points }}"></polyline>
-            {% for point in device_view.power_chart["items"] %}
-              <circle class="line-chart-dot" cx="{{ point.x }}" cy="{{ point.y }}" r="2.8">
-                <title>{{ point.title }}</title>
-              </circle>
+            {% for label in device_view.power_chart.labels %}
+              <circle cx="{{ label.x }}" cy="{{ label.y }}" r="4" fill="rgba(125, 211, 252, 0.95)"></circle>
+              <text x="{{ label.x }}" y="208" fill="rgba(148, 163, 184, 0.95)" font-size="11" text-anchor="middle">{{ label.label }}</text>
             {% endfor %}
           </svg>
-          <div class="line-chart-scale">
-            <span>{{ device_view.power_chart.max_value_display }}</span>
-            <span>{{ device_view.power_chart.min_value_display }}</span>
-          </div>
-          <div class="line-chart-labels">
-            {% for label in device_view.power_chart.labels %}
-              <span>{{ label.label }}</span>
-            {% endfor %}
-          </div>
+          <div class="chart-meta">min {{ device_view.power_chart.min_value_display }} · max {{ device_view.power_chart.max_value_display }} · latest {{ device_view.power_chart.latest_value_display }}</div>
         </div>
       {% else %}
-        <div class="empty-state">Для графика мощности пока не хватает снапшотов.</div>
+        <div class="empty-state">Для графика мощности пока нет точек.</div>
       {% endif %}
     </article>
-
     <article class="card chart-card">
-      <div class="section-header">
-        <div>
-          <h2>Дневной расход</h2>
-          <div class="muted">Последние 14 дней</div>
-        </div>
-      </div>
+      <div class="section-header"><div><h2>Дневной расход</h2><div class="muted">Последние 14 дней</div></div></div>
       {% if device_view.daily_chart.has_data %}
         <div class="bar-chart compact-bars">
           {% for item in device_view.daily_chart["items"] %}
-            <div class="bar-item" title="{{ item.title }}">
-              <div class="bar-value small">{{ item.value_display }}</div>
-              <div class="bar-track"><div class="bar-fill warning" style="height: {{ item.pct }}%"></div></div>
-              <div class="bar-label">{{ item.label }}</div>
-            </div>
+            <div class="bar-item" title="{{ item.title }}"><div class="bar-value small">{{ item.value_display }}</div><div class="bar-track"><div class="bar-fill" style="height: {{ item.pct }}%"></div></div><div class="bar-label">{{ item.label }}</div></div>
           {% endfor %}
         </div>
-      {% else %}
-        <div class="empty-state">Дневная статистика пока не накопилась.</div>
-      {% endif %}
-    </article>
-
-    <article class="card chart-card">
-      <div class="section-header">
-        <div>
-          <h2>Месячный расход</h2>
-          <div class="muted">Последние 12 месяцев</div>
-        </div>
-      </div>
-      {% if device_view.monthly_chart.has_data %}
-        <div class="bar-chart compact-bars">
-          {% for item in device_view.monthly_chart["items"] %}
-            <div class="bar-item" title="{{ item.title }}">
-              <div class="bar-value small">{{ item.value_display }}</div>
-              <div class="bar-track"><div class="bar-fill accent" style="height: {{ item.pct }}%"></div></div>
-              <div class="bar-label">{{ item.label }}</div>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty-state">Месячная статистика пока не накопилась.</div>
-      {% endif %}
+      {% else %}<div class="empty-state">Дневная статистика пока не накопилась.</div>{% endif %}
     </article>
   </section>
 
-  <section class="card">
-    <div class="section-header">
-      <h2>Живые статусы</h2>
-      <div class="muted">Последние 20 снапшотов</div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Время</th>
-            <th>Реле</th>
-            <th>W</th>
-            <th>V</th>
-            <th>A</th>
-            <th>Всего, kWh</th>
-            <th>Fault</th>
-            <th>Источник</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in snapshots %}
-            <tr>
-              <td>{{ item.recorded_at|localdt }}</td>
-              <td>
-                {% if item.switch_on is sameas true %}on{% elif item.switch_on is sameas false %}off{% else %}—{% endif %}
-              </td>
-              <td>{{ item.power_w or '—' }}</td>
-              <td>{{ item.voltage_v or '—' }}</td>
-              <td>{{ item.current_a or '—' }}</td>
-              <td>{{ item.energy_total_kwh or '—' }}</td>
-              <td>{{ item.fault_code or '0' }}</td>
-              <td>{{ item.source_note or '—' }}</td>
-            </tr>
-          {% else %}
-            <tr>
-              <td colspan="8" class="muted">Снапшотов ещё нет.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+  <section class="card chart-card">
+    <div class="section-header"><div><h2>Месячный расход</h2><div class="muted">Последние 12 месяцев</div></div></div>
+    {% if device_view.monthly_chart.has_data %}
+      <div class="bar-chart compact-bars">
+        {% for item in device_view.monthly_chart["items"] %}
+          <div class="bar-item" title="{{ item.title }}"><div class="bar-value small">{{ item.value_display }}</div><div class="bar-track"><div class="bar-fill warning" style="height: {{ item.pct }}%"></div></div><div class="bar-label">{{ item.label }}</div></div>
+        {% endfor %}
+      </div>
+    {% else %}<div class="empty-state">Месячная статистика пока не накопилась.</div>{% endif %}
   </section>
-
-  <section class="chart-grid">
-    <section class="card">
-      <div class="section-header">
-        <h2>Дневное энергопотребление</h2>
-        <div class="muted">Последние 30 дней</div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Дата</th>
-              <th>kWh</th>
-              <th>W</th>
-              <th>V</th>
-              <th>A</th>
-              <th>Источник</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in daily %}
-              <tr>
-                <td>{{ item.period_start|localdate }}</td>
-                <td>{{ item.energy_kwh }}</td>
-                <td>{{ item.power_w or '—' }}</td>
-                <td>{{ item.voltage_v or '—' }}</td>
-                <td>{{ item.current_a or '—' }}</td>
-                <td>{{ item.source_note or '—' }}</td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="6" class="muted">Дневная статистика пока не накопилась.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="section-header">
-        <h2>Месячное энергопотребление</h2>
-        <div class="muted">Последние 12 месяцев</div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Месяц</th>
-              <th>kWh</th>
-              <th>Источник</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in monthly %}
-              <tr>
-                <td>{{ item.period_start|localdate }}</td>
-                <td>{{ item.energy_kwh }}</td>
-                <td>{{ item.source_note or '—' }}</td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="3" class="muted">Месячная статистика пока не накопилась.</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
+{% elif active_tab == 'history' %}
+  <section class="grid-2">
+    <article class="card">
+      <div class="section-header"><h2>Снапшоты</h2></div>
+      <div class="table-wrap"><table><thead><tr><th>Время</th><th>Switch</th><th>W</th><th>V</th><th>A</th><th>kWh</th><th>Fault</th></tr></thead><tbody>
+        {% for item in snapshots %}
+          <tr><td>{{ item.recorded_at|localdt }}</td><td>{% if item.switch_on is sameas true %}on{% elif item.switch_on is sameas false %}off{% else %}—{% endif %}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td><td>{{ item.fault_code or '0' }}</td></tr>
+        {% else %}
+          <tr><td colspan="7" class="muted">Снапшотов ещё нет.</td></tr>
+        {% endfor %}
+      </tbody></table></div>
+    </article>
+    <article class="card">
+      <div class="section-header"><h2>Дневная статистика</h2></div>
+      <div class="table-wrap"><table><thead><tr><th>Дата</th><th>kWh</th><th>W</th><th>V</th><th>A</th></tr></thead><tbody>
+        {% for item in daily %}
+          <tr><td>{{ item.period_start|localdate }}</td><td>{{ item.energy_kwh }}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td></tr>
+        {% else %}
+          <tr><td colspan="5" class="muted">Дневной статистики пока нет.</td></tr>
+        {% endfor %}
+      </tbody></table></div>
+    </article>
   </section>
+{% elif active_tab == 'control' %}
+  <section class="grid-2">
+    <article class="card">
+      <div class="section-header"><h2>Управление</h2></div>
+      <div class="muted">Для Tuya-розеток доступно базовое включение и выключение через cloud commands. До уровня мобильного приложения это ещё не космолёт, но уже не просто «смотрим и грустим».</div>
+      <div class="control-actions">
+        <form method="post" action="/devices/{{ device.id }}/toggle">
+          <input type="hidden" name="desired_state" value="true">
+          <input type="hidden" name="source_tab" value="control">
+          <button type="submit">Включить</button>
+        </form>
+        <form method="post" action="/devices/{{ device.id }}/toggle">
+          <input type="hidden" name="desired_state" value="false">
+          <input type="hidden" name="source_tab" value="control">
+          <button type="submit" class="button-secondary">Выключить</button>
+        </form>
+      </div>
+    </article>
+    <article class="card">
+      <div class="section-header"><h2>Последние команды</h2></div>
+      <div class="table-wrap"><table><thead><tr><th>Время</th><th>Команда</th><th>Значение</th><th>Статус</th><th>Ошибка</th></tr></thead><tbody>
+        {% for item in command_logs %}
+          <tr><td>{{ item.requested_at|localdt }}</td><td>{{ item.command_code }}</td><td>{{ item.command_value }}</td><td><span class="badge {{ item.status.value }}">{{ item.status.value }}</span></td><td><span class="json-snippet">{{ item.error_message or '—' }}</span></td></tr>
+        {% else %}
+          <tr><td colspan="5" class="muted">Команд ещё не было.</td></tr>
+        {% endfor %}
+      </tbody></table></div>
+    </article>
+  </section>
+{% endif %}
 {% endblock %}

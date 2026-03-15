@@ -15,54 +15,67 @@
 3. команды для сервера отдельно в окне кода  
 4. в каждом релизе обязательно обновляешь этот файл `docs/TRANSFER_TO_NEW_CHAT.md`
 
-## Что уже сделано в текущем состоянии
+## Текущее состояние
 
-Версия: `v0.3.1`
+Версия: `v0.4.0`
 
 Сделано:
-- стартовый MVP-каркас FastAPI + PostgreSQL + Docker Compose;
-- изоляция Docker-окружения через отдельный compose project name, volume и network;
-- секреты вынесены из `.env` в файловую директорию `secrets/`;
-- LAN-first мастер первого запуска с приоритетом адресов `192.168.x.x` и портом по умолчанию `13443`;
-- режим `LAN-only`, не позволяющий случайно публиковать сервис на `0.0.0.0`;
-- demo-провайдер с тестовыми устройствами и метриками;
-- рабочая интеграция `tuya_cloud`;
-- импорт списка устройств из Tuya cloud project через `GET /v2.0/cloud/thing/device`;
-- чтение спецификации устройства через `GET /v1.0/iot-03/devices/{device_id}/specification`;
-- чтение текущего статуса через `GET /v1.0/iot-03/devices/{device_id}/status`;
-- сохранение живых снапшотов статуса в таблицу `device_status_snapshots`;
-- сохранение текущих live-метрик прямо в карточке устройства (`switch_on`, `current_power_w`, `current_voltage_v`, `current_a`, `energy_total_kwh`, `fault_code`);
-- расчёт суточного и месячного расхода по счётчику `add_ele` на своей стороне без Tuya Power Management;
-- фоновый планировщик синхронизации по расписанию внутри приложения;
-- журнал синхронизаций в UI и API (`/api/sync/status`, `/api/sync/runs`);
-- команда `./scripts/manage.sh configure-sync` для настройки интервала и поведения фонового цикла;
-- иконка проекта и favicon в `app/static/`;
-- root-маршруты `/favicon.ico`, `/icon.svg`, `/apple-touch-icon.png`, `/site.webmanifest`;
-- версия ПО в общем футере всех страниц;
-- веб-панель со списком устройств, live-статусами, суммарной нагрузкой и историей снапшотов;
-- сводная панель с графиком расхода за 14 дней, топом потребителей за день/месяц и списком устройств, которые прямо сейчас тянут нагрузку;
-- карточка устройства с графиком мощности, графиком дневного и месячного расхода.
+- LAN-first запуск с привязкой к локальному IP и порту по умолчанию `13443`;
+- изоляция Docker-окружения и секреты только в `secrets/`;
+- demo-провайдер и рабочая интеграция `tuya_cloud`;
+- импорт устройств из Tuya, получение спецификации и live-статусов;
+- хранение снапшотов статуса в PostgreSQL;
+- расчёт day/month расхода по счётчику `add_ele` без Tuya Power Management;
+- фоновая синхронизация по расписанию;
+- UI с разделами **Главная / Устройства / Потребление / Синхронизация / Настройки / Резервные копии**;
+- вкладки на карточке устройства **Обзор / Графики / История / Управление**;
+- графики мощности и расхода;
+- формат времени в UI: `ДД-ММ-ГГГГ ЧЧ:ММ:СС`;
+- дефолтный часовой пояс `Europe/Moscow`;
+- базовое управление Tuya-розетками через `switch_1`;
+- журнал команд устройству;
+- скрытие temp-устройств по умолчанию и ручное скрытие/возврат устройств из UI;
+- при синхронизации удаляются из локальной БД устройства текущего провайдера, которых больше нет в источнике;
+- автобэкап БД перед `restart` и `up --build`;
+- команды `backup-db`, `backup-list`, `restore-db`;
+- иконка проекта, favicon и manifest.
 
-## Текущее поведение
+## Важные детали
 
-Сейчас проект умеет работать в двух режимах:
+### Обновление сервера
 
-### 1. `SMARTLIFE_PROVIDER=demo`
-- быстрый запуск без реальных устройств;
-- загрузка demo-устройств и истории энергометрик;
-- проверка UI, API и расчётов.
+Используем **только git workflow**:
 
-### 2. `SMARTLIFE_PROVIDER=tuya_cloud`
-- чтение Tuya Access ID / Access Secret из `secrets/`;
-- запрос access token;
-- импорт устройств из проекта Tuya;
-- чтение live-статусов розеток и других устройств;
-- накопление снапшотов и расчёт day/month по `add_ele`;
-- автоматическая фоновая синхронизация при старте и далее по интервалу.
+```bash
+cd /opt/SmartLife
+git pull --ff-only
+chmod +x scripts/manage.sh
+./scripts/manage.sh up --build
+./scripts/manage.sh health
+./scripts/manage.sh url
+```
 
-## Важные детали по Tuya
+Архив релиза не накатывается поверх git-репозитория как основной путь обновления.
 
-Проверенная модель розетки уже отдаёт нужные поля:
+### База данных
+
+Автобэкап делается перед:
+- `./scripts/manage.sh restart`
+- `./scripts/manage.sh up --build`
+
+Ручные команды:
+
+```bash
+./scripts/manage.sh backup-db
+./scripts/manage.sh backup-list
+./scripts/manage.sh restore-db backups/db/<file>.dump
+```
+
+Автовосстановление намеренно не включено, чтобы не откатывать базу без явной команды.
+
+### Tuya
+
+Проверенная модель розетки уже отдаёт:
 - `switch_1`
 - `add_ele`
 - `cur_current`
@@ -76,22 +89,16 @@
 - `cur_voltage / 10` → `V`
 - `cur_current / 1000` → `A`
 
-Логика расчёта расхода:
-- каждый sync сохраняет новый снапшот;
-- берётся разница `energy_total_kwh` между новым и предыдущим снапшотом;
-- в day/month идёт только положительная дельта;
-- если счётчик сбросился назад, отрицательная дельта игнорируется.
+Управление в текущем релизе:
+- поддержан базовый toggle через `switch_1`;
+- статус команды пишется в `device_command_logs`.
 
-## Что важно помнить дальше
+### Часовой пояс
 
-Следующие крупные шаги:
-1. удалённое управление устройствами (toggle / команды);
-2. фильтры по комнатам/типам устройств;
-3. полноценная интеграция Xiaomi Mi Home / miIO;
-4. расширенный roadmap по Smart Life / Mi Home устройствам и аналитике;
-5. отдельный экран настроек интеграции и синхронизации в самом UI.
+- UI и day/month агрегаты используют `SMARTLIFE_TIMEZONE`;
+- текущее значение по умолчанию: `Europe/Moscow`.
 
-## Полезные команды на сервере
+## Полезные команды
 
 ### Новый сервер
 
@@ -104,7 +111,6 @@ chmod +x scripts/manage.sh
 ./scripts/manage.sh configure-tuya
 ./scripts/manage.sh configure-sync
 ./scripts/manage.sh configure-timezone Europe/Moscow
-./scripts/manage.sh restart
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```
@@ -113,40 +119,25 @@ chmod +x scripts/manage.sh
 
 ```bash
 cd /opt/SmartLife
+git pull --ff-only
 chmod +x scripts/manage.sh
 ./scripts/manage.sh configure-tuya
 ./scripts/manage.sh configure-sync
 ./scripts/manage.sh configure-timezone Europe/Moscow
 ./scripts/manage.sh up --build
+./scripts/manage.sh rebuild-energy
 ./scripts/manage.sh health
 ./scripts/manage.sh url
-./scripts/manage.sh rebuild-energy
 ```
+
+## Следующие логичные шаги
+
+1. автообновление страниц в браузере без ручного F5;  
+2. расширенное управление устройствами beyond `switch_1`;  
+3. полноценная Xiaomi / Mi Home интеграция;  
+4. фильтры по комнатам и типам устройств;  
+5. multi-user и роли.
 
 ## Подсказка для следующего чата
 
 Если продолжаем разработку, сначала сверяем фактическое состояние `repo/main` и сервера `/opt/SmartLife`, потом готовим следующий релиз.
-
-
-Обновление сервера через git:
-
-```bash
-cd /opt/SmartLife
-git pull --ff-only
-chmod +x scripts/manage.sh
-./scripts/manage.sh up --build
-./scripts/manage.sh health
-./scripts/manage.sh url
-```
-
-
-Обновление v0.2.6
-- дефолтный часовой пояс проекта переведён на `Europe/Moscow` (UTC+3);
-- добавлена команда `./scripts/manage.sh configure-timezone Europe/Moscow`;
-- добавлена команда `./scripts/manage.sh rebuild-energy` для пересчёта исторических day/month агрегатов из снапшотов с учётом текущей тайзоны;
-- интерфейс, `/health` и новые агрегаты используют `SMARTLIFE_TIMEZONE` (по умолчанию `Europe/Moscow`).
-
-Обновление v0.2.7
-- пользовательский вывод времени в UI переведён на формат `ДД-ММ-ГГГГ ЧЧ:ММ:СС`;
-- даты дневной и месячной статистики переведены на формат `ДД-ММ-ГГГГ`;
-- убран суффикс тайзоны из самих отметок времени, чтобы интерфейс выглядел компактнее;

@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#0f172a">
-    <title>SmartLife</title>
+    <title>{{ page_title or 'SmartLife' }} · SmartLife</title>
     <link rel="icon" type="image/svg+xml" href="/icon.svg?v={{ app_settings.app_version }}">
     <link rel="icon" type="image/x-icon" sizes="any" href="/favicon.ico?v={{ app_settings.app_version }}">
     <link rel="shortcut icon" href="/favicon.ico?v={{ app_settings.app_version }}">
@@ -21,16 +21,35 @@
           <div class="subtitle">Устройства Smart Life / Mi Home</div>
         </div>
       </div>
-      <nav class="navlinks">
-        <a href="/">Панель</a>
-        <a href="/api/devices">API</a>
-        <a href="/api/sync/status">Sync</a>
-        <a href="/health">Health</a>
-      </nav>
+      <div class="topbar-meta">
+        <div>{{ settings.bind_ip }}:{{ settings.public_port }}</div>
+        <div class="muted tiny">{{ settings.timezone }} · v{{ app_settings.app_version }}</div>
+      </div>
     </header>
-    <main class="container">
-      {% block content %}{% endblock %}
-    </main>
+
+    <div class="layout-shell">
+      <aside class="sidebar card">
+        <nav class="sidebar-nav">
+          {% for item in nav_items %}
+            <a class="sidebar-link {% if active_nav == item.key %}active{% endif %}" href="{{ item.href }}">{{ item.label }}</a>
+          {% endfor %}
+        </nav>
+        <div class="sidebar-note">
+          <div class="muted tiny">Провайдер</div>
+          <div>{{ settings.smartlife_provider }}</div>
+          <div class="muted tiny spaced">LAN URL</div>
+          <div><a href="{{ settings.app_base_url }}">{{ settings.app_base_url }}</a></div>
+        </div>
+      </aside>
+
+      <main class="container-main">
+        {% if flash %}
+          <div class="flash">{{ flash }}</div>
+        {% endif %}
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+
     <footer class="footer">
       <div class="footer-inner">
         <div>SmartLife</div>

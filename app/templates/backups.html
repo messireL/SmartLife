@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card page-hero">
+  <h1>Резервные копии</h1>
+  <div class="muted">Перед restart и up --build теперь делается автобэкап БД. Автовосстановление не включал специально — оно любит откатывать жизнь назад в самый неподходящий момент.</div>
+</section>
+
+<section class="card">
+  <div class="section-header"><h2>Команды</h2></div>
+  <pre class="command-block">./scripts/manage.sh backup-db
+./scripts/manage.sh backup-list
+./scripts/manage.sh restore-db backups/db/&lt;file&gt;.dump</pre>
+</section>
+
+<section class="card">
+  <div class="section-header"><h2>Файлы бэкапов</h2><div class="muted">{{ backups|length }} шт.</div></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Файл</th><th>Размер</th><th>mtime (unix)</th></tr></thead>
+      <tbody>
+        {% for item in backups %}
+          <tr>
+            <td><code>{{ item.name }}</code></td>
+            <td>{{ item.size_mb }} MB</td>
+            <td>{{ item.modified_at|localdt }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="muted">Пока нет ни одной резервной копии.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

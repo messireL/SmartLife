@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.version import APP_VERSION
-from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, SyncRun
+from app.db.models import BucketType, Device, DeviceCommandLog, DeviceStatusSnapshot, EnergySample, SyncRun
 from app.db.session import get_db
 from app.services.dashboard_service import get_sync_overview
 
@@ -14,8 +14,11 @@ router = APIRouter(prefix="/api", tags=["api"])
 
 
 @router.get("/devices")
-def list_devices(db: Session = Depends(get_db)):
-    devices = db.execute(select(Device).order_by(Device.room_name, Device.name)).scalars().all()
+def list_devices(include_hidden: bool = Query(default=False), db: Session = Depends(get_db)):
+    stmt = select(Device)
+    if not include_hidden:
+        stmt = stmt.where(Device.is_hidden.is_(False))
+    devices = db.execute(stmt.order_by(Device.room_name, Device.name)).scalars().all()
     return [
         {
             "id": device.id,
@@ -30,6 +33,8 @@ def list_devices(db: Session = Depends(get_db)):
             "location_name": device.location_name,
             "icon_url": device.icon_url,
             "is_online": device.is_online,
+            "is_hidden": device.is_hidden,
+            "hidden_reason": device.hidden_reason,
             "switch_on": device.switch_on,
             "current_power_w": float(device.current_power_w) if device.current_power_w is not None else None,
             "current_voltage_v": float(device.current_voltage_v) if device.current_voltage_v is not None else None,
@@ -114,6 +119,34 @@ def device_snapshots(device_id: int, limit: int = 100, db: Session = Depends(get
             for item in items
         ],
     }
+
+
+@router.get("/devices/{device_id}/commands")
+def device_commands(device_id: int, limit: int = 20, db: Session = Depends(get_db)):
+    device = db.get(Device, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="device not found")
+    limit = max(1, min(limit, 100))
+    items = db.execute(
+        select(DeviceCommandLog)
+        .where(DeviceCommandLog.device_id == device.id)
+        .order_by(DeviceCommandLog.requested_at.desc(), DeviceCommandLog.id.desc())
+        .limit(limit)
+    ).scalars().all()
+    return [
+        {
+            "id": item.id,
+            "command_code": item.command_code,
+            "command_value": item.command_value,
+            "status": item.status.value,
+            "provider": item.provider,
+            "requested_at": item.requested_at.isoformat() if item.requested_at else None,
+            "finished_at": item.finished_at.isoformat() if item.finished_at else None,
+            "result_summary": item.result_summary,
+            "error_message": item.error_message,
+        }
+        for item in items
+    ]
 
 
 @router.get("/sync/status")

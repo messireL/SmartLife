@@ -27,6 +27,7 @@ services:
       - .env
     volumes:
       - ./secrets:/app/secrets:ro
+      - ./backups:/app/backups
     ports:
       - "${SMARTLIFE_BIND_IP:-0.0.0.0}:${SMARTLIFE_PUBLIC_PORT:-13443}:${SMARTLIFE_APP_PORT:-18089}"
     healthcheck:

@@ -2,10 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT_DIR"
-
 ENV_FILE="$ROOT_DIR/.env"
 SECRETS_DIR="$ROOT_DIR/secrets"
+BACKUPS_DIR="$ROOT_DIR/backups/db"
 DEFAULT_PORT="13443"
 DEFAULT_NETWORK_MODE="lan"
 DEFAULT_LAN_SUBNET_PREFIX="192.168."
@@ -192,11 +191,11 @@ validate_runtime() {
 
   if [[ "$network_mode" == "lan" && "$lan_only" == "yes" ]]; then
     if [[ "$bind_ip" == "0.0.0.0" ]]; then
-      echo "В режиме LAN-only нельзя использовать 0.0.0.0. Выбери конкретный IP сервера из локальной сети." >&2
+      echo "В режиме LAN-only нельзя использовать 0.0.0.0." >&2
       exit 1
     fi
     if ! is_private_ip "$bind_ip"; then
-      echo "В режиме LAN-only адрес должен быть локальным (192.168.x.x / 10.x.x.x / 172.16-31.x.x / 127.0.0.1). Получено: $bind_ip" >&2
+      echo "В режиме LAN-only адрес должен быть локальным. Получено: $bind_ip" >&2
       exit 1
     fi
   fi
@@ -218,18 +217,15 @@ configure_runtime() {
   upsert_env SMARTLIFE_TIMEZONE "${SMARTLIFE_TIMEZONE:-Europe/Moscow}"
 
   load_env
-
   local force_mode="${1:-no}"
   if [[ "${SMARTLIFE_RUNTIME_CONFIGURED:-no}" == "yes" && "$force_mode" != "yes" ]]; then
     return 0
   fi
 
   echo "Режим сети: ${SMARTLIFE_NETWORK_MODE:-$DEFAULT_NETWORK_MODE} (LAN-only=${SMARTLIFE_LAN_ONLY:-yes}, приоритет подсети ${SMARTLIFE_LAN_SUBNET_PREFIX:-$DEFAULT_LAN_SUBNET_PREFIX}x)" >&2
-
   local bind_ip
   bind_ip="$(choose_bind_ip)"
   validate_runtime "$bind_ip"
-
   local public_port
   public_port="$(choose_public_port)"
 
@@ -239,7 +235,6 @@ configure_runtime() {
   upsert_env SMARTLIFE_RUNTIME_CONFIGURED yes
 
   load_env
-
   echo "Конфигурация сохранена: ${SMARTLIFE_APP_BASE_URL}" >&2
 }
 
@@ -322,7 +317,6 @@ configure_tuya() {
   upsert_env SMARTLIFE_TUYA_BASE_URL "$base_url"
 
   echo "Tuya Cloud настроен. Провайдер переключён на tuya_cloud, endpoint=${base_url}" >&2
-  echo "Дальше можно запустить ./scripts/manage.sh up --build и ./scripts/manage.sh sync" >&2
 }
 
 configure_sync() {
@@ -335,25 +329,11 @@ configure_sync() {
   local enabled=""
   read -r -p "Включить фоновую синхронизацию [${current_enabled}]: " enabled
   enabled="${enabled:-$current_enabled}"
-  case "$enabled" in
-    yes|no|true|false|1|0) ;;
-    *)
-      echo "Используй yes/no." >&2
-      exit 1
-      ;;
-  esac
 
   local current_startup="${SMARTLIFE_SYNC_ON_STARTUP:-yes}"
   local startup=""
   read -r -p "Запускать синхронизацию сразу при старте приложения [${current_startup}]: " startup
   startup="${startup:-$current_startup}"
-  case "$startup" in
-    yes|no|true|false|1|0) ;;
-    *)
-      echo "Используй yes/no." >&2
-      exit 1
-      ;;
-  esac
 
   local current_interval="${SMARTLIFE_SYNC_INTERVAL_SECONDS:-60}"
   local interval=""
@@ -367,7 +347,6 @@ configure_sync() {
   upsert_env SMARTLIFE_BACKGROUND_SYNC_ENABLED "$enabled"
   upsert_env SMARTLIFE_SYNC_ON_STARTUP "$startup"
   upsert_env SMARTLIFE_SYNC_INTERVAL_SECONDS "$interval"
-
   echo "Настройки синхронизации обновлены: background=${enabled}, startup=${startup}, interval=${interval}s" >&2
 }
 
@@ -375,23 +354,19 @@ configure_timezone() {
   copy_env_template
   load_env
   ensure_secrets
-
   local requested="${1:-}"
   local current="${SMARTLIFE_TIMEZONE:-Europe/Moscow}"
   local timezone=""
-
   if [[ -n "$requested" ]]; then
     timezone="$requested"
   else
     read -r -p "Часовой пояс приложения [${current}]: " timezone
     timezone="${timezone:-$current}"
   fi
-
   if [[ -z "$timezone" ]]; then
     echo "Часовой пояс не должен быть пустым." >&2
     exit 1
   fi
-
   upsert_env SMARTLIFE_TIMEZONE "$timezone"
   echo "Часовой пояс обновлён: ${timezone}" >&2
 }
@@ -478,12 +453,102 @@ verify_app_ready() {
 
   if ! wait_for_http "$external_url" 30 2; then
     echo "SmartLife внутри контейнера запущен, но опубликованный URL пока недоступен: $external_url" >&2
-    echo "Проверь, что выбранный bind IP реально назначен серверу и не блокируется firewall." >&2
+    echo "Проверь bind IP и firewall." >&2
     show_app_logs
     return 1
   fi
 
   return 0
+}
+
+ensure_backup_dir() {
+  mkdir -p "$BACKUPS_DIR"
+}
+
+compose_has_db() {
+  compose ps -q db >/dev/null 2>&1 && [[ -n "$(compose ps -q db 2>/dev/null || true)" ]]
+}
+
+postgres_volume_name() {
+  load_env
+  printf '%s_postgres_data' "${SMARTLIFE_COMPOSE_PROJECT_NAME:-smartlife}"
+}
+
+database_initialized() {
+  local volume_name
+  volume_name="$(postgres_volume_name)"
+  if docker volume inspect "$volume_name" >/dev/null 2>&1; then
+    return 0
+  fi
+  compose_has_db
+}
+
+wait_for_db_ready() {
+  local attempts="${1:-30}"
+  local i
+  for ((i=1; i<=attempts; i++)); do
+    if compose exec -T db sh -lc 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+ensure_db_running_for_backup() {
+  if ! compose_has_db; then
+    compose up -d db >/dev/null
+  fi
+  wait_for_db_ready 45
+}
+
+backup_db() {
+  local label="${1:-manual}"
+  ensure_backup_dir
+  ensure_db_running_for_backup
+  load_env
+
+  local timestamp file_name file_path
+  timestamp="$(date +%Y%m%d_%H%M%S)"
+  file_name="smartlife_${timestamp}_${label}.dump"
+  file_path="$BACKUPS_DIR/$file_name"
+
+  compose exec -T db sh -lc 'export PGPASSWORD="$(cat /run/secrets/db_password)"; pg_dump -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$file_path"
+  echo "Бэкап БД сохранён: $file_path" >&2
+  printf '%s\n' "$file_path"
+}
+
+autobackup_before() {
+  local label="$1"
+  if database_initialized; then
+    backup_db "$label" >/dev/null
+  else
+    echo "Автобэкап пропущен: база ещё не инициализирована." >&2
+  fi
+}
+
+backup_list() {
+  ensure_backup_dir
+  if ! compgen -G "$BACKUPS_DIR/*.dump" >/dev/null; then
+    echo "Бэкапов пока нет." >&2
+    return 0
+  fi
+  ls -lh "$BACKUPS_DIR"/*.dump
+}
+
+restore_db() {
+  local backup_file="${1:-}"
+  if [[ -z "$backup_file" ]]; then
+    echo "Укажи путь к файлу бэкапа: ./scripts/manage.sh restore-db backups/db/<file>.dump" >&2
+    exit 1
+  fi
+  if [[ ! -f "$backup_file" ]]; then
+    echo "Файл не найден: $backup_file" >&2
+    exit 1
+  fi
+  ensure_db_running_for_backup
+  cat "$backup_file" | compose exec -T db sh -lc 'export PGPASSWORD="$(cat /run/secrets/db_password)"; pg_restore --clean --if-exists --no-owner -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+  echo "Восстановление завершено из файла: $backup_file" >&2
 }
 
 case "${1:-}" in
@@ -511,6 +576,9 @@ case "${1:-}" in
   up)
     shift || true
     configure_runtime
+    if [[ "$*" == *"--build"* ]]; then
+      autobackup_before "pre_up_build"
+    fi
     compose up -d "$@"
     show_banner
     verify_app_ready
@@ -527,8 +595,10 @@ case "${1:-}" in
     compose logs -f --tail=200
     ;;
   restart)
+    autobackup_before "pre_restart"
     compose restart
     show_banner
+    verify_app_ready
     ;;
   ps)
     compose ps
@@ -543,6 +613,17 @@ case "${1:-}" in
   rebuild-energy)
     compose exec app python -m app.commands.rebuild_energy
     ;;
+  backup-db)
+    shift || true
+    backup_db "${1:-manual}"
+    ;;
+  backup-list)
+    backup_list
+    ;;
+  restore-db)
+    shift || true
+    restore_db "${1:-}"
+    ;;
   shell)
     compose exec app bash
     ;;
@@ -556,7 +637,7 @@ case "${1:-}" in
     echo "$(show_url)"
     ;;
   *)
-    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--build]|down|build|logs|restart|ps|sync|rebuild-energy|seed-demo|shell|health|url}"
+    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--build]|down|build|logs|restart|ps|sync|rebuild-energy|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|health|url}"
     exit 1
     ;;
 esac

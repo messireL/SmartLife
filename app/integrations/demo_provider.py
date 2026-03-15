@@ -176,3 +176,6 @@ class DemoProvider(DeviceProvider):
                 raw_payload='{"switch_1": false, "cur_power": 0.0}',
             ),
         ]
+
+    def send_switch_command(self, device_id: str, switch_on: bool) -> dict:
+        return {"success": True, "device_id": device_id, "switch_on": bool(switch_on), "provider": self.provider_name.value}

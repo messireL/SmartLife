@@ -4,13 +4,14 @@ from collections.abc import Iterable, Sequence
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
 from app.core.timeutils import local_day_start_from_utc, local_month_start_from_utc
+from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, ProviderType
 from app.integrations.base import ProviderDevice, ProviderEnergySample, ProviderStatusSnapshot
 from app.integrations.registry import get_provider
+from app.services.device_query_service import is_temp_device_name
 
 
 ZERO = Decimal("0.000")
@@ -23,6 +24,7 @@ def sync_from_provider(db: Session) -> dict:
     monthly_samples = provider.get_monthly_energy_samples()
     snapshots = provider.get_status_snapshots(devices)
 
+    pruned_devices = _prune_missing_provider_devices(db, provider.provider_name, devices)
     device_map = _upsert_devices(db, devices)
     inserted_daily = _upsert_energy_samples(db, BucketType.DAY, daily_samples, device_map)
     inserted_monthly = _upsert_energy_samples(db, BucketType.MONTH, monthly_samples, device_map)
@@ -42,7 +44,19 @@ def sync_from_provider(db: Session) -> dict:
         "monthly_samples_total": inserted_monthly,
         "snapshots_total": inserted_snapshots,
         "aggregated_energy_updates": aggregated_deltas,
+        "pruned_devices_total": pruned_devices,
     }
+
+
+
+def _prune_missing_provider_devices(db: Session, provider: ProviderType, devices: Sequence[ProviderDevice]) -> int:
+    current_ids = {item.external_id for item in devices}
+    existing = db.execute(select(Device).where(Device.provider == provider)).scalars().all()
+    stale_ids = [row.id for row in existing if row.external_id not in current_ids]
+    if not stale_ids:
+        return 0
+    db.execute(delete(Device).where(Device.id.in_(stale_ids)))
+    return len(stale_ids)
 
 
 
@@ -66,6 +80,9 @@ def _upsert_devices(db: Session, devices: Iterable[ProviderDevice]) -> dict[str,
         device.is_online = item.is_online
         device.last_seen_at = item.last_seen_at
         device.notes = item.notes
+        if _should_auto_hide_temp_device(item.name) and device.hidden_reason != "shown by user":
+            device.is_hidden = True
+            device.hidden_reason = "auto-hidden temp device"
         db.flush()
         device_map[item.external_id] = device
     return device_map
@@ -222,3 +239,7 @@ def _increment_aggregate(
     sample.voltage_v = voltage_v
     sample.current_a = current_a
     sample.source_note = source_note
+
+
+def _should_auto_hide_temp_device(name: str | None) -> bool:
+    return is_temp_device_name(name)

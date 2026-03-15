@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card page-hero">
+  <h1>Настройки</h1>
+  <div class="muted">Тут собраны ключевые параметры runtime, чтобы не вспоминать потом, на каком IP всё это счастье висит и почему синк идёт каждые 60 секунд.</div>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <div class="section-header"><h2>Runtime</h2></div>
+    <div class="status-stack">
+      <div class="status-row"><span class="muted">Base URL</span><span>{{ settings.app_base_url }}</span></div>
+      <div class="status-row"><span class="muted">Bind IP</span><span>{{ settings.bind_ip }}</span></div>
+      <div class="status-row"><span class="muted">Порт</span><span>{{ settings.public_port }}</span></div>
+      <div class="status-row"><span class="muted">Сеть</span><span>{{ settings.network_mode }}</span></div>
+      <div class="status-row"><span class="muted">Часовой пояс</span><span>{{ settings.timezone }}</span></div>
+      <div class="status-row"><span class="muted">Версия</span><span>{{ app_settings.app_version }}</span></div>
+    </div>
+  </article>
+
+  <article class="card">
+    <div class="section-header"><h2>Провайдер и фоновые джобы</h2></div>
+    <div class="status-stack">
+      <div class="status-row"><span class="muted">Провайдер</span><span>{{ settings.smartlife_provider }}</span></div>
+      <div class="status-row"><span class="muted">Фоновая синхронизация</span><span>{% if sync_overview.background_sync_enabled %}да{% else %}нет{% endif %}</span></div>
+      <div class="status-row"><span class="muted">Стартовый прогон</span><span>{% if sync_overview.sync_on_startup %}да{% else %}нет{% endif %}</span></div>
+      <div class="status-row"><span class="muted">Интервал</span><span>{{ sync_overview.sync_interval_seconds }} сек</span></div>
+      <div class="status-row"><span class="muted">Health</span><span><a href="/health">/health</a></span></div>
+    </div>
+  </article>
+</section>
+
+<section class="card">
+  <div class="section-header"><h2>Подсказка по бэкапам</h2><a class="text-link" href="/backups">Открыть резервные копии</a></div>
+  <pre class="command-block">./scripts/manage.sh backup-db
+./scripts/manage.sh backup-list
+./scripts/manage.sh restore-db backups/db/&lt;file&gt;.dump</pre>
+</section>
+{% endblock %}

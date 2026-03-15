@@ -26,6 +26,8 @@ def _apply_postgres_migrations() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS fault_code VARCHAR(255)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_status_at TIMESTAMP",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_status_payload TEXT",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS hidden_reason VARCHAR(255)",
         "ALTER TABLE energy_samples ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
         "CREATE TABLE IF NOT EXISTS sync_runs ("
         "id SERIAL PRIMARY KEY, "
@@ -43,6 +45,24 @@ def _apply_postgres_migrations() -> None:
         "CREATE INDEX IF NOT EXISTS ix_sync_runs_trigger ON sync_runs(trigger)",
         "CREATE INDEX IF NOT EXISTS ix_sync_runs_status ON sync_runs(status)",
         "CREATE INDEX IF NOT EXISTS ix_sync_runs_started_at ON sync_runs(started_at)",
+        "CREATE TABLE IF NOT EXISTS device_command_logs ("
+        "id SERIAL PRIMARY KEY, "
+        "device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE, "
+        "command_code VARCHAR(128) NOT NULL, "
+        "command_value VARCHAR(255) NOT NULL, "
+        "status VARCHAR(32) NOT NULL, "
+        "provider VARCHAR(64) NOT NULL, "
+        "requested_at TIMESTAMP NOT NULL, "
+        "finished_at TIMESTAMP NULL, "
+        "result_summary TEXT NULL, "
+        "error_message TEXT NULL, "
+        "created_at TIMESTAMP DEFAULT NOW()"
+        ")",
+        "CREATE INDEX IF NOT EXISTS ix_device_command_logs_device_id ON device_command_logs(device_id)",
+        "CREATE INDEX IF NOT EXISTS ix_device_command_logs_command_code ON device_command_logs(command_code)",
+        "CREATE INDEX IF NOT EXISTS ix_device_command_logs_status ON device_command_logs(status)",
+        "CREATE INDEX IF NOT EXISTS ix_device_command_logs_provider ON device_command_logs(provider)",
+        "CREATE INDEX IF NOT EXISTS ix_device_command_logs_requested_at ON device_command_logs(requested_at)",
     ]
     with engine.begin() as connection:
         for statement in statements:

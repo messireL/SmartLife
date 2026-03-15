@@ -1,349 +1,102 @@
 {% extends "base.html" %}
 {% block content %}
-  {% if flash %}
-    <div class="flash">{{ flash }}</div>
-  {% endif %}
-
-  <section class="card access-card">
-    <div class="section-header">
-      <div>
-        <h1>Панель SmartLife</h1>
-        <div class="muted">LAN-first управление устройствами и сбор энергометрик по Tuya / Smart Life / Mi Home.</div>
-      </div>
-    </div>
-    <div class="access-grid">
-      <div>
-        <div class="muted tiny">URL</div>
-        <div class="access-value"><a href="{{ settings.app_base_url }}">{{ settings.app_base_url }}</a></div>
-      </div>
-      <div>
-        <div class="muted tiny">Режим сети</div>
-        <div class="access-value">{{ settings.network_mode }}</div>
-      </div>
-      <div>
-        <div class="muted tiny">Bind IP</div>
-        <div class="access-value">{{ settings.bind_ip }}</div>
-      </div>
-      <div>
-        <div class="muted tiny">Порт</div>
-        <div class="access-value">{{ settings.public_port }}</div>
-      </div>
-    </div>
-  </section>
-
-  <section class="summary-grid">
-    <article class="card stat-card">
-      <div class="muted">Устройств</div>
-      <div class="stat-value">{{ summary.devices_total }}</div>
-    </article>
-    <article class="card stat-card">
-      <div class="muted">Онлайн</div>
-      <div class="stat-value">{{ summary.online_total }}</div>
-    </article>
-    <article class="card stat-card">
-      <div class="muted">Включено</div>
-      <div class="stat-value">{{ summary.powered_on_total }}</div>
-    </article>
-    <article class="card stat-card">
-      <div class="muted">Сейчас тянут нагрузку</div>
-      <div class="stat-value">{{ summary.power_now_total }}</div>
-    </article>
-    <article class="card stat-card">
-      <div class="muted">Сегодня, kWh</div>
-      <div class="stat-value">{{ summary.day_total_kwh }}</div>
-    </article>
-    <article class="card stat-card">
-      <div class="muted">Текущая нагрузка, W</div>
-      <div class="stat-value">{{ summary.live_power_total_w }}</div>
-    </article>
-  </section>
-
-  <section class="card toolbar">
+<section class="card page-hero">
+  <div class="section-header">
     <div>
-      <h2>Синхронизация</h2>
-      {% if settings.smartlife_provider == 'demo' %}
-        <p class="muted">Активен demo-провайдер. Фоновая синхронизация может крутиться автоматически и пополнять тестовые данные без ручного пинка.</p>
-      {% elif settings.smartlife_provider == 'tuya_cloud' %}
-        <p class="muted">Активен Tuya Cloud. Фоновый цикл подтягивает устройства и статусы по расписанию, а расход считает по счётчику <code>add_ele</code>.</p>
-      {% else %}
-        <p class="muted">Активен провайдер {{ settings.smartlife_provider }}. Фоновые циклы синхронизации включаются настройками приложения.</p>
-      {% endif %}
+      <h1>Главная</h1>
+      <div class="muted">Короткая сводка по дому, чтобы с порога видеть, кто сейчас ест электричество, а кто просто делает умное лицо.</div>
     </div>
-    <div class="toolbar-actions">
-      <form method="post" action="/actions/sync-provider">
-        <button type="submit">Синхронизировать сейчас</button>
-      </form>
-      <div class="muted tiny">Фон: {% if sync_overview.background_sync_enabled %}включён{% else %}выключен{% endif %} · интервал {{ sync_overview.sync_interval_seconds }} сек · запуск при старте {% if sync_overview.sync_on_startup %}да{% else %}нет{% endif %}</div>
-    </div>
-  </section>
+    <form method="post" action="/actions/sync-provider">
+      <button type="submit">Синхронизировать сейчас</button>
+    </form>
+  </div>
+</section>
 
-  <section class="summary-grid sync-grid">
-    <article class="card sync-card">
-      <div class="muted">Сейчас</div>
-      <div class="status-pair sync-state-row">
-        {% if sync_overview.is_running_now %}
-          <span class="badge running">sync running</span>
-        {% else %}
-          <span class="badge idle">idle</span>
-        {% endif %}
-        <span class="muted tiny">provider={{ settings.smartlife_provider }}</span>
-      </div>
-      <div class="tiny muted">Последний запуск: {{ sync_overview.last_run.started_at|localdt if sync_overview.last_run else '—' }}</div>
-    </article>
-    <article class="card sync-card">
-      <div class="muted">Успешных циклов</div>
-      <div class="stat-value compact">{{ sync_overview.success_total }}</div>
-    </article>
-    <article class="card sync-card">
-      <div class="muted">Ошибок</div>
-      <div class="stat-value compact">{{ sync_overview.error_total }}</div>
-    </article>
-    <article class="card sync-card">
-      <div class="muted">Последний статус</div>
-      <div class="sync-last-status">
-        {% if sync_overview.last_run %}
-          <span class="badge {{ sync_overview.last_run.status.value }}">{{ sync_overview.last_run.status.value }}</span>
-          <div class="tiny muted">{{ sync_overview.last_run.duration_ms or '—' }} ms</div>
-        {% else %}
-          <span class="muted">—</span>
-        {% endif %}
-      </div>
-    </article>
-  </section>
+<section class="summary-grid">
+  <article class="card stat-card"><div class="muted">Устройств</div><div class="stat-value">{{ summary.devices_total }}</div></article>
+  <article class="card stat-card"><div class="muted">Онлайн</div><div class="stat-value">{{ summary.online_total }}</div></article>
+  <article class="card stat-card"><div class="muted">Включено</div><div class="stat-value">{{ summary.powered_on_total }}</div></article>
+  <article class="card stat-card"><div class="muted">Сейчас тянут нагрузку</div><div class="stat-value">{{ summary.power_now_total }}</div></article>
+  <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ summary.day_total_kwh }}</div></article>
+  <article class="card stat-card"><div class="muted">Текущая нагрузка, W</div><div class="stat-value">{{ summary.live_power_total_w }}</div></article>
+</section>
 
-  <section class="chart-grid chart-grid-main">
-    <article class="card chart-card chart-span-2">
-      <div class="section-header">
-        <div>
-          <h2>Расход по всем устройствам за 14 дней</h2>
-          <div class="muted">{{ dashboard_panels.trend_period_label }}</div>
-        </div>
-        <div class="chart-meta">max {{ dashboard_panels.daily_totals_chart.max_value_display }}</div>
-      </div>
-      {% if dashboard_panels.daily_totals_chart.has_data %}
-        <div class="bar-chart">
-          {% for item in dashboard_panels.daily_totals_chart["items"] %}
-            <div class="bar-item" title="{{ item.title }}">
-              <div class="bar-value">{{ item.value_display }}</div>
-              <div class="bar-track"><div class="bar-fill" style="height: {{ item.pct }}%"></div></div>
-              <div class="bar-label">{{ item.label }}</div>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty-state">Пока нет накопленной статистики по дням. Первый нормальный цикл синхронизации заполнит график.</div>
-      {% endif %}
-    </article>
-
-    <article class="card chart-card">
-      <div class="section-header">
-        <div>
-          <h2>Кто сейчас потребляет</h2>
-          <div class="muted">Текущая мощность по устройствам</div>
-        </div>
-      </div>
-      {% if dashboard_panels.current_power_chart.has_data %}
-        <div class="bar-chart compact-bars">
-          {% for item in dashboard_panels.current_power_chart["items"] %}
-            <div class="bar-item" title="{{ item.title }}">
-              <div class="bar-value small">{{ item.value_display }}</div>
-              <div class="bar-track"><div class="bar-fill accent" style="height: {{ item.pct }}%"></div></div>
-              <div class="bar-label">{{ item.label }}</div>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty-state">Сейчас ни одно устройство не показывает ненулевую мощность.</div>
-      {% endif %}
-    </article>
-
-    <article class="card chart-card">
-      <div class="section-header">
-        <div>
-          <h2>Топ расхода за сегодня</h2>
-          <div class="muted">Лидеры суточного потребления</div>
-        </div>
-      </div>
-      {% if dashboard_panels.top_today_chart.has_data %}
-        <div class="bar-chart compact-bars">
-          {% for item in dashboard_panels.top_today_chart["items"] %}
-            <div class="bar-item" title="{{ item.title }}">
-              <div class="bar-value small">{{ item.value_display }}</div>
-              <div class="bar-track"><div class="bar-fill warning" style="height: {{ item.pct }}%"></div></div>
-              <div class="bar-label">{{ item.label }}</div>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty-state">Сегодня ещё нет накопленного расхода по устройствам.</div>
-      {% endif %}
-    </article>
-  </section>
-
-  <section class="chart-grid">
-    <article class="card">
-      <div class="section-header">
-        <h2>Сейчас тянут нагрузку</h2>
-        <div class="muted">{{ dashboard_panels.live_now|length }} устройств</div>
-      </div>
-      {% if dashboard_panels.live_now %}
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Устройство</th>
-                <th>Комната</th>
-                <th>Мощность</th>
-                <th>Напряжение</th>
-                <th>Последний статус</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for device in dashboard_panels.live_now %}
-                <tr>
-                  <td><a href="/devices/{{ device.id }}">{{ device.name }}</a></td>
-                  <td>{{ device.room_name or '—' }}</td>
-                  <td>{{ device.current_power_w or '—' }} W</td>
-                  <td>{{ device.current_voltage_v or '—' }} V</td>
-                  <td>{{ (device.last_status_at or device.last_seen_at)|localdt if (device.last_status_at or device.last_seen_at) else '—' }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <div class="empty-state">Сейчас нет устройств с ненулевой нагрузкой.</div>
-      {% endif %}
-    </article>
-
-    <article class="card">
-      <div class="section-header">
-        <h2>Топ месяца</h2>
-        <div class="muted">Лидеры месячного расхода</div>
-      </div>
-      {% if dashboard_panels.top_month %}
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Устройство</th>
-                <th>Комната</th>
-                <th>Месяц, kWh</th>
-                <th>Сейчас, W</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for item in dashboard_panels.top_month %}
-                <tr>
-                  <td><a href="/devices/{{ item.device.id }}">{{ item.device.name }}</a></td>
-                  <td>{{ item.device.room_name or '—' }}</td>
-                  <td>{{ item.energy_kwh }}</td>
-                  <td>{{ item.device.current_power_w or '—' }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <div class="empty-state">Месячная статистика пока не накопилась.</div>
-      {% endif %}
-    </article>
-  </section>
-
-  <section class="card">
+<section class="chart-grid chart-grid-main">
+  <article class="card chart-card chart-span-2">
     <div class="section-header">
-      <h2>Журнал синхронизаций</h2>
-      <div class="muted">Последние {{ recent_sync_runs|length }} циклов</div>
+      <div><h2>Расход по всем устройствам за 14 дней</h2><div class="muted">{{ dashboard_panels.trend_period_label }}</div></div>
+      <a class="text-link" href="/consumption">Открыть раздел потребления</a>
     </div>
-    {% if recent_sync_runs %}
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Старт</th>
-              <th>Триггер</th>
-              <th>Статус</th>
-              <th>Длительность</th>
-              <th>Результат</th>
-              <th>Ошибка</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in recent_sync_runs %}
-              <tr>
-                <td>{{ item.started_at|localdt }}</td>
-                <td>{{ item.trigger.value }}</td>
-                <td><span class="badge {{ item.status.value }}">{{ item.status.value }}</span></td>
-                <td>{{ item.duration_ms or '—' }} ms</td>
-                <td><code class="json-snippet">{{ item.result_summary or '—' }}</code></td>
-                <td>{{ item.error_message or '—' }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    {% if dashboard_panels.daily_totals_chart.has_data %}
+      <div class="bar-chart">
+        {% for item in dashboard_panels.daily_totals_chart["items"] %}
+          <div class="bar-item" title="{{ item.title }}">
+            <div class="bar-value">{{ item.value_display }}</div>
+            <div class="bar-track"><div class="bar-fill" style="height: {{ item.pct }}%"></div></div>
+            <div class="bar-label">{{ item.label }}</div>
+          </div>
+        {% endfor %}
       </div>
     {% else %}
-      <div class="empty-state">Журнал ещё пустой. Первый фоновый цикл заполнит его сам.</div>
+      <div class="empty-state">Пока нет накопленной статистики по дням.</div>
     {% endif %}
-  </section>
+  </article>
 
-  <section class="card">
+  <article class="card chart-card">
     <div class="section-header">
-      <h2>Устройства</h2>
-      <div class="muted">{{ devices|length }} записей</div>
+      <div><h2>Кто сейчас потребляет</h2><div class="muted">Текущая мощность</div></div>
+      <a class="text-link" href="/devices">Все устройства</a>
     </div>
-    {% if devices %}
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Устройство</th>
-              <th>Провайдер</th>
-              <th>Комната</th>
-              <th>Онлайн</th>
-              <th>Реле</th>
-              <th>Мощность</th>
-              <th>Напряжение</th>
-              <th>Всего, kWh</th>
-              <th>Последний статус</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for device in devices %}
-              <tr>
-                <td>
-                  <a href="/devices/{{ device.id }}">{{ device.name }}</a>
-                  <div class="tiny muted">{{ device.product_name or device.model or '—' }}</div>
-                </td>
-                <td>{{ device.provider.value }}</td>
-                <td>{{ device.room_name or '—' }}</td>
-                <td>
-                  {% if device.is_online %}
-                    <span class="badge online">online</span>
-                  {% else %}
-                    <span class="badge offline">offline</span>
-                  {% endif %}
-                </td>
-                <td>
-                  {% if device.switch_on is sameas true %}
-                    <span class="badge on">on</span>
-                  {% elif device.switch_on is sameas false %}
-                    <span class="badge off">off</span>
-                  {% else %}
-                    <span class="muted">—</span>
-                  {% endif %}
-                </td>
-                <td>{{ device.current_power_w or '—' }}</td>
-                <td>{{ device.current_voltage_v or '—' }}</td>
-                <td>{{ device.energy_total_kwh or '—' }}</td>
-                <td>{{ (device.last_status_at or device.last_seen_at)|localdt if (device.last_status_at or device.last_seen_at) else '—' }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    {% if dashboard_panels.current_power_chart.has_data %}
+      <div class="bar-chart compact-bars">
+        {% for item in dashboard_panels.current_power_chart["items"] %}
+          <div class="bar-item" title="{{ item.title }}">
+            <div class="bar-value small">{{ item.value_display }}</div>
+            <div class="bar-track"><div class="bar-fill accent" style="height: {{ item.pct }}%"></div></div>
+            <div class="bar-label">{{ item.label }}</div>
+          </div>
+        {% endfor %}
       </div>
     {% else %}
-      <div class="empty-state">Пока пусто. Нажми «Синхронизировать сейчас» и приложение подтянет demo-данные или живые статусы из Tuya.</div>
+      <div class="empty-state">Сейчас нагрузки нет.</div>
     {% endif %}
-  </section>
+  </article>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <div class="section-header"><h2>Быстрый доступ к устройствам</h2><a class="text-link" href="/devices">Устройства</a></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Устройство</th><th>Комната</th><th>Сейчас, W</th><th>Статус</th></tr></thead>
+        <tbody>
+          {% for device in devices %}
+            <tr>
+              <td><a href="/devices/{{ device.id }}">{{ device.name }}</a></td>
+              <td>{{ device.room_name or '—' }}</td>
+              <td>{{ device.current_power_w or '—' }}</td>
+              <td>
+                {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}
+                {% if device.switch_on is sameas true %}<span class="badge on">on</span>{% elif device.switch_on is sameas false %}<span class="badge off">off</span>{% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="muted">Устройств пока нет.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article class="card">
+    <div class="section-header"><h2>Синхронизация</h2><a class="text-link" href="/sync">Журнал</a></div>
+    <div class="status-stack">
+      <div class="status-row"><span class="muted">Фон</span><span>{% if sync_overview.background_sync_enabled %}включён{% else %}выключен{% endif %}</span></div>
+      <div class="status-row"><span class="muted">Интервал</span><span>{{ sync_overview.sync_interval_seconds }} сек</span></div>
+      <div class="status-row"><span class="muted">Запуск при старте</span><span>{% if sync_overview.sync_on_startup %}да{% else %}нет{% endif %}</span></div>
+      <div class="status-row"><span class="muted">Сейчас</span><span>{% if sync_overview.is_running_now %}<span class="badge running">running</span>{% else %}<span class="badge idle">idle</span>{% endif %}</span></div>
+      <div class="status-row"><span class="muted">Последний старт</span><span>{{ sync_overview.last_run.started_at|localdt if sync_overview.last_run else '—' }}</span></div>
+    </div>
+  </article>
+</section>
 {% endblock %}

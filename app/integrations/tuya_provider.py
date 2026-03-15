@@ -116,6 +116,12 @@ class TuyaCloudProvider(DeviceProvider):
         self._spec_cache[device_id] = definitions
         return definitions
 
+    def send_switch_command(self, device_id: str, switch_on: bool) -> dict[str, Any]:
+        spec = self._get_spec_map(device_id)
+        if "switch_1" not in spec:
+            raise TuyaApiError(f"Device {device_id} does not expose switch_1 control via Tuya Cloud.")
+        return self.client.send_device_commands(device_id, [{"code": "switch_1", "value": bool(switch_on)}])
+
     def _build_snapshot(
         self,
         device_id: str,
@@ -196,6 +202,17 @@ class TuyaOpenApiClient:
         result = payload.get("result") or []
         if not isinstance(result, list):
             raise TuyaApiError(f"Unexpected status payload for device {device_id}.")
+        return result
+
+    def send_device_commands(self, device_id: str, commands: list[dict[str, Any]]) -> dict[str, Any]:
+        payload = self._request_json(
+            "POST",
+            f"/v1.0/iot-03/devices/{quote(device_id, safe='')}/commands",
+            body={"commands": commands},
+        )
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            return {"success": True, "result": result}
         return result
 
     def _get_access_token(self) -> str:

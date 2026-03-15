@@ -47,6 +47,12 @@ class SyncRunTrigger(StrEnum):
     CLI = "cli"
 
 
+class DeviceCommandStatus(StrEnum):
+    SUCCESS = "success"
+    ERROR = "error"
+    SKIPPED = "skipped"
+
+
 class Device(Base):
     __tablename__ = "devices"
 
@@ -62,6 +68,8 @@ class Device(Base):
     location_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     icon_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    hidden_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     switch_on: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     current_power_w: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     current_voltage_v: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
@@ -80,6 +88,9 @@ class Device(Base):
     )
     status_snapshots: Mapped[list["DeviceStatusSnapshot"]] = relationship(
         back_populates="device", cascade="all, delete-orphan", order_by="desc(DeviceStatusSnapshot.recorded_at)"
+    )
+    command_logs: Mapped[list["DeviceCommandLog"]] = relationship(
+        back_populates="device", cascade="all, delete-orphan", order_by="desc(DeviceCommandLog.requested_at)"
     )
 
     __table_args__ = (UniqueConstraint("provider", "external_id", name="uq_devices_provider_external_id"),)
@@ -137,3 +148,21 @@ class SyncRun(Base):
     result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+
+
+class DeviceCommandLog(Base):
+    __tablename__ = "device_command_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
+    command_code: Mapped[str] = mapped_column(String(128), index=True)
+    command_value: Mapped[str] = mapped_column(String(255))
+    status: Mapped[DeviceCommandStatus] = mapped_column(Enum(DeviceCommandStatus, name="device_command_status"), index=True)
+    provider: Mapped[str] = mapped_column(String(64), index=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+
+    device: Mapped[Device] = relationship(back_populates="command_logs")
