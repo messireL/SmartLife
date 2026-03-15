@@ -3,16 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f172a">
     <title>SmartLife</title>
-    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="shortcut icon" href="/static/favicon.ico">
-    <link rel="apple-touch-icon" href="/static/icon-192.png">
-    <link rel="stylesheet" href="/static/app.css">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg?v={{ app_settings.app_version }}">
+    <link rel="icon" type="image/x-icon" sizes="any" href="/favicon.ico?v={{ app_settings.app_version }}">
+    <link rel="shortcut icon" href="/favicon.ico?v={{ app_settings.app_version }}">
+    <link rel="apple-touch-icon" sizes="192x192" href="/apple-touch-icon.png?v={{ app_settings.app_version }}">
+    <link rel="manifest" href="/site.webmanifest?v={{ app_settings.app_version }}">
+    <link rel="stylesheet" href="/static/app.css?v={{ app_settings.app_version }}">
   </head>
   <body>
     <header class="topbar">
       <div class="brand-wrap">
-        <img class="brand-logo" src="/static/icon.svg" alt="SmartLife logo">
+        <img class="brand-logo" src="/icon.svg?v={{ app_settings.app_version }}" alt="SmartLife logo">
         <div>
           <a class="brand" href="/">SmartLife</a>
           <div class="subtitle">Устройства Smart Life / Mi Home</div>
@@ -28,5 +31,11 @@
     <main class="container">
       {% block content %}{% endblock %}
     </main>
+    <footer class="footer">
+      <div class="footer-inner">
+        <div>SmartLife</div>
+        <div class="footer-meta">Версия {{ app_settings.app_version }} · {{ app_settings.network_mode|upper }} · {{ app_settings.bind_ip }}:{{ app_settings.public_port }}</div>
+      </div>
+    </footer>
   </body>
 </html>

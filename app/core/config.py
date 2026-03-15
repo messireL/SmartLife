@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = Field(default="SmartLife", validation_alias="SMARTLIFE_APP_NAME")
-    app_version: str = Field(default="0.2.2", validation_alias="SMARTLIFE_APP_VERSION")
+    app_version: str = Field(default="0.2.3", validation_alias="SMARTLIFE_APP_VERSION")
     app_host: str = Field(default="0.0.0.0", validation_alias="SMARTLIFE_APP_HOST")
     app_port: int = Field(default=18089, validation_alias="SMARTLIFE_APP_PORT")
     app_base_url: str = Field(default="http://192.168.1.100:13443", validation_alias="SMARTLIFE_APP_BASE_URL")

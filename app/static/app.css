@@ -210,3 +210,34 @@ th { color: #cbd5e1; font-weight: 600; }
   .container { padding: 16px; }
   .metrics-grid .span-2 { grid-column: span 1; }
 }
+
+
+.footer {
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(2, 6, 23, 0.72);
+  margin-top: 24px;
+}
+.footer-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 18px 28px 28px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 14px;
+}
+.footer-meta {
+  text-align: right;
+}
+
+@media (max-width: 760px) {
+  .footer-inner {
+    padding: 18px 16px 24px;
+    flex-direction: column;
+  }
+  .footer-meta {
+    text-align: left;
+  }
+}

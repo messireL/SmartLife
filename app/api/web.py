@@ -17,6 +17,7 @@ from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
+templates.env.globals["app_settings"] = settings
 
 
 @router.get("/", response_class=HTMLResponse)
