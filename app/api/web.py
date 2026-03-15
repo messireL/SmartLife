@@ -23,7 +23,15 @@ from app.services.device_control_service import DeviceControlError, get_recent_c
 from app.services.device_query_service import get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
-from app.services.runtime_config_service import configure_demo_provider, configure_tariff_settings, configure_tuya_cloud, get_runtime_config
+from app.services.runtime_config_service import (
+    configure_demo_provider,
+    configure_tariff_settings,
+    configure_tuya_cloud,
+    get_next_scheduled_tariff_plan,
+    get_runtime_config,
+    get_tariff_change_target_month,
+    get_tariff_editor_plan,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -175,11 +183,17 @@ def sync_page(request: Request, auto_refresh: bool = Query(default=True), db: Se
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: Session = Depends(get_db)):
     runtime = get_runtime_config(db)
+    tariff_editor_plan = get_tariff_editor_plan(db)
+    next_tariff_plan = get_next_scheduled_tariff_plan(db)
+    change_target_month = get_tariff_change_target_month()
     context = _base_context(request=request, active_nav="settings", page_title="Настройки", runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
             "sync_overview": get_sync_overview(db),
+            "tariff_editor_plan": tariff_editor_plan,
+            "next_tariff_plan": next_tariff_plan,
+            "tariff_change_target_month": change_target_month,
         }
     )
     return templates.TemplateResponse(request, "settings.html", context)
@@ -293,8 +307,12 @@ def update_tariff_settings(
     except ValueError as exc:
         return RedirectResponse(url=f"/settings?flash={quote_plus(str(exc))}", status_code=303)
 
-    configure_tariff_settings(db, values=values)
-    flash = "Тариф электроэнергии сохранён в PostgreSQL. Поддерживаются единый, двухзонный и трёхзонный режимы по времени суток."
+    runtime_after, saved_plan = configure_tariff_settings(db, values=values)
+    effective_from_label = saved_plan.effective_from_label
+    if saved_plan.effective_from == runtime_after.tariff_effective_from:
+        flash = f"Тариф сохранён и действует с {effective_from_label}. Разбивка kWh и стоимости считается по выбранным зонам времени."
+    else:
+        flash = f"Тариф сохранён в расписание с {effective_from_label}. До этой даты расчёты kWh и стоимости идут по текущему тарифу, затем автоматически переключатся."
     return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 

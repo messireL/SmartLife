@@ -30,7 +30,11 @@
       <div class="status-row"><span class="muted">Стартовый прогон</span><span>{% if sync_overview.sync_on_startup %}да{% else %}нет{% endif %}</span></div>
       <div class="status-row"><span class="muted">Интервал</span><span>{{ sync_overview.sync_interval_seconds }} сек</span></div>
       <div class="status-row"><span class="muted">Health</span><span><a href="/health">/health</a></span></div>
-      <div class="status-row"><span class="muted">Тариф</span><span>{{ runtime.tariff_mode_label if runtime else "Единый" }} · {{ runtime.tariff_display if runtime else "0.00 ₽/kWh" }}</span></div>
+      <div class="status-row"><span class="muted">Активный тариф</span><span>{{ runtime.tariff_mode_label if runtime else "Единый" }} · {{ runtime.tariff_display if runtime else "0.00 ₽/kWh" }}</span></div>
+      <div class="status-row"><span class="muted">Действует с</span><span>{{ runtime.tariff_effective_from_label if runtime else '—' }}</span></div>
+      {% if next_tariff_plan %}
+      <div class="status-row"><span class="muted">Следующий тариф</span><span>{{ next_tariff_plan.tariff_mode_label }} · {{ next_tariff_plan.tariff_display }} · с {{ next_tariff_plan.effective_from_label }}</span></div>
+      {% endif %}
     </div>
   </article>
 </section>
@@ -56,7 +60,7 @@
     </label>
     <label>
       <span>Tuya Access ID</span>
-      <input type="text" name="tuya_access_id" value="{{ runtime.tuya_access_id if runtime else "" }}" autocomplete="off">
+      <input type="text" name="tuya_access_id" value="{{ runtime.tuya_access_id if runtime else '' }}" autocomplete="off">
     </label>
     <label>
       <span>Tuya Access Secret</span>
@@ -64,7 +68,7 @@
     </label>
     <label>
       <span>Tuya Project ID / Code</span>
-      <input type="text" name="tuya_project_code" value="{{ runtime.tuya_project_code if runtime else "" }}" autocomplete="off">
+      <input type="text" name="tuya_project_code" value="{{ runtime.tuya_project_code if runtime else '' }}" autocomplete="off">
     </label>
     <div class="muted">Настройки сохраняются в PostgreSQL (`app_settings`). Secret в форме обратно не показывается; пустое поле оставит текущий secret без изменений.</div>
     <div class="form-actions">
@@ -73,92 +77,107 @@
   </form>
 </section>
 
-
 <section class="card">
   <div class="section-header"><h2>Тариф электроэнергии</h2></div>
-  <form class="stack-form" method="post" action="/settings/tariff">
-    <label>
-      <span>Режим тарифа</span>
-      <select name="tariff_mode">
-        <option value="flat" {% if runtime and runtime.tariff_mode == 'flat' %}selected{% endif %}>Единый</option>
-        <option value="two_zone" {% if runtime and runtime.tariff_mode == 'two_zone' %}selected{% endif %}>Двухзонный</option>
-        <option value="three_zone" {% if runtime and runtime.tariff_mode == 'three_zone' %}selected{% endif %}>Трёхзонный</option>
-      </select>
-    </label>
+  <div class="status-stack" style="margin-bottom:16px;">
+    <div class="status-row"><span class="muted">Активный тариф сейчас</span><span>{{ runtime.tariff_mode_label }} · {{ runtime.tariff_display }} · с {{ runtime.tariff_effective_from_label }}</span></div>
+    <div class="status-row"><span class="muted">Изменения через форму вступят в силу</span><span>{{ tariff_change_target_month|localdate }}</span></div>
+    {% if next_tariff_plan %}
+    <div class="status-row"><span class="muted">Запланировано на будущее</span><span>{{ next_tariff_plan.tariff_mode_label }} · {{ next_tariff_plan.tariff_display }} · с {{ next_tariff_plan.effective_from_label }}</span></div>
+    {% endif %}
+  </div>
+  <div class="muted" style="margin-bottom:16px;">Смена режима тарифа и его стоимости применяется только с <strong>1 числа месяца</strong>. Если сегодня не первое число, форма сохранит тариф в расписание на следующий месяц. Разбивка <strong>kWh по зонам</strong> считается всегда по выбранному режиму, даже если цены пока нулевые.</div>
+
+  <form class="stack-form" method="post" action="/settings/tariff" id="tariff-form">
+    <input type="hidden" name="tariff_mode" id="tariff-mode-input" value="{{ tariff_editor_plan.tariff_mode if tariff_editor_plan else (runtime.tariff_mode if runtime else 'flat') }}">
     <label>
       <span>Валюта / символ</span>
-      <input type="text" name="tariff_currency" value="{{ runtime.tariff_currency if runtime else '₽' }}" placeholder="₽">
+      <input type="text" name="tariff_currency" value="{{ tariff_editor_plan.tariff_currency if tariff_editor_plan else (runtime.tariff_currency if runtime else '₽') }}" placeholder="₽">
     </label>
 
-    <div class="section-header"><h3>Единый тариф</h3></div>
-    <label>
-      <span>Цена за 1 kWh</span>
-      <input type="text" name="tariff_flat_price_per_kwh" value="{{ runtime.tariff_flat_price_per_kwh if runtime else '0.00' }}" placeholder="7.35">
-    </label>
-
-    <div class="section-header"><h3>Двухзонный тариф</h3></div>
-    <div class="grid-2">
-      <label>
-        <span>День, цена за 1 kWh</span>
-        <input type="text" name="tariff_two_day_price_per_kwh" value="{{ runtime.tariff_two_day_price_per_kwh if runtime else '0.00' }}" placeholder="8.12">
-      </label>
-      <label>
-        <span>Ночь, цена за 1 kWh</span>
-        <input type="text" name="tariff_two_night_price_per_kwh" value="{{ runtime.tariff_two_night_price_per_kwh if runtime else '0.00' }}" placeholder="3.25">
-      </label>
-      <label>
-        <span>Начало дня</span>
-        <input type="text" name="tariff_two_day_start" value="{{ runtime.tariff_two_day_start if runtime else '07:00' }}" placeholder="07:00">
-      </label>
-      <label>
-        <span>Начало ночи</span>
-        <input type="text" name="tariff_two_night_start" value="{{ runtime.tariff_two_night_start if runtime else '23:00' }}" placeholder="23:00">
-      </label>
+    <div class="tabs" id="tariff-tabs">
+      <button type="button" class="tab-link" data-tariff-tab="flat">Единый</button>
+      <button type="button" class="tab-link" data-tariff-tab="two_zone">Двухзонный</button>
+      <button type="button" class="tab-link" data-tariff-tab="three_zone">Трёхзонный</button>
     </div>
 
-    <div class="section-header"><h3>Трёхзонный тариф</h3></div>
-    <div class="grid-3">
+    <section class="card" data-tariff-pane="flat" style="margin-bottom:0;">
+      <div class="section-header"><h3>Единый тариф</h3></div>
       <label>
-        <span>День, цена</span>
-        <input type="text" name="tariff_three_day_price_per_kwh" value="{{ runtime.tariff_three_day_price_per_kwh if runtime else '0.00' }}" placeholder="7.10">
+        <span>Цена за 1 kWh</span>
+        <input type="text" name="tariff_flat_price_per_kwh" value="{{ tariff_editor_plan.tariff_flat_price_per_kwh if tariff_editor_plan else (runtime.tariff_flat_price_per_kwh if runtime else '0.00') }}" placeholder="7.35">
       </label>
-      <label>
-        <span>Ночь, цена</span>
-        <input type="text" name="tariff_three_night_price_per_kwh" value="{{ runtime.tariff_three_night_price_per_kwh if runtime else '0.00' }}" placeholder="2.85">
-      </label>
-      <label>
-        <span>Пик, цена</span>
-        <input type="text" name="tariff_three_peak_price_per_kwh" value="{{ runtime.tariff_three_peak_price_per_kwh if runtime else '0.00' }}" placeholder="9.40">
-      </label>
-      <label>
-        <span>Начало дня</span>
-        <input type="text" name="tariff_three_day_start" value="{{ runtime.tariff_three_day_start if runtime else '07:00' }}" placeholder="07:00">
-      </label>
-      <label>
-        <span>Начало ночи</span>
-        <input type="text" name="tariff_three_night_start" value="{{ runtime.tariff_three_night_start if runtime else '23:00' }}" placeholder="23:00">
-      </label>
-      <div></div>
-      <label>
-        <span>Пик 1: начало</span>
-        <input type="text" name="tariff_three_peak_morning_start" value="{{ runtime.tariff_three_peak_morning_start if runtime else '07:00' }}" placeholder="07:00">
-      </label>
-      <label>
-        <span>Пик 1: конец</span>
-        <input type="text" name="tariff_three_peak_morning_end" value="{{ runtime.tariff_three_peak_morning_end if runtime else '10:00' }}" placeholder="10:00">
-      </label>
-      <div></div>
-      <label>
-        <span>Пик 2: начало</span>
-        <input type="text" name="tariff_three_peak_evening_start" value="{{ runtime.tariff_three_peak_evening_start if runtime else '17:00' }}" placeholder="17:00">
-      </label>
-      <label>
-        <span>Пик 2: конец</span>
-        <input type="text" name="tariff_three_peak_evening_end" value="{{ runtime.tariff_three_peak_evening_end if runtime else '21:00' }}" placeholder="21:00">
-      </label>
-    </div>
+      <div class="muted">Один тариф на весь день. Даже если цена 0.00, общий расход в kWh продолжит считаться.</div>
+    </section>
 
-    <div class="muted">Стоимость теперь считается по времени снапшотов: единый режим — одна цена весь день, двухзонный — день/ночь, трёхзонный — день/ночь/пик по указанным окнам времени.</div>
+    <section class="card" data-tariff-pane="two_zone" style="margin-bottom:0;">
+      <div class="section-header"><h3>Двухзонный тариф</h3></div>
+      <div class="grid-2">
+        <label>
+          <span>День, цена за 1 kWh</span>
+          <input type="text" name="tariff_two_day_price_per_kwh" value="{{ tariff_editor_plan.tariff_two_day_price_per_kwh if tariff_editor_plan else (runtime.tariff_two_day_price_per_kwh if runtime else '0.00') }}" placeholder="8.12">
+        </label>
+        <label>
+          <span>Ночь, цена за 1 kWh</span>
+          <input type="text" name="tariff_two_night_price_per_kwh" value="{{ tariff_editor_plan.tariff_two_night_price_per_kwh if tariff_editor_plan else (runtime.tariff_two_night_price_per_kwh if runtime else '0.00') }}" placeholder="3.25">
+        </label>
+        <label>
+          <span>Начало дня</span>
+          <input type="text" name="tariff_two_day_start" value="{{ tariff_editor_plan.tariff_two_day_start if tariff_editor_plan else (runtime.tariff_two_day_start if runtime else '07:00') }}" placeholder="07:00">
+        </label>
+        <label>
+          <span>Начало ночи</span>
+          <input type="text" name="tariff_two_night_start" value="{{ tariff_editor_plan.tariff_two_night_start if tariff_editor_plan else (runtime.tariff_two_night_start if runtime else '23:00') }}" placeholder="23:00">
+        </label>
+      </div>
+      <div class="muted">Расход и стоимость будут раскладываться по зонам День/Ночь по времени слепков.</div>
+    </section>
+
+    <section class="card" data-tariff-pane="three_zone" style="margin-bottom:0;">
+      <div class="section-header"><h3>Трёхзонный тариф</h3></div>
+      <div class="grid-3">
+        <label>
+          <span>День, цена</span>
+          <input type="text" name="tariff_three_day_price_per_kwh" value="{{ tariff_editor_plan.tariff_three_day_price_per_kwh if tariff_editor_plan else (runtime.tariff_three_day_price_per_kwh if runtime else '0.00') }}" placeholder="7.10">
+        </label>
+        <label>
+          <span>Ночь, цена</span>
+          <input type="text" name="tariff_three_night_price_per_kwh" value="{{ tariff_editor_plan.tariff_three_night_price_per_kwh if tariff_editor_plan else (runtime.tariff_three_night_price_per_kwh if runtime else '0.00') }}" placeholder="2.85">
+        </label>
+        <label>
+          <span>Пик, цена</span>
+          <input type="text" name="tariff_three_peak_price_per_kwh" value="{{ tariff_editor_plan.tariff_three_peak_price_per_kwh if tariff_editor_plan else (runtime.tariff_three_peak_price_per_kwh if runtime else '0.00') }}" placeholder="9.40">
+        </label>
+        <label>
+          <span>Начало дня</span>
+          <input type="text" name="tariff_three_day_start" value="{{ tariff_editor_plan.tariff_three_day_start if tariff_editor_plan else (runtime.tariff_three_day_start if runtime else '07:00') }}" placeholder="07:00">
+        </label>
+        <label>
+          <span>Начало ночи</span>
+          <input type="text" name="tariff_three_night_start" value="{{ tariff_editor_plan.tariff_three_night_start if tariff_editor_plan else (runtime.tariff_three_night_start if runtime else '23:00') }}" placeholder="23:00">
+        </label>
+        <div></div>
+        <label>
+          <span>Пик 1: начало</span>
+          <input type="text" name="tariff_three_peak_morning_start" value="{{ tariff_editor_plan.tariff_three_peak_morning_start if tariff_editor_plan else (runtime.tariff_three_peak_morning_start if runtime else '07:00') }}" placeholder="07:00">
+        </label>
+        <label>
+          <span>Пик 1: конец</span>
+          <input type="text" name="tariff_three_peak_morning_end" value="{{ tariff_editor_plan.tariff_three_peak_morning_end if tariff_editor_plan else (runtime.tariff_three_peak_morning_end if runtime else '10:00') }}" placeholder="10:00">
+        </label>
+        <div></div>
+        <label>
+          <span>Пик 2: начало</span>
+          <input type="text" name="tariff_three_peak_evening_start" value="{{ tariff_editor_plan.tariff_three_peak_evening_start if tariff_editor_plan else (runtime.tariff_three_peak_evening_start if runtime else '17:00') }}" placeholder="17:00">
+        </label>
+        <label>
+          <span>Пик 2: конец</span>
+          <input type="text" name="tariff_three_peak_evening_end" value="{{ tariff_editor_plan.tariff_three_peak_evening_end if tariff_editor_plan else (runtime.tariff_three_peak_evening_end if runtime else '21:00') }}" placeholder="21:00">
+        </label>
+      </div>
+      <div class="muted">Расход и стоимость будут раскладываться по зонам День/Ночь/Пик. Если цену не задавать, kWh всё равно будут считаться по окнам времени.</div>
+    </section>
+
     {% if runtime and runtime.tariff_windows %}
       <ul class="compact-list">
         {% for line in runtime.tariff_windows %}<li>{{ line }}</li>{% endfor %}
@@ -176,4 +195,33 @@
 ./scripts/manage.sh backup-list
 ./scripts/manage.sh restore-db backups/db/&lt;file&gt;.dump</pre>
 </section>
+
+<script>
+(function () {
+  const tabs = Array.from(document.querySelectorAll('[data-tariff-tab]'));
+  const panes = Array.from(document.querySelectorAll('[data-tariff-pane]'));
+  const input = document.getElementById('tariff-mode-input');
+  if (!tabs.length || !panes.length || !input) return;
+
+  function apply(mode) {
+    input.value = mode;
+    tabs.forEach((tab) => {
+      const active = tab.dataset.tariffTab === mode;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    panes.forEach((pane) => {
+      pane.hidden = pane.dataset.tariffPane !== mode;
+    });
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', function () {
+      apply(tab.dataset.tariffTab || 'flat');
+    });
+  });
+
+  apply(input.value || 'flat');
+})();
+</script>
 {% endblock %}
