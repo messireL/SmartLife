@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.timeutils import format_local_datetime
 from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, SyncRun, SyncRunTrigger
 from app.db.session import get_db
 from app.services.dashboard_service import get_dashboard_summary, get_sync_overview
@@ -18,6 +19,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
 templates.env.globals["app_settings"] = settings
+templates.env.filters["localdt"] = lambda value: format_local_datetime(value)
 
 
 @router.get("/", response_class=HTMLResponse)

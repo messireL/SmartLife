@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.api import router as api_router
 from app.api.web import router as web_router
 from app.core.config import get_settings
+from app.core.version import APP_VERSION
 from app.db.init_db import init_db
 from app.services.sync_scheduler import run_background_sync_loop, stop_background_task
 
@@ -35,7 +36,7 @@ async def lifespan(app: FastAPI):
         await stop_background_task(background_task, stop_event)
 
 
-app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version=APP_VERSION, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(web_router)
 app.include_router(api_router)
@@ -46,7 +47,7 @@ def root_health():
     return {
         "status": "ok",
         "service": settings.app_name,
-        "version": settings.app_version,
+        "version": APP_VERSION,
         "provider": settings.smartlife_provider,
         "timezone": settings.timezone,
         "background_sync_enabled": settings.smartlife_background_sync_enabled,

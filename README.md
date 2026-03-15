@@ -183,3 +183,8 @@ chmod +x scripts/manage.sh
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```
+
+
+Примечание по версии и времени
+- версия UI и `/health` берётся из кода релиза, а не из `.env`;
+- хранение времени остаётся в UTC, но UI и агрегаты дня/месяца используют `SMARTLIFE_TIMEZONE` (по умолчанию `Europe/Helsinki`).

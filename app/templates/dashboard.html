@@ -88,7 +88,7 @@
         {% endif %}
         <span class="muted tiny">provider={{ settings.smartlife_provider }}</span>
       </div>
-      <div class="tiny muted">Последний запуск: {{ sync_overview.last_run.started_at if sync_overview.last_run else '—' }}</div>
+      <div class="tiny muted">Последний запуск: {{ sync_overview.last_run.started_at|localdt if sync_overview.last_run else '—' }}</div>
     </article>
     <article class="card sync-card">
       <div class="muted">Успешных циклов</div>
@@ -132,7 +132,7 @@
           <tbody>
             {% for item in recent_sync_runs %}
               <tr>
-                <td>{{ item.started_at }}</td>
+                <td>{{ item.started_at|localdt }}</td>
                 <td>{{ item.trigger.value }}</td>
                 <td><span class="badge {{ item.status.value }}">{{ item.status.value }}</span></td>
                 <td>{{ item.duration_ms or '—' }} ms</td>
@@ -197,7 +197,7 @@
                 <td>{{ device.current_power_w or '—' }}</td>
                 <td>{{ device.current_voltage_v or '—' }}</td>
                 <td>{{ device.energy_total_kwh or '—' }}</td>
-                <td>{{ device.last_status_at or device.last_seen_at or '—' }}</td>
+                <td>{{ (device.last_status_at or device.last_seen_at)|localdt if (device.last_status_at or device.last_seen_at) else '—' }}</td>
               </tr>
             {% endfor %}
           </tbody>

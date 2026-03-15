@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.version import APP_VERSION
 from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, SyncRun
 from app.db.session import get_db
 from app.services.dashboard_service import get_sync_overview
@@ -170,7 +171,7 @@ def health(db: Session = Depends(get_db)):
     return {
         "status": "ok",
         "service": settings.app_name,
-        "version": settings.app_version,
+        "version": APP_VERSION,
         "provider": settings.smartlife_provider,
         "base_url": settings.app_base_url,
         "timezone": settings.timezone,

@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.core.timeutils import utc_now_naive
 from app.db.init_db import init_db
 from app.db.models import SyncRun, SyncRunStatus, SyncRunTrigger
 from app.db.session import SessionLocal
@@ -41,7 +41,7 @@ def run_sync_job(*, trigger: SyncRunTrigger = SyncRunTrigger.MANUAL, fail_if_run
             "provider": get_settings().smartlife_provider,
         }
 
-    started_at = datetime.utcnow().replace(microsecond=0)
+    started_at = utc_now_naive()
     start_perf = time.perf_counter()
 
     try:
@@ -59,7 +59,7 @@ def run_sync_job(*, trigger: SyncRunTrigger = SyncRunTrigger.MANUAL, fail_if_run
 
             try:
                 result = sync_from_provider(db)
-                finished_at = datetime.utcnow().replace(microsecond=0)
+                finished_at = utc_now_naive()
                 duration_ms = int((time.perf_counter() - start_perf) * 1000)
                 sync_run.status = SyncRunStatus.SUCCESS
                 sync_run.finished_at = finished_at
@@ -77,7 +77,7 @@ def run_sync_job(*, trigger: SyncRunTrigger = SyncRunTrigger.MANUAL, fail_if_run
                 }
             except Exception as exc:  # noqa: BLE001
                 db.rollback()
-                finished_at = datetime.utcnow().replace(microsecond=0)
+                finished_at = utc_now_naive()
                 duration_ms = int((time.perf_counter() - start_perf) * 1000)
                 sync_run = db.get(SyncRun, sync_run.id)
                 if sync_run is not None:

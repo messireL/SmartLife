@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.timeutils import local_today
 from app.db.models import BucketType, Device, EnergySample, SyncRun, SyncRunStatus
 from app.services.sync_runner import is_sync_running
 
@@ -16,7 +17,7 @@ ZERO = Decimal("0.000")
 
 
 def get_dashboard_summary(db: Session) -> dict:
-    today = date.today()
+    today = local_today()
     month_start = today.replace(day=1)
 
     devices_total = db.scalar(select(func.count()).select_from(Device)) or 0

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
+from app.core.timeutils import local_day_start_from_utc, local_month_start_from_utc
 from app.integrations.base import ProviderDevice, ProviderEnergySample, ProviderStatusSnapshot
 from app.integrations.registry import get_provider
 
@@ -164,7 +165,7 @@ def _store_status_snapshots(
             db,
             device=device,
             bucket_type=BucketType.DAY,
-            period_start=item.recorded_at.date(),
+            period_start=local_day_start_from_utc(item.recorded_at),
             delta_kwh=delta,
             power_w=item.power_w,
             voltage_v=item.voltage_v,
@@ -175,7 +176,7 @@ def _store_status_snapshots(
             db,
             device=device,
             bucket_type=BucketType.MONTH,
-            period_start=item.recorded_at.date().replace(day=1),
+            period_start=local_month_start_from_utc(item.recorded_at),
             delta_kwh=delta,
             power_w=item.power_w,
             voltage_v=item.voltage_v,

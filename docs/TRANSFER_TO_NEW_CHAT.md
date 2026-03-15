@@ -134,3 +134,9 @@ chmod +x scripts/manage.sh
 ./scripts/manage.sh health
 ./scripts/manage.sh url
 ```
+
+
+Обновление v0.2.5
+- версия в футере и `/health` больше не зависит от старого `.env`;
+- интерфейс показывает время в `SMARTLIFE_TIMEZONE` (по умолчанию `Europe/Helsinki`);
+- суточная и месячная агрегация для live-снапшотов считают границы периода по локальной тайзоне, а не по UTC.
