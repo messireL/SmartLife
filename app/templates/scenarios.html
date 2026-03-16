@@ -31,7 +31,7 @@
       </h2>
       <div class="muted tiny">
         {% if scenario_tab == 'local' %}
-          Ищи по названию, цели или заметке и сразу видно, почему кнопки живут только у локальных правил.
+          Ищи по названию, цели или заметке и собирай расписания не только на одно устройство, но и на комнату, плашку или роль канала.
         {% elif scenario_tab == 'tuya' %}
           Здесь можно быстро сузить выдачу по дому, названию сцены, типу элемента и статусу, не перерывая весь мост вручную.
         {% else %}
@@ -102,7 +102,7 @@
       <div class="section-header">
         <div>
           <h2>Новый сценарий</h2>
-          <div class="muted tiny">Можно выбрать локальное устройство/канал, Tuya Tap-to-Run сцену или Tuya-автоматизацию и по расписанию включать её либо отключать.</div>
+          <div class="muted tiny">Можно выбрать локальное устройство, комнату, плашку, роль канала, Tuya Tap-to-Run сцену или Tuya-автоматизацию и по расписанию включать её либо отключать.</div>
         </div>
       </div>
       <form class="form-stack" method="post" action="/scenarios/create">
@@ -111,7 +111,7 @@
         </label>
         <label>Что запускать
           <select class="input" name="target_key" required>
-            <option value="">Выбери устройство, канал, Tuya-сцену или Tuya-автоматизацию</option>
+            <option value="">Выбери устройство, группу, Tuya-сцену или Tuya-автоматизацию</option>
             {% for item in automation_target_choices %}
               <option value="{{ item.value }}">{{ item.label }}</option>
             {% endfor %}
@@ -149,7 +149,7 @@
       <div class="section-header">
         <div>
           <h2>Подсказка по логике</h2>
-          <div class="muted tiny">Чтобы не устроить войну автоматики, лучше держать один главный источник истины на задачу: либо локальный сценарий SmartLife, либо Automation в Tuya.</div>
+          <div class="muted tiny">Чтобы не устроить войну автоматики, лучше держать один главный источник истины на задачу: либо локальный сценарий SmartLife, либо Automation в Tuya. Теперь локальные сценарии умеют бить и по группам: комнате, плашке и роли канала.</div>
         </div>
       </div>
       <div class="stack-sm">
@@ -178,7 +178,7 @@
               <div class="rule-title-row">
                 <h3>{{ rule.name }}</h3>
                 {% if rule.is_enabled %}<span class="badge online">включён</span>{% else %}<span class="badge idle">пауза</span>{% endif %}
-                {% if rule.action_kind == 'device_switch' %}<span class="badge">локальный</span>{% elif rule.action_kind == 'tuya_scene' %}<span class="badge">Tap-to-Run</span>{% else %}<span class="badge">Tuya Automation</span>{% endif %}
+                {% if rule.action_kind == 'device_switch' %}<span class="badge">локальный</span>{% elif rule.action_kind == 'device_group' %}<span class="badge">группа</span>{% elif rule.action_kind == 'tuya_scene' %}<span class="badge">Tap-to-Run</span>{% else %}<span class="badge">Tuya Automation</span>{% endif %}
               </div>
               <div class="muted tiny">{{ rule.target_label }} · {{ rule.desired_state_label }} в {{ rule.schedule_time }} · {{ rule.weekdays_label }}</div>
               <div class="muted tiny">Следующий запуск: {{ rule.next_run_label }}</div>
@@ -200,12 +200,7 @@
             </label>
             <label>Что запускать
               <select class="input" name="target_key" required>
-                {% for item in automation_target_choices %}
-                  <option value="{{ item.value }}"
-                    {% if item.action_kind == 'tuya_scene' and rule.action_kind == 'tuya_scene' and item.home_id == rule.tuya_home_id and item.scene_id == rule.tuya_scene_id %}selected{% endif %}
-                    {% if item.action_kind == 'tuya_automation' and rule.action_kind == 'tuya_automation' and item.home_id == rule.tuya_home_id and item.automation_id == rule.tuya_scene_id %}selected{% endif %}
-                    {% if item.action_kind == 'device_switch' and rule.action_kind == 'device_switch' and item.device_id == rule.device_id and item.code == rule.target_code %}selected{% endif %}
-                  >{{ item.label }}</option>
+                {% for item in automation_target_choices %}                  <option value="{{ item.value }}" {% if item.value == rule.selected_target_key %}selected{% endif %}>{{ item.label }}</option>
                 {% endfor %}
               </select>
             </label>

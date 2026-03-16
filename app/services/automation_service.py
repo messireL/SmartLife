@@ -7,9 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.timeutils import get_app_timezone
-from app.db.models import AutomationRule, AutomationRunLog, Device
+from app.db.models import AutomationRule, AutomationRunLog, Device, DeviceBadge
 from app.db.session import SessionLocal
 from app.services.device_control_service import DeviceControlError, set_device_switch_code_state
+from app.services.channel_style_service import get_channel_role_choices, get_channel_role_label
 from app.services.tuya_scene_service import (
     get_tuya_automation_choices,
     get_tuya_scene_choices,
@@ -28,8 +29,13 @@ WEEKDAY_CHOICES = [
 ]
 
 DEVICE_SWITCH_KIND = "device_switch"
+DEVICE_GROUP_KIND = "device_group"
 TUYA_SCENE_KIND = "tuya_scene"
 TUYA_AUTOMATION_KIND = "tuya_automation"
+
+GROUP_ROOM_PREFIX = "group_room:"
+GROUP_BADGE_PREFIX = "group_badge:"
+GROUP_ROLE_PREFIX = "group_role:"
 
 RUN_STATUS_META = {
     "success": {"label": "успех", "badge": "online"},
@@ -88,10 +94,44 @@ def _normalize_weekdays(values: Iterable[str]) -> str:
     return ",".join(normalized)
 
 
+def _parse_group_selector(raw: str) -> dict[str, str]:
+    value = (raw or "").strip()
+    if value.startswith(GROUP_ROOM_PREFIX):
+        room_name = value[len(GROUP_ROOM_PREFIX):].strip()
+        if not room_name:
+            raise ValueError("Некорректная группа комнаты в цели сценария.")
+        return {"group_kind": "room", "group_key": room_name}
+    if value.startswith(GROUP_BADGE_PREFIX):
+        badge_key = value[len(GROUP_BADGE_PREFIX):].strip()
+        if not badge_key:
+            raise ValueError("Некорректная группа плашки в цели сценария.")
+        return {"group_kind": "badge", "group_key": badge_key}
+    if value.startswith(GROUP_ROLE_PREFIX):
+        role_key = value[len(GROUP_ROLE_PREFIX):].strip()
+        if not role_key:
+            raise ValueError("Некорректная группа роли канала в цели сценария.")
+        return {"group_kind": "role", "group_key": role_key}
+    raise ValueError("Некорректная группа в цели сценария.")
+
+
+def _encode_group_selector(group_kind: str, group_key: str) -> str:
+    cleaned_key = (group_key or "").strip()
+    if group_kind == "room":
+        return f"{GROUP_ROOM_PREFIX}{cleaned_key}"
+    if group_kind == "badge":
+        return f"{GROUP_BADGE_PREFIX}{cleaned_key}"
+    if group_kind == "role":
+        return f"{GROUP_ROLE_PREFIX}{cleaned_key}"
+    raise ValueError("Неизвестный тип групповой цели.")
+
+
 def _parse_target_key(raw: str) -> dict[str, str | int]:
     value = (raw or "").strip()
     if not value:
-        raise ValueError("Нужно выбрать конкретное устройство, канал, Tuya-сцену или Tuya-автоматизацию.")
+        raise ValueError("Нужно выбрать конкретное устройство, канал, группу устройств, Tuya-сцену или Tuya-автоматизацию.")
+    if value.startswith((GROUP_ROOM_PREFIX, GROUP_BADGE_PREFIX, GROUP_ROLE_PREFIX)):
+        group_selector = _parse_group_selector(value)
+        return {"kind": DEVICE_GROUP_KIND, **group_selector}
     parts = value.split(":")
     if parts[0] == "scene" and len(parts) >= 3:
         home_id = parts[1].strip()
@@ -112,16 +152,156 @@ def _parse_target_key(raw: str) -> dict[str, str | int]:
         device_raw = parts[0].strip()
         code = ":".join(parts[1:]).strip()
     else:
-        raise ValueError("Нужно выбрать конкретное устройство или канал.")
+        raise ValueError("Нужно выбрать конкретное устройство, канал или группу.")
     if not device_raw.isdigit():
         raise ValueError("Некорректное устройство в цели сценария.")
     if not _is_switch_like_code(code):
-        raise ValueError("Сценарий пока умеет работать только с выключателями, каналами питания, Tuya-сценами и Tuya-автоматизациями.")
+        raise ValueError("Сценарий пока умеет работать только с выключателями, каналами питания, группами, Tuya-сценами и Tuya-автоматизациями.")
     return {"kind": DEVICE_SWITCH_KIND, "device_id": int(device_raw), "code": code}
 
 
 def _rule_target_label_device(device: Device, code: str) -> str:
     return f"{device.display_name} · {_label_for_switch_code(device, code)}"
+
+
+def _switch_codes_for_device(device: Device) -> list[str]:
+    return sorted({code for code in device.control_codes if _is_switch_like_code(code)})
+
+
+def _group_choice_label(*, group_kind: str, label: str, devices_total: int, channels_total: int) -> str:
+    prefix = {"room": "Комната", "badge": "Плашка", "role": "Роль канала"}.get(group_kind, "Группа")
+    return f"{prefix} · {label} ({devices_total} устр. / {channels_total} канал.)"
+
+
+def _build_group_target_choices(db: Session) -> list[dict[str, Any]]:
+    devices = db.execute(
+        select(Device).options(joinedload(Device.badge))
+        .where(Device.is_deleted.is_(False), Device.is_hidden.is_(False))
+        .order_by(Device.custom_room_name.asc().nulls_last(), Device.room_name.asc().nulls_last(), Device.name.asc())
+    ).scalars().all()
+    choices: list[dict[str, Any]] = []
+
+    room_map: dict[str, dict[str, int]] = {}
+    badge_map: dict[str, dict[str, Any]] = {}
+    role_map: dict[str, dict[str, Any]] = {}
+
+    for device in devices:
+        switch_codes = _switch_codes_for_device(device)
+        if not switch_codes:
+            continue
+        room_name = (device.display_room_name or "").strip()
+        if room_name:
+            bucket = room_map.setdefault(room_name, {"devices_total": 0, "channels_total": 0})
+            bucket["devices_total"] += 1
+            bucket["channels_total"] += len(switch_codes)
+        if device.badge is not None:
+            bucket = badge_map.setdefault(
+                device.badge.key,
+                {"badge_key": device.badge.key, "badge_name": device.badge.name, "devices_total": 0, "channels_total": 0},
+            )
+            bucket["devices_total"] += 1
+            bucket["channels_total"] += len(switch_codes)
+        roles_seen_for_device: set[str] = set()
+        for code in switch_codes:
+            role_key = (device.channel_roles.get(code) or "").strip()
+            if not role_key:
+                continue
+            bucket = role_map.setdefault(
+                role_key,
+                {"role_key": role_key, "role_label": get_channel_role_label(role_key) or role_key, "devices_total": 0, "channels_total": 0},
+            )
+            if role_key not in roles_seen_for_device:
+                bucket["devices_total"] += 1
+                roles_seen_for_device.add(role_key)
+            bucket["channels_total"] += 1
+
+    for room_name, meta in sorted(room_map.items(), key=lambda item: item[0].lower()):
+        choices.append({
+            "value": _encode_group_selector("room", room_name),
+            "action_kind": DEVICE_GROUP_KIND,
+            "group_kind": "room",
+            "group_key": room_name,
+            "device_id": None,
+            "code": _encode_group_selector("room", room_name),
+            "room": room_name,
+            "device_name": room_name,
+            "channel_name": "Все каналы комнаты",
+            "label": _group_choice_label(group_kind="room", label=room_name, devices_total=meta["devices_total"], channels_total=meta["channels_total"]),
+        })
+    for badge_key, meta in sorted(badge_map.items(), key=lambda item: str(item[1]["badge_name"]).lower()):
+        badge_name = str(meta["badge_name"])
+        choices.append({
+            "value": _encode_group_selector("badge", badge_key),
+            "action_kind": DEVICE_GROUP_KIND,
+            "group_kind": "badge",
+            "group_key": badge_key,
+            "device_id": None,
+            "code": _encode_group_selector("badge", badge_key),
+            "room": "Плашки",
+            "device_name": badge_name,
+            "channel_name": "Все каналы плашки",
+            "label": _group_choice_label(group_kind="badge", label=badge_name, devices_total=int(meta["devices_total"]), channels_total=int(meta["channels_total"])),
+        })
+    role_label_map = {item["key"]: item["label"] for item in get_channel_role_choices() if item.get("key")}
+    for role_key, meta in sorted(role_map.items(), key=lambda item: str(item[1]["role_label"]).lower()):
+        role_label = str(meta["role_label"] or role_label_map.get(role_key) or role_key)
+        choices.append({
+            "value": _encode_group_selector("role", role_key),
+            "action_kind": DEVICE_GROUP_KIND,
+            "group_kind": "role",
+            "group_key": role_key,
+            "device_id": None,
+            "code": _encode_group_selector("role", role_key),
+            "room": "Роли каналов",
+            "device_name": role_label,
+            "channel_name": "Все каналы роли",
+            "label": _group_choice_label(group_kind="role", label=role_label, devices_total=int(meta["devices_total"]), channels_total=int(meta["channels_total"])),
+        })
+    return choices
+
+
+def _resolve_group_targets(db: Session, *, group_kind: str, group_key: str) -> list[tuple[Device, str]]:
+    devices = db.execute(
+        select(Device).options(joinedload(Device.badge))
+        .where(Device.is_deleted.is_(False), Device.is_hidden.is_(False))
+        .order_by(Device.name.asc(), Device.id.asc())
+    ).scalars().all()
+    members: list[tuple[Device, str]] = []
+    for device in devices:
+        switch_codes = _switch_codes_for_device(device)
+        if not switch_codes:
+            continue
+        if group_kind == "room":
+            if (device.display_room_name or "").strip() != group_key:
+                continue
+            members.extend((device, code) for code in switch_codes)
+        elif group_kind == "badge":
+            if device.badge is None or device.badge.key != group_key:
+                continue
+            members.extend((device, code) for code in switch_codes)
+        elif group_kind == "role":
+            for code in switch_codes:
+                if (device.channel_roles.get(code) or "").strip() == group_key:
+                    members.append((device, code))
+    return members
+
+
+def _rule_target_label_group(selector: str, db: Session | None = None) -> str:
+    parsed = _parse_group_selector(selector)
+    group_kind = parsed["group_kind"]
+    group_key = parsed["group_key"]
+    if group_kind == "room":
+        return f"Комната · {group_key}"
+    if group_kind == "badge":
+        badge_name = group_key
+        if db is not None:
+            badge = db.execute(select(DeviceBadge).where(DeviceBadge.key == group_key)).scalar_one_or_none()
+            if badge is not None:
+                badge_name = badge.name
+        return f"Плашка · {badge_name}"
+    if group_kind == "role":
+        return f"Роль канала · {get_channel_role_label(group_key) or group_key}"
+    return selector
 
 
 def _rule_target_label_scene(home_id: str | None, scene_id: str | None, scene_choices: list[dict] | None = None) -> str:
@@ -147,6 +327,7 @@ def _hydrate_rule(
     *,
     scene_choices: list[dict] | None = None,
     automation_choices: list[dict] | None = None,
+    db: Session | None = None,
 ) -> dict[str, Any]:
     weekdays_set = set(rule.weekdays)
     next_run = get_rule_next_run(rule)
@@ -156,18 +337,28 @@ def _hydrate_rule(
         device_name = "Tuya-сцена"
         device_badge = None
         target_code = rule.tuya_scene_id or rule.command_code
+        selected_target_key = f"scene:{rule.tuya_home_id}:{rule.tuya_scene_id}"
     elif rule.action_kind == TUYA_AUTOMATION_KIND:
         target_label = _rule_target_label_automation(rule.tuya_home_id, rule.tuya_scene_id, automation_choices)
         desired_state_label = "включить автоматизацию" if rule.desired_state else "выключить автоматизацию"
         device_name = "Tuya-автоматизация"
         device_badge = None
         target_code = rule.tuya_scene_id or rule.command_code
+        selected_target_key = f"automation:{rule.tuya_home_id}:{rule.tuya_scene_id}"
+    elif rule.action_kind == DEVICE_GROUP_KIND:
+        target_label = _rule_target_label_group(rule.command_code, db=db)
+        desired_state_label = "включить группу" if rule.desired_state else "выключить группу"
+        device_name = "Группа устройств"
+        device_badge = None
+        target_code = rule.command_code
+        selected_target_key = rule.command_code
     else:
         target_label = _rule_target_label_device(rule.device, rule.command_code) if rule.device else rule.command_code
         desired_state_label = "включить" if rule.desired_state else "выключить"
         device_name = rule.device.display_name if rule.device else "Устройство удалено"
         device_badge = rule.device.badge.name if rule.device and rule.device.badge else None
         target_code = rule.command_code
+        selected_target_key = f"device:{rule.device_id}:{rule.command_code}" if rule.device_id else rule.command_code
     return {
         "id": rule.id,
         "name": rule.name,
@@ -177,6 +368,7 @@ def _hydrate_rule(
         "device_badge": device_badge,
         "target_code": target_code,
         "target_label": target_label,
+        "selected_target_key": selected_target_key,
         "desired_state": rule.desired_state,
         "desired_state_label": desired_state_label,
         "schedule_time": rule.schedule_time,
@@ -208,7 +400,7 @@ def list_automation_rules(
         .options(joinedload(AutomationRule.device).joinedload(Device.badge))
         .order_by(AutomationRule.is_enabled.desc(), AutomationRule.schedule_time.asc(), AutomationRule.name.asc())
     ).scalars().all()
-    return [_hydrate_rule(item, scene_choices=scene_choices, automation_choices=automation_choices) for item in rows]
+    return [_hydrate_rule(item, scene_choices=scene_choices, automation_choices=automation_choices, db=db) for item in rows]
 
 
 def list_recent_automation_runs(db: Session, limit: int = 30) -> list[AutomationRunLog]:
@@ -245,13 +437,14 @@ def format_automation_runs(rows: list[AutomationRunLog]) -> list[dict[str, Any]]
 
 def get_automation_target_choices(db: Session, *, tuya_bridge: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     devices = db.execute(
-        select(Device)
+        select(Device).options(joinedload(Device.badge))
         .where(Device.is_deleted.is_(False), Device.is_hidden.is_(False))
         .order_by(Device.custom_room_name.asc().nulls_last(), Device.room_name.asc().nulls_last(), Device.name.asc())
     ).scalars().all()
     choices: list[dict[str, Any]] = []
+    choices.extend(_build_group_target_choices(db))
     for device in devices:
-        codes = sorted({code for code in device.control_codes if _is_switch_like_code(code)})
+        codes = _switch_codes_for_device(device)
         for code in codes:
             choices.append(
                 {
@@ -326,6 +519,18 @@ def create_automation_rule(
         rule.command_code = command_code
         rule.desired_state = bool(desired_state)
         rule.name = rule.name or _rule_target_label_device(device, command_code)
+    elif target["kind"] == DEVICE_GROUP_KIND:
+        group_kind = str(target["group_kind"])
+        group_key = str(target["group_key"])
+        selector = _encode_group_selector(group_kind, group_key)
+        members = _resolve_group_targets(db, group_kind=group_kind, group_key=group_key)
+        if not members:
+            raise ValueError("Эта группа пока не содержит управляемых каналов.")
+        rule.action_kind = DEVICE_GROUP_KIND
+        rule.device_id = None
+        rule.command_code = selector
+        rule.desired_state = bool(desired_state)
+        rule.name = rule.name or _rule_target_label_group(selector, db=db)
     elif target["kind"] == TUYA_AUTOMATION_KIND:
         home_id = str(target["home_id"])
         automation_id = str(target["automation_id"])
@@ -391,6 +596,20 @@ def update_automation_rule(
         rule.tuya_home_id = None
         rule.tuya_scene_id = None
         rule.name = (name or "").strip() or _rule_target_label_device(device, command_code)
+    elif target["kind"] == DEVICE_GROUP_KIND:
+        group_kind = str(target["group_kind"])
+        group_key = str(target["group_key"])
+        selector = _encode_group_selector(group_kind, group_key)
+        members = _resolve_group_targets(db, group_kind=group_kind, group_key=group_key)
+        if not members:
+            raise ValueError("Эта группа пока не содержит управляемых каналов.")
+        rule.action_kind = DEVICE_GROUP_KIND
+        rule.device_id = None
+        rule.command_code = selector
+        rule.desired_state = bool(desired_state)
+        rule.tuya_home_id = None
+        rule.tuya_scene_id = None
+        rule.name = (name or "").strip() or _rule_target_label_group(selector, db=db)
     elif target["kind"] == TUYA_AUTOMATION_KIND:
         home_id = str(target["home_id"])
         automation_id = str(target["automation_id"])
@@ -520,6 +739,40 @@ def execute_automation_rule(db: Session, rule: AutomationRule, *, trigger: str, 
         except Exception as exc:
             summary = str(exc)
             _log_rule_run(db, rule=rule, trigger=trigger, status="error", error_message=summary)
+        if slot_key:
+            rule.last_trigger_slot = slot_key
+        db.commit()
+        return {"status": rule.last_run_status, "message": summary}
+
+    if rule.action_kind == DEVICE_GROUP_KIND:
+        try:
+            parsed = _parse_group_selector(rule.command_code)
+            members = _resolve_group_targets(db, group_kind=parsed["group_kind"], group_key=parsed["group_key"])
+            if not members:
+                raise DeviceControlError("группа больше не содержит управляемых каналов")
+            success_count = 0
+            errors: list[str] = []
+            seen: set[tuple[int, str]] = set()
+            for device, code in members:
+                key = (device.id, code)
+                if key in seen:
+                    continue
+                seen.add(key)
+                try:
+                    set_device_switch_code_state(db, device.id, code, rule.desired_state, trigger=trigger)
+                    success_count += 1
+                except DeviceControlError as exc:
+                    errors.append(f"{device.display_name} · {_label_for_switch_code(device, code)}: {exc}")
+            summary_label = _rule_target_label_group(rule.command_code, db=db)
+            if success_count == 0:
+                raise DeviceControlError('; '.join(errors) if errors else 'групповая команда не выполнилась')
+            summary = f"{summary_label} → {'вкл' if rule.desired_state else 'выкл'} · успех {success_count}/{len(seen)}"
+            if errors:
+                summary = f"{summary} · ошибок {len(errors)}"
+            _log_rule_run(db, rule=rule, trigger=trigger, status='success' if not errors else 'error', result_summary=summary, error_message='; '.join(errors) if errors else None)
+        except Exception as exc:
+            summary = str(exc)
+            _log_rule_run(db, rule=rule, trigger=trigger, status='error', error_message=summary)
         if slot_key:
             rule.last_trigger_slot = slot_key
         db.commit()

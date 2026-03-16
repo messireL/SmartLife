@@ -472,7 +472,7 @@ def scenarios_page(
     scenario_search = _normalize_scenario_query(scenario_search)
     if scenario_state not in {"all", "enabled", "disabled"}:
         scenario_state = "all"
-    if scenario_kind not in {"all", "device_switch", "tuya_scene", "tuya_automation"}:
+    if scenario_kind not in {"all", "device_switch", "device_group", "tuya_scene", "tuya_automation"}:
         scenario_kind = "all"
     if tuya_kind not in {"all", "scenes", "automations"}:
         tuya_kind = "all"
@@ -516,6 +516,7 @@ def scenarios_page(
                 "kind_choices": [
                     {"value": "all", "label": "Все цели"},
                     {"value": "device_switch", "label": "Локальные устройства"},
+                    {"value": "device_group", "label": "Группы: комнаты / плашки / роли"},
                     {"value": "tuya_scene", "label": "Tuya Tap-to-Run"},
                     {"value": "tuya_automation", "label": "Tuya Automation"},
                 ],
