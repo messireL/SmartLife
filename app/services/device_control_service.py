@@ -63,6 +63,65 @@ def set_device_switch_code_state(db: Session, device_id: int, command_code: str,
     result['switch_on'] = desired_state
     result['command_code'] = command_code
     return result
+def set_device_switch_code_state(db: Session, device_id: int, command_code: str, desired_state: bool, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
+    device = _get_active_device(db, device_id)
+    provider = _get_matching_provider(db, device)
+    command_code = (command_code or "").strip()
+    if not command_code:
+        raise DeviceControlError('код канала не должен быть пустым')
+    if command_code not in set(device.control_codes):
+        raise DeviceControlError(f'устройство не поддерживает канал {command_code}')
+    if not _is_switch_like_code(command_code):
+        raise DeviceControlError(f'команда {command_code} не является выключателем')
+    success_updates = {
+        'last_status_at': utc_now_naive(),
+    }
+    if command_code in {'switch', 'switch_1'}:
+        success_updates['switch_on'] = desired_state
+    result = _execute_device_command(
+        db,
+        device=device,
+        provider=provider,
+        command_code=command_code,
+        command_value=bool(desired_state),
+        trigger=trigger,
+        success_updates=success_updates,
+    )
+    result['switch_on'] = desired_state
+    result['command_code'] = command_code
+    return result
+
+
+def set_device_multiple_switch_codes_state(db: Session, device_id: int, command_codes: list[str] | tuple[str, ...], desired_state: bool, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
+    codes: list[str] = []
+    seen: set[str] = set()
+    for raw_code in command_codes:
+        code = (raw_code or '').strip()
+        if code and code not in seen:
+            seen.add(code)
+            codes.append(code)
+    if not codes:
+        raise DeviceControlError('не переданы каналы для групповой команды')
+
+    results: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for code in codes:
+        try:
+            results.append(set_device_switch_code_state(db, device_id, code, desired_state, trigger=trigger))
+        except DeviceControlError as exc:
+            errors.append(f'{code}: {exc}')
+
+    if not results:
+        raise DeviceControlError('; '.join(errors) if errors else 'групповая команда не выполнена')
+
+    return {
+        'device_id': device_id,
+        'desired_state': desired_state,
+        'command_codes': [item['command_code'] for item in results],
+        'success_count': len(results),
+        'error_count': len(errors),
+        'errors': errors,
+    }
 
 
 

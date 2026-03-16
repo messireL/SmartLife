@@ -39,22 +39,40 @@
 
   {% if device_view.channels.has_power_strip_layout %}
   <section class="card">
-    <div class="section-header"><h2>Каналы питания</h2><div class="muted tiny">Отдельные линии управления по данным Tuya Cloud.</div></div>
-    <div class="channel-grid">
-      {% for channel in device_view.channels.all %}
-        <div class="channel-card">
-          <div class="channel-card-top">
-            <div class="channel-title-with-icon"><span class="channel-icon">{{ channel.icon_symbol }}</span><span>{{ channel.display_label }}</span></div>
-            {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">?</span>{% endif %}
+    <div class="section-header"><h2>Каналы питания</h2><div class="muted tiny">Отдельные линии управления по данным Tuya Cloud, сгруппированные по ролям и типам.</div></div>
+    <div class="channel-group-grid">
+      {% for group in device_view.channels.groups %}
+        <div class="channel-group-card">
+          <div class="channel-group-head">
+            <div>
+              <div class="channel-group-title">{{ group.label }}</div>
+              <div class="muted tiny">{{ group.count }} канал(ов) · {{ group.summary }}</div>
+            </div>
+            <div class="channel-group-badges">
+              {% if group.kind == 'role' %}<span class="badge soft-badge">роль</span>{% endif %}
+              {% if group.kind == 'usb' %}<span class="badge soft-badge">USB</span>{% endif %}
+            </div>
           </div>
-          <div class="channel-meta-line">{% if channel.role_label %}<span class="badge soft-badge">{{ channel.role_label }}</span>{% endif %}{% if channel.alias %}<span class="muted tiny">База: {{ channel.label }}</span>{% endif %}<span class="muted tiny">{{ channel.code }}</span></div>{% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
+          <div class="channel-group-list">
+            {% for channel in group.channels %}
+              <div class="channel-group-row">
+                <div>
+                  <div class="channel-title-with-icon"><span class="channel-icon">{{ channel.icon_symbol }}</span><span>{{ channel.display_label }}</span></div>
+                  <div class="channel-meta-line">{% if channel.role_label %}<span class="badge soft-badge">{{ channel.role_label }}</span>{% endif %}{% if channel.alias %}<span class="muted tiny">База: {{ channel.label }}</span>{% endif %}<span class="muted tiny">{{ channel.code }}</span></div>
+                  {% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
+                </div>
+                {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">?</span>{% endif %}
+              </div>
+            {% endfor %}
+          </div>
         </div>
       {% endfor %}
     </div>
   </section>
   {% endif %}
 
-  {% if device_view.channels.has_power_strip_layout %}
+  
+{% if device_view.channels.has_power_strip_layout %}
   <section class="grid-2">
     <article class="card">
       <div class="section-header"><h2>Энергия устройства</h2><div class="muted tiny">Суммарно по удлинителю / сетевому фильтру.</div></div>
@@ -349,39 +367,97 @@
 
       {% if device_view.controls.supports_multi_switch %}
       <div class="control-group">
-        <div class="muted tiny">Отдельные каналы</div>
-        <div class="channel-control-list">
-          {% for channel in device_view.controls.switch_channels %}
-            <div class="channel-control-row">
-              <div class="channel-control-meta">
-                <div class="channel-control-title-row">
-                  <div class="channel-control-title icon-title"><span class="channel-icon">{{ channel.icon_symbol }}</span><span>{{ channel.display_label }}</span></div>
-                  {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">статус ?</span>{% endif %}
-                </div>
-                <div class="channel-meta-line">{% if channel.role_label %}<span class="badge soft-badge">{{ channel.role_label }}</span>{% endif %}{% if channel.alias %}<span class="muted tiny">База: {{ channel.label }}</span>{% endif %}<span class="muted tiny">{{ channel.code }}</span></div>{% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
-                <div class="muted tiny channel-control-state">Текущее состояние: {% if channel.is_on is sameas true %}включён{% elif channel.is_on is sameas false %}выключен{% else %}нет свежего статуса{% endif %}</div>
+        <div class="muted tiny">Быстрые действия</div>
+        <div class="quick-action-grid">
+          {% for action in device_view.channels.quick_actions %}
+            <div class="quick-action-card">
+              <div>
+                <div class="channel-control-title">{{ action.label }}</div>
+                <div class="muted tiny">{{ action.subtitle }}</div>
               </div>
               <div class="channel-control-actions">
-                <form method="post" action="/devices/{{ device.id }}/toggle-channel">
-                  <input type="hidden" name="command_code" value="{{ channel.code }}">
+                <form method="post" action="/devices/{{ device.id }}/toggle-channel-group">
+                  <input type="hidden" name="command_codes" value="{{ action.command_codes_csv }}">
+                  <input type="hidden" name="group_label" value="{{ action.label }}">
                   <input type="hidden" name="desired_state" value="true">
                   <input type="hidden" name="source_tab" value="control">
-                  <button type="submit" {% if channel.is_on is sameas true %}disabled{% endif %}>Включить</button>
+                  <button type="submit" {% if action.all_on %}disabled{% endif %}>Включить всё</button>
                 </form>
-                <form method="post" action="/devices/{{ device.id }}/toggle-channel">
-                  <input type="hidden" name="command_code" value="{{ channel.code }}">
+                <form method="post" action="/devices/{{ device.id }}/toggle-channel-group">
+                  <input type="hidden" name="command_codes" value="{{ action.command_codes_csv }}">
+                  <input type="hidden" name="group_label" value="{{ action.label }}">
                   <input type="hidden" name="desired_state" value="false">
                   <input type="hidden" name="source_tab" value="control">
-                  <button type="submit" class="button-secondary" {% if channel.is_on is sameas false %}disabled{% endif %}>Выключить</button>
+                  <button type="submit" class="button-secondary" {% if action.all_off %}disabled{% endif %}>Выключить всё</button>
                 </form>
               </div>
             </div>
           {% endfor %}
         </div>
       </div>
+      <div class="control-group">
+        <div class="muted tiny">Отдельные каналы</div>
+        {% for group in device_view.channels.groups %}
+          <div class="channel-section-block">
+            <div class="channel-section-head">
+              <div>
+                <div class="channel-group-title">{{ group.label }}</div>
+                <div class="muted tiny">{{ group.summary }}</div>
+              </div>
+              {% if group.command_codes %}
+              <div class="channel-control-actions compact-actions">
+                <form method="post" action="/devices/{{ device.id }}/toggle-channel-group">
+                  <input type="hidden" name="command_codes" value="{{ group.command_codes_csv }}">
+                  <input type="hidden" name="group_label" value="{{ group.label }}">
+                  <input type="hidden" name="desired_state" value="true">
+                  <input type="hidden" name="source_tab" value="control">
+                  <button type="submit" {% if group.all_on %}disabled{% endif %}>Вкл группу</button>
+                </form>
+                <form method="post" action="/devices/{{ device.id }}/toggle-channel-group">
+                  <input type="hidden" name="command_codes" value="{{ group.command_codes_csv }}">
+                  <input type="hidden" name="group_label" value="{{ group.label }}">
+                  <input type="hidden" name="desired_state" value="false">
+                  <input type="hidden" name="source_tab" value="control">
+                  <button type="submit" class="button-secondary" {% if group.all_off %}disabled{% endif %}>Выкл группу</button>
+                </form>
+              </div>
+              {% endif %}
+            </div>
+            <div class="channel-control-list">
+              {% for channel in group.channels %}
+                <div class="channel-control-row">
+                  <div class="channel-control-meta">
+                    <div class="channel-control-title-row">
+                      <div class="channel-control-title icon-title"><span class="channel-icon">{{ channel.icon_symbol }}</span><span>{{ channel.display_label }}</span></div>
+                      {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">статус ?</span>{% endif %}
+                    </div>
+                    <div class="channel-meta-line">{% if channel.role_label %}<span class="badge soft-badge">{{ channel.role_label }}</span>{% endif %}{% if channel.alias %}<span class="muted tiny">База: {{ channel.label }}</span>{% endif %}<span class="muted tiny">{{ channel.code }}</span></div>{% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
+                    <div class="muted tiny channel-control-state">Текущее состояние: {% if channel.is_on is sameas true %}включён{% elif channel.is_on is sameas false %}выключен{% else %}нет свежего статуса{% endif %}</div>
+                  </div>
+                  <div class="channel-control-actions">
+                    <form method="post" action="/devices/{{ device.id }}/toggle-channel">
+                      <input type="hidden" name="command_code" value="{{ channel.code }}">
+                      <input type="hidden" name="desired_state" value="true">
+                      <input type="hidden" name="source_tab" value="control">
+                      <button type="submit" {% if channel.is_on is sameas true %}disabled{% endif %}>Включить</button>
+                    </form>
+                    <form method="post" action="/devices/{{ device.id }}/toggle-channel">
+                      <input type="hidden" name="command_code" value="{{ channel.code }}">
+                      <input type="hidden" name="desired_state" value="false">
+                      <input type="hidden" name="source_tab" value="control">
+                      <button type="submit" class="button-secondary" {% if channel.is_on is sameas false %}disabled{% endif %}>Выключить</button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
       {% endif %}
 
-      {% if device_view.controls.supports_relay_status %}
+      
+{% if device_view.controls.supports_relay_status %}
       <div class="control-group">
         <div class="muted tiny">{{ device_view.controls.advanced.relay_status.title }}</div>
         <div class="muted tiny">Сейчас: {{ device_view.controls.advanced.relay_status.current_label }}</div>

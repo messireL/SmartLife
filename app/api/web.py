@@ -27,6 +27,7 @@ from app.services.device_control_service import (
     set_device_enum_code_value,
     set_device_integer_code_value,
     set_device_mode,
+    set_device_multiple_switch_codes_state,
     set_device_switch_code_state,
     set_device_switch_state,
     set_device_target_temperature,
@@ -764,6 +765,35 @@ def toggle_device_channel_action(
         desired_bool = desired_state.lower() in {"1", "true", "yes", "on"}
         result = set_device_switch_code_state(db, device_id, command_code, desired_bool, trigger=SyncRunTrigger.MANUAL.value)
         flash = f"Канал {result['command_code']} переведён в состояние {'вкл' if desired_bool else 'выкл'}."
+    except DeviceControlError as exc:
+        flash = f"Команда не выполнена: {exc}"
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/devices/{device_id}/toggle-channel-group")
+def toggle_device_channel_group_action(
+    device_id: int,
+    command_codes: str = Form(...),
+    desired_state: str = Form(...),
+    group_label: str = Form(default="Группа каналов"),
+    source_tab: str = Form(default="control"),
+    db: Session = Depends(get_db),
+):
+    try:
+        codes = [item.strip() for item in (command_codes or '').split(',') if item.strip()]
+        desired_bool = desired_state.lower() in {"1", "true", "yes", "on"}
+        result = set_device_multiple_switch_codes_state(db, device_id, codes, desired_bool, trigger=SyncRunTrigger.MANUAL.value)
+        if result['error_count']:
+            errors_text = "; ".join(result['errors'])
+            flash = (
+                f"{group_label}: выполнено {result['success_count']} команд, ошибок {result['error_count']}. "
+                f"{errors_text}"
+            )
+        else:
+            flash = (
+                f"{group_label}: {result['success_count']} канал(ов) переведены в состояние "
+                f"{'вкл' if desired_bool else 'выкл'}."
+            )
     except DeviceControlError as exc:
         flash = f"Команда не выполнена: {exc}"
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)

@@ -684,15 +684,116 @@ def _build_energy_capabilities(payload: dict[str, object], channels: list[dict],
     }
 
 
+def _channel_group_sort_key(group: dict) -> tuple[int, str]:
+    kind = group.get('kind') or 'other'
+    rank = {'main': 0, 'role': 1, 'socket': 2, 'usb': 3, 'other': 4}.get(kind, 9)
+    return rank, str(group.get('label') or '')
+
+
+
+def _build_channel_groups(channels: list[dict]) -> list[dict]:
+    grouped: dict[str, dict] = {}
+    for channel in channels:
+        if channel['group'] == 'main':
+            group_key = 'main'
+            label = 'Главное питание'
+            kind = 'main'
+        elif channel.get('role_key'):
+            group_key = f"role:{channel['role_key']}"
+            label = channel.get('role_label') or channel['display_label']
+            kind = 'role'
+        elif channel['group'] == 'usb':
+            group_key = 'usb'
+            label = 'USB блок'
+            kind = 'usb'
+        else:
+            group_key = 'socket'
+            label = 'Розетки без роли'
+            kind = 'socket'
+        bucket = grouped.setdefault(group_key, {'key': group_key, 'label': label, 'kind': kind, 'channels': []})
+        bucket['channels'].append(channel)
+
+    result: list[dict] = []
+    for bucket in grouped.values():
+        controllable = [item for item in bucket['channels'] if item.get('supports_control')]
+        on_count = len([item for item in controllable if item.get('is_on') is True])
+        off_count = len([item for item in controllable if item.get('is_on') is False])
+        unknown_count = len(controllable) - on_count - off_count
+        bucket['command_codes'] = [item['code'] for item in controllable]
+        bucket['command_codes_csv'] = ','.join(bucket['command_codes'])
+        bucket['count'] = len(bucket['channels'])
+        bucket['on_count'] = on_count
+        bucket['off_count'] = off_count
+        bucket['unknown_count'] = unknown_count
+        bucket['all_on'] = bool(controllable) and on_count == len(controllable)
+        bucket['all_off'] = bool(controllable) and off_count == len(controllable)
+        bucket['summary'] = f"{on_count} вкл · {off_count} выкл" if controllable else 'без cloud-команд'
+        if unknown_count:
+            bucket['summary'] += f" · ? {unknown_count}"
+        result.append(bucket)
+    result.sort(key=_channel_group_sort_key)
+    return result
+
+
+
+def _make_quick_action(*, key: str, label: str, kind: str, channels: list[dict]) -> dict | None:
+    controllable = [item for item in channels if item.get('supports_control')]
+    if not controllable:
+        return None
+    on_count = len([item for item in controllable if item.get('is_on') is True])
+    off_count = len([item for item in controllable if item.get('is_on') is False])
+    unknown_count = len(controllable) - on_count - off_count
+    subtitle = f"{len(controllable)} канал(ов) · {on_count} вкл · {off_count} выкл"
+    if unknown_count:
+        subtitle += f" · ? {unknown_count}"
+    return {
+        'key': key,
+        'label': label,
+        'kind': kind,
+        'command_codes': [item['code'] for item in controllable],
+        'command_codes_csv': ','.join(item['code'] for item in controllable),
+        'count': len(controllable),
+        'subtitle': subtitle,
+        'all_on': on_count == len(controllable),
+        'all_off': off_count == len(controllable),
+    }
+
+
+
+def _build_channel_quick_actions(channels: list[dict], groups: list[dict]) -> list[dict]:
+    actions: list[dict] = []
+    all_action = _make_quick_action(key='all', label='Все каналы', kind='all', channels=channels)
+    if all_action and all_action['count'] > 1:
+        actions.append(all_action)
+    sockets_action = _make_quick_action(key='sockets', label='Все розетки', kind='socket', channels=[item for item in channels if item['group'] == 'socket'])
+    if sockets_action and sockets_action['count'] > 1:
+        actions.append(sockets_action)
+    usb_action = _make_quick_action(key='usb', label='USB блок', kind='usb', channels=[item for item in channels if item['group'] == 'usb'])
+    if usb_action:
+        actions.append(usb_action)
+    for group in groups:
+        if group.get('kind') != 'role':
+            continue
+        action = _make_quick_action(key=group['key'], label=group['label'], kind='role', channels=group['channels'])
+        if action:
+            actions.append(action)
+    return actions
+
+
+
 def _build_channel_summary(channels: list[dict]) -> dict:
     sockets = [item for item in channels if item["group"] == "socket"]
     usb = [item for item in channels if item["group"] == "usb"]
     mains = [item for item in channels if item["group"] == "main"]
+    groups = _build_channel_groups(channels)
+    quick_actions = _build_channel_quick_actions(channels, groups)
     return {
         "all": channels,
         "sockets": sockets,
         "usb": usb,
         "mains": mains,
+        "groups": groups,
+        "quick_actions": quick_actions,
         "has_channels": bool(channels),
         "has_power_strip_layout": bool(sockets or usb),
         "socket_count": len(sockets),
