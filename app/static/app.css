@@ -1122,3 +1122,19 @@ button:disabled:hover {
     align-items: flex-start;
   }
 }
+
+
+.channel-alias-editor {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.02);
+}
+
+.channel-alias-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}

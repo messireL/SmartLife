@@ -42,13 +42,54 @@
       {% for channel in device_view.channels.all %}
         <div class="channel-card">
           <div class="channel-card-top">
-            <span>{{ channel.label }}</span>
+            <span>{{ channel.display_label }}</span>
             {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">?</span>{% endif %}
           </div>
-          <div class="muted tiny">{{ channel.code }}</div>
+          {% if channel.alias %}<div class="muted tiny">База: {{ channel.label }} · {{ channel.code }}</div>{% else %}<div class="muted tiny">{{ channel.code }}</div>{% endif %}{% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
         </div>
       {% endfor %}
     </div>
+  </section>
+  {% endif %}
+
+  {% if device_view.channels.has_power_strip_layout %}
+  <section class="grid-2">
+    <article class="card">
+      <div class="section-header"><h2>Энергия устройства</h2><div class="muted tiny">Суммарно по удлинителю / сетевому фильтру.</div></div>
+      <div class="status-stack">
+        <div class="status-row"><span class="muted">Мощность сейчас</span><span>{{ device_view.stats.latest_power_w }} W</span></div>
+        <div class="status-row"><span class="muted">Напряжение сейчас</span><span>{{ device_view.stats.latest_voltage_v }} V</span></div>
+        <div class="status-row"><span class="muted">Сегодня</span><span>{{ device_view.stats.today_kwh }} kWh · {{ device_view.stats.today_cost }} {{ device_view.stats.tariff_currency }}</span></div>
+        <div class="status-row"><span class="muted">Месяц</span><span>{{ device_view.stats.month_kwh }} kWh · {{ device_view.stats.month_cost }} {{ device_view.stats.tariff_currency }}</span></div>
+        <div class="status-row"><span class="muted">Тариф</span><span>{{ device_view.stats.tariff_mode_label }}</span></div>
+      </div>
+    </article>
+    <article class="card">
+      <div class="section-header"><h2>Диагностика каналов</h2><div class="muted tiny">Что реально отдаёт Tuya по метрикам.</div></div>
+      <div class="muted">{{ device_view.energy_capabilities.message }}</div>
+      <div class="muted tiny" style="margin-top:8px;">Общие коды: {% if device_view.energy_capabilities.aggregate_codes %}{{ device_view.energy_capabilities.aggregate_codes|join(', ') }}{% else %}нет{% endif %}</div>
+      <div class="muted tiny">Поканальные коды: {% if device_view.energy_capabilities.channel_metric_codes %}{{ device_view.energy_capabilities.channel_metric_codes|join(', ') }}{% else %}не обнаружены{% endif %}</div>
+      {% if device_view.energy_capabilities.supports_channel_metrics %}
+      <div class="table-wrap" style="margin-top:12px;">
+        <table>
+          <thead><tr><th>Канал</th><th>W</th><th>V</th><th>mA</th><th>kWh</th></tr></thead>
+          <tbody>
+            {% for channel in device_view.channels.all %}
+              <tr>
+                <td>{{ channel.display_label }}</td>
+                <td>{{ channel.metrics.power_w_display or '—' }}</td>
+                <td>{{ channel.metrics.voltage_v_display or '—' }}</td>
+                <td>{{ channel.metrics.current_ma_display or '—' }}</td>
+                <td>{{ channel.metrics.energy_kwh_display or '—' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state" style="margin-top:12px;">Сейчас можно честно показывать только суммарную энергию по устройству. Для поканального тарифа нужны отдельные DP-коды на каждый канал.</div>
+      {% endif %}
+    </article>
   </section>
   {% endif %}
 
@@ -112,6 +153,19 @@
             {% endfor %}
           </select>
         </label>
+        {% if device_view.channels.has_channels %}
+        <div class="channel-alias-editor">
+          <div class="muted tiny">Локальные названия каналов</div>
+          <div class="channel-alias-grid">
+            {% for channel in device_view.channels.all %}
+              <label>{{ channel.label }}
+                <input class="input" type="text" name="channel_alias__{{ channel.code }}" value="{{ channel.alias or '' }}" placeholder="Например: {{ channel.display_label }}">
+              </label>
+            {% endfor %}
+          </div>
+          <div class="muted tiny">Эти названия видны только в SmartLife и не меняют настройки в Tuya.</div>
+        </div>
+        {% endif %}
         <label>Заметки
           <textarea class="input" name="notes" rows="4" placeholder="Любые свои пометки">{{ device.notes or '' }}</textarea>
         </label>
@@ -142,6 +196,19 @@
           {% endfor %}
         </select>
       </label>
+      {% if device_view.channels.has_channels %}
+      <div class="channel-alias-editor">
+        <div class="muted tiny">Локальные названия каналов</div>
+        <div class="channel-alias-grid">
+          {% for channel in device_view.channels.all %}
+            <label>{{ channel.label }}
+              <input class="input" type="text" name="channel_alias__{{ channel.code }}" value="{{ channel.alias or '' }}" placeholder="Например: {{ channel.display_label }}">
+            </label>
+          {% endfor %}
+        </div>
+        <div class="muted tiny">Эти названия видны только в SmartLife и не меняют настройки в Tuya.</div>
+      </div>
+      {% endif %}
       <label>Заметки
         <textarea class="input" name="notes" rows="4" placeholder="Любые свои пометки">{{ device.notes or '' }}</textarea>
       </label>
@@ -267,10 +334,10 @@
             <div class="channel-control-row">
               <div class="channel-control-meta">
                 <div class="channel-control-title-row">
-                  <div class="channel-control-title">{{ channel.label }}</div>
+                  <div class="channel-control-title">{{ channel.display_label }}</div>
                   {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">статус ?</span>{% endif %}
                 </div>
-                <div class="muted tiny">{{ channel.code }}</div>
+                {% if channel.alias %}<div class="muted tiny">База: {{ channel.label }} · {{ channel.code }}</div>{% else %}<div class="muted tiny">{{ channel.code }}</div>{% endif %}{% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}</div>{% endif %}
                 <div class="muted tiny channel-control-state">Текущее состояние: {% if channel.is_on is sameas true %}включён{% elif channel.is_on is sameas false %}выключен{% else %}нет свежего статуса{% endif %}</div>
               </div>
               <div class="channel-control-actions">

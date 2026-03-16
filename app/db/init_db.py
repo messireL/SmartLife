@@ -44,6 +44,7 @@ def _apply_postgres_migrations() -> None:
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS operation_mode VARCHAR(64)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS control_codes_json TEXT",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS available_modes_json TEXT",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS channel_aliases_json TEXT",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS target_temperature_min_c NUMERIC(8,2)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS target_temperature_max_c NUMERIC(8,2)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS target_temperature_step_c NUMERIC(8,2)",

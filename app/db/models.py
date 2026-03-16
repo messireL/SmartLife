@@ -102,6 +102,7 @@ class Device(Base):
     operation_mode: Mapped[str | None] = mapped_column(String(64), nullable=True)
     control_codes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     available_modes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    channel_aliases_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_temperature_min_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     target_temperature_max_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     target_temperature_step_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
@@ -142,6 +143,11 @@ class Device(Base):
     @property
     def available_modes(self) -> list[str]:
         return _parse_json_list(self.available_modes_json)
+
+    @property
+    def channel_aliases(self) -> dict[str, str]:
+        raw = _parse_json_dict(self.channel_aliases_json)
+        return {str(key): str(value).strip() for key, value in raw.items() if str(key).strip() and str(value).strip()}
 
 
 class AppSetting(Base):
@@ -240,3 +246,16 @@ def _parse_json_list(raw: str | None) -> list[str]:
     if not isinstance(parsed, list):
         return []
     return [str(item) for item in parsed if str(item).strip()]
+
+
+
+def _parse_json_dict(raw: str | None) -> dict[str, str]:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {str(key): str(value) for key, value in parsed.items()}

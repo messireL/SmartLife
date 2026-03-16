@@ -199,6 +199,8 @@ class TuyaCloudProvider(DeviceProvider):
                 "controls": list(control_codes),
                 "available_modes": list(available_modes),
                 "profile": profile,
+                "status_codes": sorted(spec.status_map),
+                "function_codes": sorted(spec.function_map),
             },
             ensure_ascii=False,
             sort_keys=True,

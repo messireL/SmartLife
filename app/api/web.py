@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -512,7 +513,8 @@ def bulk_update_devices_action(
 
 
 @router.post("/devices/{device_id}/save-meta")
-def save_device_meta_action(
+async def save_device_meta_action(
+    request: Request,
     device_id: int,
     custom_name: str = Form(default=""),
     custom_room_name: str = Form(default=""),
@@ -524,10 +526,20 @@ def save_device_meta_action(
     device = db.get(Device, device_id)
     flash = "Устройство не найдено."
     if device is not None and not device.is_deleted:
+        form = await request.form()
+        channel_aliases: dict[str, str] = {}
+        for key, value in form.multi_items():
+            if not key.startswith("channel_alias__"):
+                continue
+            code = key.removeprefix("channel_alias__").strip()
+            alias = str(value or "").strip()
+            if code and alias:
+                channel_aliases[code] = alias
         device.custom_name = custom_name.strip() or None
         device.custom_room_name = custom_room_name.strip() or None
         device.notes = notes.strip() or None
         device.badge_id = int(badge_id) if badge_id.isdigit() else None
+        device.channel_aliases_json = json.dumps(channel_aliases, ensure_ascii=False, sort_keys=True) if channel_aliases else None
         db.commit()
         flash = f"Карточка устройства «{device.display_name}» обновлена."
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)

@@ -314,15 +314,18 @@ def _switch_code_sort_key(code: str) -> tuple[int, int, str]:
     return (9, 0, code or "")
 
 
-def _parse_status_payload(raw_payload: str | None) -> tuple[dict[str, object], set[str]]:
+def _load_status_payload(raw_payload: str | None) -> dict[str, object]:
     if not raw_payload:
-        return {}, set()
+        return {}
     try:
         payload = json.loads(raw_payload)
     except Exception:
-        return {}, set()
-    if not isinstance(payload, dict):
-        return {}, set()
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _parse_status_payload(raw_payload: str | None) -> tuple[dict[str, object], set[str], dict[str, object]]:
+    payload = _load_status_payload(raw_payload)
     statuses = payload.get("statuses") or []
     status_map: dict[str, object] = {}
     if isinstance(statuses, list):
@@ -334,13 +337,14 @@ def _parse_status_payload(raw_payload: str | None) -> tuple[dict[str, object], s
                 status_map[code] = item.get("value")
     controls = payload.get("controls") or []
     control_codes = {str(item).strip() for item in controls if str(item).strip()}
-    return status_map, control_codes
+    return status_map, control_codes, payload
 
 
 def _build_switch_channels(device: Device) -> list[dict]:
-    status_map, raw_control_codes = _parse_status_payload(device.last_status_payload)
+    status_map, raw_control_codes, payload = _parse_status_payload(device.last_status_payload)
     control_codes = set(device.control_codes) | raw_control_codes
     candidate_codes = {code for code in control_codes | set(status_map) if _is_switch_like_code(code)}
+    aliases = device.channel_aliases
     channels: list[dict] = []
     usb_count = len([code for code in candidate_codes if code.startswith("switch_usb")])
     for code in sorted(candidate_codes, key=_switch_code_sort_key):
@@ -360,13 +364,20 @@ def _build_switch_channels(device: Device) -> list[dict]:
             idx = match.group(1) if match else "?"
             label = "USB блок" if usb_count == 1 else f"USB {idx}"
             group = "usb"
+        alias = aliases.get(code)
         channels.append({
             "code": code,
             "label": label,
+            "display_label": alias or label,
+            "alias": alias,
             "group": group,
             "is_on": value if isinstance(value, bool) else None,
+            "status_text": "включён" if value is True else ("выключен" if value is False else "нет свежего статуса"),
             "supports_control": code in control_codes,
         })
+    energy_caps = _build_energy_capabilities(payload, channels, status_map)
+    for item in channels:
+        item["metrics"] = energy_caps["channel_metrics"].get(item["code"], {})
     return channels
 
 
@@ -374,6 +385,96 @@ def _is_switch_like_code(code: str | None) -> bool:
     if not code:
         return False
     return bool(code == "switch" or re.fullmatch(r"switch_[1-9]\d*", code) or re.fullmatch(r"switch_usb[1-9]\d*", code) or code == "switch_usb")
+
+
+def _channel_metric_definition(code: str) -> tuple[str, int] | None:
+    mapping = {
+        "add_ele": ("energy_kwh", 3),
+        "cur_power": ("power_w", 1),
+        "cur_voltage": ("voltage_v", 1),
+        "cur_current": ("current_ma", 0),
+    }
+    return mapping.get(code)
+
+
+def _scaled_metric_value(raw_value: object, scale: int) -> Decimal | None:
+    if raw_value in (None, ""):
+        return None
+    try:
+        value = Decimal(str(raw_value))
+    except Exception:
+        return None
+    if scale > 0:
+        value = value / (Decimal(10) ** scale)
+    return value
+
+
+def _channel_metric_match(code: str) -> tuple[str, str] | None:
+    for prefix in ("add_ele", "cur_power", "cur_voltage", "cur_current"):
+        patterns = (
+            (rf"{prefix}_(\d+)", "switch_{idx}"),
+            (rf"{prefix}_usb", "switch_usb"),
+            (rf"{prefix}_usb(\d+)", "switch_usb{idx}"),
+        )
+        for pattern, template in patterns:
+            match = re.fullmatch(pattern, code or "")
+            if match:
+                idx = match.group(1) if match.groups() else ""
+                return template.format(idx=idx), prefix
+    return None
+
+
+def _format_metric_display(metric_key: str, value: Decimal | None) -> str | None:
+    if value is None:
+        return None
+    if metric_key == "energy_kwh":
+        return f"{value.quantize(Decimal('0.000'))} kWh"
+    if metric_key == "power_w":
+        return f"{_quantize(value)} W"
+    if metric_key == "voltage_v":
+        return f"{_quantize(value)} V"
+    if metric_key == "current_ma":
+        return f"{value.quantize(Decimal('0'))} mA"
+    return str(value)
+
+
+def _build_channel_metrics(status_map: dict[str, object], channels: list[dict]) -> tuple[dict[str, dict], list[str]]:
+    metrics_by_channel = {item["code"]: {} for item in channels}
+    found_codes: list[str] = []
+    for code, raw_value in status_map.items():
+        matched = _channel_metric_match(code)
+        if not matched:
+            continue
+        channel_code, prefix = matched
+        definition = _channel_metric_definition(prefix)
+        if definition is None or channel_code not in metrics_by_channel:
+            continue
+        metric_key, scale = definition
+        value = _scaled_metric_value(raw_value, scale)
+        metrics_by_channel[channel_code][metric_key] = value
+        metrics_by_channel[channel_code][f"{metric_key}_display"] = _format_metric_display(metric_key, value)
+        found_codes.append(code)
+    return metrics_by_channel, sorted(found_codes)
+
+
+def _build_energy_capabilities(payload: dict[str, object], channels: list[dict], status_map: dict[str, object]) -> dict:
+    status_codes = {str(item).strip() for item in (payload.get("status_codes") or []) if str(item).strip()}
+    aggregate_codes = [code for code in ("add_ele", "cur_power", "cur_voltage", "cur_current") if code in status_codes or code in status_map]
+    channel_metrics, channel_metric_codes = _build_channel_metrics(status_map, channels)
+    supports_channel_metrics = bool(channel_metric_codes)
+    if supports_channel_metrics:
+        message = "Tuya отдаёт отдельные метрики по каналам — можно показывать реальные значения по каждой линии."
+    elif aggregate_codes:
+        message = "По этому устройству Tuya отдаёт только общие метрики устройства. Отдельных power/energy кодов по каналам не видно."
+    else:
+        message = "Tuya пока не отдала ни общих, ни поканальных кодов энергомониторинга для этого устройства."
+    return {
+        "aggregate_codes": aggregate_codes,
+        "channel_metric_codes": channel_metric_codes,
+        "supports_channel_metrics": supports_channel_metrics,
+        "message": message,
+        "channel_metrics": channel_metrics,
+    }
 
 
 def _build_channel_summary(channels: list[dict]) -> dict:
@@ -389,6 +490,7 @@ def _build_channel_summary(channels: list[dict]) -> dict:
         "has_power_strip_layout": bool(sockets or usb),
         "socket_count": len(sockets),
         "usb_count": len(usb),
+        "aliased_total": len([item for item in channels if item.get("alias")]),
     }
 
 def get_device_dashboard(db: Session, device: Device) -> dict:
@@ -476,6 +578,8 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
     target_step = _quantize(device.target_temperature_step_c) if device.target_temperature_step_c is not None else None
     channels = _build_switch_channels(device)
     channel_summary = _build_channel_summary(channels)
+    status_map, _, payload = _parse_status_payload(device.last_status_payload)
+    energy_capabilities = _build_energy_capabilities(payload, channels, status_map)
 
     return {
         "daily": daily_rows,
@@ -523,6 +627,7 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "temp_range_label": f"{target_min}…{target_max} °C · шаг {target_step} °C" if target_min is not None and target_max is not None and target_step is not None else None,
         },
         "channels": channel_summary,
+        "energy_capabilities": energy_capabilities,
         "controls": {
             "codes": sorted(control_codes),
             "supports_switch": ('switch' in control_codes) or (len([code for code in control_codes if _is_switch_like_code(code)]) == 1),
