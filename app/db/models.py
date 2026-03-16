@@ -170,8 +170,11 @@ class AutomationRule(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(128))
-    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), nullable=True, index=True)
     command_code: Mapped[str] = mapped_column(String(128))
+    action_kind: Mapped[str] = mapped_column(String(32), default="device_switch", index=True)
+    tuya_home_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tuya_scene_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     desired_state: Mapped[bool] = mapped_column(Boolean, default=True)
     schedule_time: Mapped[str] = mapped_column(String(5), index=True)
     weekdays_csv: Mapped[str] = mapped_column(String(32), default="1,2,3,4,5,6,7")
@@ -184,7 +187,7 @@ class AutomationRule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now())
 
-    device: Mapped[Device] = relationship(back_populates="automation_rules")
+    device: Mapped[Device | None] = relationship(back_populates="automation_rules")
     run_logs: Mapped[list["AutomationRunLog"]] = relationship(back_populates="rule", cascade="all, delete-orphan", order_by="desc(AutomationRunLog.requested_at)")
 
     @property

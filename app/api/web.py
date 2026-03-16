@@ -46,6 +46,12 @@ from app.services.automation_service import (
     run_automation_rule_now,
     update_automation_rule,
 )
+from app.services.tuya_scene_service import (
+    get_tuya_scene_bridge_overview,
+    save_configured_home_ids,
+    set_tuya_automation_enabled,
+    trigger_tuya_scene,
+)
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
 from app.services.runtime_config_service import (
     configure_demo_provider,
@@ -289,7 +295,8 @@ def delete_badge_action(badge_id: int, db: Session = Depends(get_db)):
 @router.get("/scenarios", response_class=HTMLResponse)
 def scenarios_page(request: Request, db: Session = Depends(get_db)):
     runtime = get_runtime_config(db)
-    rules = list_automation_rules(db)
+    tuya_scene_bridge = get_tuya_scene_bridge_overview(db)
+    rules = list_automation_rules(db, scene_choices=tuya_scene_bridge.get("scene_choices", []))
     context = _base_context(request=request, active_nav="scenarios", page_title="Сценарии", runtime=runtime)
     context.update(
         {
@@ -298,6 +305,7 @@ def scenarios_page(request: Request, db: Session = Depends(get_db)):
             "automation_target_choices": get_automation_target_choices(db),
             "automation_runs": list_recent_automation_runs(db, limit=24),
             "weekday_choices": WEEKDAY_CHOICES,
+            "tuya_scene_bridge": tuya_scene_bridge,
             "automation_summary": {
                 "total": len(rules),
                 "enabled": len([item for item in rules if item["is_enabled"]]),
@@ -306,6 +314,38 @@ def scenarios_page(request: Request, db: Session = Depends(get_db)):
         }
     )
     return templates.TemplateResponse(request, "scenarios.html", context)
+
+
+@router.post("/scenarios/tuya-scenes/run")
+def run_tuya_scene_action(
+    home_id: str = Form(...),
+    scene_id: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        trigger_tuya_scene(db, home_id=home_id, scene_id=scene_id)
+        bridge = get_tuya_scene_bridge_overview(db)
+        label = bridge.get("scene_index", {}).get(f"{home_id}:{scene_id}", {}).get("label") or f"Tuya-сцена {scene_id}"
+        flash = f"Запущена сцена: {label}"
+    except Exception as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/scenarios?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/scenarios/tuya-automations/toggle")
+def toggle_tuya_automation_action(
+    home_id: str = Form(...),
+    automation_id: str = Form(...),
+    enabled: str = Form(default="1"),
+    db: Session = Depends(get_db),
+):
+    desired_enabled = str(enabled).lower() in {"1", "true", "on", "yes"}
+    try:
+        set_tuya_automation_enabled(db, home_id=home_id, automation_id=automation_id, enabled=desired_enabled)
+        flash = f"Tuya-автоматизация {'включена' if desired_enabled else 'выключена'}."
+    except Exception as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/scenarios?flash={quote_plus(flash)}", status_code=303)
 
 
 @router.post("/scenarios/create")
@@ -447,6 +487,7 @@ def settings_page(request: Request, profile_key: str = Query(default=""), db: Se
             "tariff_change_target_month": change_target_month,
             "tariff_profiles": tariff_profiles,
             "tariff_profile_edit": tariff_profile_edit,
+            "tuya_scene_bridge": get_tuya_scene_bridge_overview(db),
         }
     )
     return templates.TemplateResponse(request, "settings.html", context)
@@ -489,6 +530,20 @@ def update_runtime_cloud_settings(
     return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 
+
+
+@router.post("/settings/tuya-scenes")
+def update_tuya_scene_settings(
+    tuya_scene_home_ids: str = Form(default=""),
+    db: Session = Depends(get_db),
+):
+    home_ids = save_configured_home_ids(db, tuya_scene_home_ids)
+    flash = (
+        f"Список Tuya home_id сохранён: {', '.join(home_ids)}."
+        if home_ids
+        else "Список Tuya home_id очищен. Мост Tuya-сцен временно не будет ничего показывать."
+    )
+    return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 
 @router.post("/settings/tariff")

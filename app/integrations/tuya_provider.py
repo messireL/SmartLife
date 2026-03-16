@@ -261,6 +261,31 @@ class TuyaOpenApiClient:
             last_id = str(next_last_id)
         return devices
 
+
+    def get_home_details(self, home_id: str) -> dict[str, Any]:
+        payload = self._request_json("GET", f"/v1.0/homes/{quote(str(home_id), safe='')}")
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise TuyaApiError(f"Unexpected home payload for home {home_id}.")
+        return result
+
+    def list_home_scenes(self, home_id: str) -> list[dict[str, Any]]:
+        payload = self._request_json("GET", f"/v1.1/homes/{quote(str(home_id), safe='')}/scenes")
+        return _extract_result_rows(payload.get("result"))
+
+    def list_home_automations(self, home_id: str) -> list[dict[str, Any]]:
+        payload = self._request_json("GET", f"/v1.1/homes/{quote(str(home_id), safe='')}/automations")
+        return _extract_result_rows(payload.get("result"))
+
+    def trigger_scene(self, home_id: str, scene_id: str) -> dict[str, Any]:
+        payload = self._request_json("POST", f"/v1.0/homes/{quote(str(home_id), safe='')}/scenes/{quote(str(scene_id), safe='')}/trigger")
+        return {"success": payload.get("success") is True, "result": payload.get("result")}
+
+    def set_automation_enabled(self, home_id: str, automation_id: str, *, enabled: bool) -> dict[str, Any]:
+        action = "enable" if enabled else "disable"
+        payload = self._request_json("PUT", f"/v1.0/homes/{quote(str(home_id), safe='')}/automations/{quote(str(automation_id), safe='')}/actions/{action}")
+        return {"success": payload.get("success") is True, "result": payload.get("result")}
+
     def get_device_specification(self, device_id: str) -> dict[str, Any]:
         payload = self._request_json("GET", f"/v1.0/iot-03/devices/{quote(device_id, safe='')}/specification")
         result = payload.get("result")
@@ -377,6 +402,17 @@ def _build_canonical_url(path: str, params: dict[str, Any]) -> str:
     query_string = urlencode(clean_items, quote_via=quote, safe=",")
     return f"{path}?{query_string}"
 
+
+
+def _extract_result_rows(result: Any) -> list[dict[str, Any]]:
+    if isinstance(result, list):
+        return [item for item in result if isinstance(item, dict)]
+    if isinstance(result, dict):
+        for key in ("list", "result", "records", "data", "scenes", "automations"):
+            value = result.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+    return []
 
 
 def _parse_json_object(raw: Any) -> dict[str, Any]:

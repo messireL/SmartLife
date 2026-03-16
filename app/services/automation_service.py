@@ -10,6 +10,7 @@ from app.core.timeutils import get_app_timezone, utc_now_naive
 from app.db.models import AutomationRule, AutomationRunLog, Device
 from app.db.session import SessionLocal
 from app.services.device_control_service import DeviceControlError, set_device_switch_code_state
+from app.services.tuya_scene_service import get_tuya_scene_choices, trigger_tuya_scene
 
 WEEKDAY_CHOICES = [
     {"value": "1", "label": "Пн"},
@@ -20,6 +21,10 @@ WEEKDAY_CHOICES = [
     {"value": "6", "label": "Сб"},
     {"value": "7", "label": "Вс"},
 ]
+
+
+DEVICE_SWITCH_KIND = "device_switch"
+TUYA_SCENE_KIND = "tuya_scene"
 
 
 def _is_switch_like_code(code: str | None) -> bool:
@@ -71,38 +76,74 @@ def _normalize_weekdays(values: Iterable[str]) -> str:
 
 
 
-def _parse_target_key(raw: str) -> tuple[int, str]:
+def _parse_target_key(raw: str) -> dict[str, str | int]:
     value = (raw or "").strip()
-    if ":" not in value:
+    if not value:
+        raise ValueError("Нужно выбрать конкретное устройство, канал или Tuya-сцену.")
+    parts = value.split(":")
+    if parts[0] == "scene" and len(parts) >= 3:
+        home_id = parts[1].strip()
+        scene_id = ":".join(parts[2:]).strip()
+        if not home_id or not scene_id:
+            raise ValueError("Некорректная Tuya-сцена в цели сценария.")
+        return {"kind": TUYA_SCENE_KIND, "home_id": home_id, "scene_id": scene_id}
+    if parts[0] == "device" and len(parts) >= 3:
+        device_raw = parts[1].strip()
+        code = ":".join(parts[2:]).strip()
+    elif len(parts) >= 2:
+        device_raw = parts[0].strip()
+        code = ":".join(parts[1:]).strip()
+    else:
         raise ValueError("Нужно выбрать конкретное устройство или канал.")
-    device_raw, code = value.split(":", 1)
     if not device_raw.isdigit():
         raise ValueError("Некорректное устройство в цели сценария.")
-    code = code.strip()
     if not _is_switch_like_code(code):
-        raise ValueError("Сценарий пока умеет работать только с выключателями и каналами питания.")
-    return int(device_raw), code
+        raise ValueError("Сценарий пока умеет работать только с выключателями и каналами питания или с Tuya-сценами.")
+    return {"kind": DEVICE_SWITCH_KIND, "device_id": int(device_raw), "code": code}
 
 
 
-def _rule_target_label(device: Device, code: str) -> str:
+def _rule_target_label_device(device: Device, code: str) -> str:
     return f"{device.display_name} · {_label_for_switch_code(device, code)}"
 
 
 
-def _hydrate_rule(rule: AutomationRule) -> dict:
+def _rule_target_label_scene(home_id: str | None, scene_id: str | None, scene_choices: list[dict] | None = None) -> str:
+    key = f"{home_id}:{scene_id}"
+    if scene_choices:
+        for item in scene_choices:
+            if item.get("home_id") == home_id and item.get("scene_id") == scene_id:
+                return str(item.get("label") or item.get("scene_name") or key)
+    return f"Tuya-сцена · {key}"
+
+
+
+def _hydrate_rule(rule: AutomationRule, *, scene_choices: list[dict] | None = None) -> dict:
     weekdays_set = set(rule.weekdays)
     next_run = get_rule_next_run(rule)
+    if rule.action_kind == TUYA_SCENE_KIND:
+        target_label = _rule_target_label_scene(rule.tuya_home_id, rule.tuya_scene_id, scene_choices)
+        desired_state_label = "запустить сцену"
+        device_name = "Tuya-сцена"
+        device_badge = None
+        target_code = rule.tuya_scene_id or rule.command_code
+    else:
+        target_label = _rule_target_label_device(rule.device, rule.command_code) if rule.device else rule.command_code
+        desired_state_label = "включить" if rule.desired_state else "выключить"
+        device_name = rule.device.display_name if rule.device else "Устройство удалено"
+        device_badge = rule.device.badge.name if rule.device and rule.device.badge else None
+        target_code = rule.command_code
     return {
         "id": rule.id,
         "name": rule.name,
+        "action_kind": rule.action_kind,
         "device_id": rule.device_id,
-        "device_name": rule.device.display_name if rule.device else "Устройство удалено",
-        "device_badge": rule.device.badge.name if rule.device and rule.device.badge else None,
-        "target_code": rule.command_code,
-        "target_label": _rule_target_label(rule.device, rule.command_code) if rule.device else rule.command_code,
+        "device_name": device_name,
+        "device_badge": device_badge,
+        "target_code": target_code,
+        "target_label": target_label,
         "desired_state": rule.desired_state,
-        "desired_state_label": "включить" if rule.desired_state else "выключить",
+        "desired_state_label": desired_state_label,
         "schedule_time": rule.schedule_time,
         "weekdays": rule.weekdays,
         "weekdays_set": weekdays_set,
@@ -114,17 +155,19 @@ def _hydrate_rule(rule: AutomationRule) -> dict:
         "last_result_summary": rule.last_result_summary,
         "next_run_local": next_run,
         "next_run_label": next_run.strftime("%d-%m-%Y %H:%M") if next_run else "—",
+        "tuya_home_id": rule.tuya_home_id,
+        "tuya_scene_id": rule.tuya_scene_id,
     }
 
 
 
-def list_automation_rules(db: Session) -> list[dict]:
+def list_automation_rules(db: Session, *, scene_choices: list[dict] | None = None) -> list[dict]:
     rows = db.execute(
         select(AutomationRule)
         .options(joinedload(AutomationRule.device).joinedload(Device.badge))
         .order_by(AutomationRule.is_enabled.desc(), AutomationRule.schedule_time.asc(), AutomationRule.name.asc())
     ).scalars().all()
-    return [_hydrate_rule(item) for item in rows]
+    return [_hydrate_rule(item, scene_choices=scene_choices) for item in rows]
 
 
 
@@ -151,15 +194,29 @@ def get_automation_target_choices(db: Session) -> list[dict]:
         for code in codes:
             choices.append(
                 {
-                    "value": f"{device.id}:{code}",
+                    "value": f"device:{device.id}:{code}",
                     "device_id": device.id,
                     "code": code,
-                    "label": _rule_target_label(device, code),
+                    "action_kind": DEVICE_SWITCH_KIND,
+                    "label": _rule_target_label_device(device, code),
                     "room": device.display_room_name or "Без комнаты",
                     "device_name": device.display_name,
                     "channel_name": _label_for_switch_code(device, code),
                 }
             )
+    scene_choices = get_tuya_scene_choices(db)
+    choices.extend(
+        {
+            **item,
+            "action_kind": TUYA_SCENE_KIND,
+            "device_id": None,
+            "code": item["scene_id"],
+            "room": item["home_name"],
+            "device_name": item["home_name"],
+            "channel_name": item["scene_name"],
+        }
+        for item in scene_choices
+    )
     return choices
 
 
@@ -175,22 +232,39 @@ def create_automation_rule(
     is_enabled: bool,
     notes: str = "",
 ) -> AutomationRule:
-    device_id, command_code = _parse_target_key(target_key)
-    device = db.get(Device, device_id)
-    if device is None or device.is_deleted:
-        raise ValueError("Устройство для сценария не найдено.")
-    if command_code not in set(device.control_codes):
-        raise ValueError("Это устройство больше не отдаёт выбранный канал управления.")
+    target = _parse_target_key(target_key)
     rule = AutomationRule(
-        name=(name or "").strip() or _rule_target_label(device, command_code),
-        device_id=device.id,
-        command_code=command_code,
-        desired_state=bool(desired_state),
+        name=(name or "").strip(),
         schedule_time=_normalize_time(schedule_time),
         weekdays_csv=_normalize_weekdays(weekdays),
         is_enabled=bool(is_enabled),
         notes=(notes or "").strip() or None,
     )
+    if target["kind"] == DEVICE_SWITCH_KIND:
+        device_id = int(target["device_id"])
+        command_code = str(target["code"])
+        device = db.get(Device, device_id)
+        if device is None or device.is_deleted:
+            raise ValueError("Устройство для сценария не найдено.")
+        if command_code not in set(device.control_codes):
+            raise ValueError("Это устройство больше не отдаёт выбранный канал управления.")
+        rule.action_kind = DEVICE_SWITCH_KIND
+        rule.device_id = device.id
+        rule.command_code = command_code
+        rule.desired_state = bool(desired_state)
+        rule.name = rule.name or _rule_target_label_device(device, command_code)
+    else:
+        home_id = str(target["home_id"])
+        scene_id = str(target["scene_id"])
+        scene_choices = get_tuya_scene_choices(db)
+        label = _rule_target_label_scene(home_id, scene_id, scene_choices)
+        rule.action_kind = TUYA_SCENE_KIND
+        rule.device_id = None
+        rule.command_code = "scene_trigger"
+        rule.desired_state = True
+        rule.tuya_home_id = home_id
+        rule.tuya_scene_id = scene_id
+        rule.name = rule.name or label
     db.add(rule)
     db.commit()
     db.refresh(rule)
@@ -213,20 +287,38 @@ def update_automation_rule(
     rule = db.get(AutomationRule, rule_id)
     if rule is None:
         raise ValueError("Сценарий не найден.")
-    device_id, command_code = _parse_target_key(target_key)
-    device = db.get(Device, device_id)
-    if device is None or device.is_deleted:
-        raise ValueError("Устройство для сценария не найдено.")
-    if command_code not in set(device.control_codes):
-        raise ValueError("Это устройство больше не отдаёт выбранный канал управления.")
-    rule.name = (name or "").strip() or _rule_target_label(device, command_code)
-    rule.device_id = device.id
-    rule.command_code = command_code
-    rule.desired_state = bool(desired_state)
+    target = _parse_target_key(target_key)
     rule.schedule_time = _normalize_time(schedule_time)
     rule.weekdays_csv = _normalize_weekdays(weekdays)
     rule.is_enabled = bool(is_enabled)
     rule.notes = (notes or "").strip() or None
+    if target["kind"] == DEVICE_SWITCH_KIND:
+        device_id = int(target["device_id"])
+        command_code = str(target["code"])
+        device = db.get(Device, device_id)
+        if device is None or device.is_deleted:
+            raise ValueError("Устройство для сценария не найдено.")
+        if command_code not in set(device.control_codes):
+            raise ValueError("Это устройство больше не отдаёт выбранный канал управления.")
+        rule.action_kind = DEVICE_SWITCH_KIND
+        rule.device_id = device.id
+        rule.command_code = command_code
+        rule.desired_state = bool(desired_state)
+        rule.tuya_home_id = None
+        rule.tuya_scene_id = None
+        rule.name = (name or "").strip() or _rule_target_label_device(device, command_code)
+    else:
+        home_id = str(target["home_id"])
+        scene_id = str(target["scene_id"])
+        scene_choices = get_tuya_scene_choices(db)
+        label = _rule_target_label_scene(home_id, scene_id, scene_choices)
+        rule.action_kind = TUYA_SCENE_KIND
+        rule.device_id = None
+        rule.command_code = "scene_trigger"
+        rule.desired_state = True
+        rule.tuya_home_id = home_id
+        rule.tuya_scene_id = scene_id
+        rule.name = (name or "").strip() or label
     db.commit()
     db.refresh(rule)
     return rule
@@ -270,6 +362,20 @@ def _log_rule_run(
 
 
 def execute_automation_rule(db: Session, rule: AutomationRule, *, trigger: str, slot_key: str | None = None) -> dict:
+    summary = ""
+    if rule.action_kind == TUYA_SCENE_KIND:
+        try:
+            trigger_tuya_scene(db, home_id=rule.tuya_home_id or "", scene_id=rule.tuya_scene_id or "")
+            summary = _rule_target_label_scene(rule.tuya_home_id, rule.tuya_scene_id, get_tuya_scene_choices(db))
+            _log_rule_run(db, rule=rule, trigger=trigger, status="success", result_summary=f"{summary} → запуск")
+        except Exception as exc:
+            summary = str(exc)
+            _log_rule_run(db, rule=rule, trigger=trigger, status="error", error_message=summary)
+        if slot_key:
+            rule.last_trigger_slot = slot_key
+        db.commit()
+        return {"status": rule.last_run_status, "message": summary}
+
     device = db.get(Device, rule.device_id)
     if device is None or device.is_deleted:
         _log_rule_run(db, rule=rule, trigger=trigger, status="error", error_message="Устройство больше не найдено.")

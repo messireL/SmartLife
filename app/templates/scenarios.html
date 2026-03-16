@@ -4,7 +4,7 @@
   <div class="section-header">
     <div>
       <h1>Сценарии</h1>
-      <div class="muted">Автоматические включения и выключения по времени. Пока это первый взрослый слой: расписания на дни недели, ручной запуск и журнал срабатываний.</div>
+      <div class="muted">Локальные расписания SmartLife и мост к Tuya-сценам теперь живут вместе. Можно запускать штатные сцены Smart Life, включать и выключать Tuya-автоматизации и привязывать Tuya-сцену к нашему локальному расписанию.</div>
     </div>
   </div>
 </section>
@@ -20,16 +20,16 @@
     <div class="section-header">
       <div>
         <h2>Новый сценарий</h2>
-        <div class="muted tiny">Выбираешь канал или питание устройства, время и дни недели. Для расписаний нужен работающий фон SmartLife.</div>
+        <div class="muted tiny">Можно выбрать локальное устройство/канал или Tuya-сцену. Для Tuya-сцены SmartLife будет просто запускать её по расписанию.</div>
       </div>
     </div>
     <form class="form-stack" method="post" action="/scenarios/create">
       <label>Название
-        <input class="input" type="text" name="name" placeholder="Например: Чайник утром">
+        <input class="input" type="text" name="name" placeholder="Например: Чайник утром или Ночная сцена квартиры 2">
       </label>
-      <label>Что переключать
+      <label>Что запускать
         <select class="input" name="target_key" required>
-          <option value="">Выбери устройство или канал</option>
+          <option value="">Выбери устройство, канал или Tuya-сцену</option>
           {% for item in automation_target_choices %}
             <option value="{{ item.value }}">{{ item.label }}</option>
           {% endfor %}
@@ -38,9 +38,10 @@
       <div class="form-grid two-cols">
         <label>Действие
           <select class="input" name="desired_state">
-            <option value="on">Включить</option>
+            <option value="on">Включить / запустить</option>
             <option value="off">Выключить</option>
           </select>
+          <div class="muted tiny">Для Tuya-сцены это поле игнорируется: сцена просто запускается.</div>
         </label>
         <label>Время
           <input class="input" type="time" name="schedule_time" value="23:00" required>
@@ -55,7 +56,7 @@
         </div>
       </fieldset>
       <label>Заметки
-        <textarea class="input" name="notes" rows="3" placeholder="Например: только для ночного тарифа второй квартиры"></textarea>
+        <textarea class="input" name="notes" rows="3" placeholder="Например: запускает штатную сцену Smart Life для второй квартиры"></textarea>
       </label>
       <label class="checkbox-inline"><input type="checkbox" name="is_enabled" value="1" checked> <span>Сразу включить сценарий</span></label>
       <button type="submit">Создать сценарий</button>
@@ -92,6 +93,98 @@
 <section class="card">
   <div class="section-header">
     <div>
+      <h2>Мост к Tuya-сценам</h2>
+      <div class="muted tiny">Штатные Tap-to-Run и Automation из приложения Smart Life никуда не делись. Здесь можно запускать сцены вручную и включать/выключать автоматизации, не лазая туда-сюда между интерфейсами.</div>
+    </div>
+  </div>
+  {% if tuya_scene_bridge.errors %}
+    <div class="stack-sm">
+      {% for error in tuya_scene_bridge.errors %}
+        <div class="alert danger">{{ error }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% if tuya_scene_bridge.warnings %}
+    <div class="stack-sm">
+      {% for warning in tuya_scene_bridge.warnings %}
+        <div class="alert">{{ warning }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <div class="rule-list">
+    {% for home in tuya_scene_bridge.homes %}
+      <article class="rule-card">
+        <div class="rule-card-head">
+          <div>
+            <div class="rule-title-row">
+              <h3>{{ home.home_name }}</h3>
+              <span class="badge idle">home_id {{ home.home_id }}</span>
+            </div>
+            <div class="muted tiny">Сцены Smart Life и автоматизации этого дома. Ошибки запроса сюда тоже прилетают честно, без художественной самодеятельности.</div>
+          </div>
+        </div>
+        {% if home.error %}
+          <div class="alert danger">{{ home.error }}</div>
+        {% endif %}
+        <div class="grid-2">
+          <div>
+            <div class="section-subtitle">Tap-to-Run сцены</div>
+            <div class="stack-sm">
+              {% for scene in home.scenes %}
+                <form class="rule-card" method="post" action="/scenarios/tuya-scenes/run">
+                  <input type="hidden" name="home_id" value="{{ home.home_id }}">
+                  <input type="hidden" name="scene_id" value="{{ scene.id }}">
+                  <div class="rule-card-head">
+                    <div>
+                      <div class="rule-title-row">
+                        <h3>{{ scene.name }}</h3>
+                        <span class="badge running">tap-to-run</span>
+                      </div>
+                      <div class="muted tiny">scene_id {{ scene.id }}</div>
+                    </div>
+                    <button type="submit">Запустить</button>
+                  </div>
+                </form>
+              {% else %}
+                <div class="muted">Tap-to-Run сцен тут пока не видно.</div>
+              {% endfor %}
+            </div>
+          </div>
+          <div>
+            <div class="section-subtitle">Automation в Tuya</div>
+            <div class="stack-sm">
+              {% for item in home.automations %}
+                <form class="rule-card" method="post" action="/scenarios/tuya-automations/toggle">
+                  <input type="hidden" name="home_id" value="{{ home.home_id }}">
+                  <input type="hidden" name="automation_id" value="{{ item.id }}">
+                  <input type="hidden" name="enabled" value="{{ 0 if item.enabled else 1 }}">
+                  <div class="rule-card-head">
+                    <div>
+                      <div class="rule-title-row">
+                        <h3>{{ item.name }}</h3>
+                        {% if item.enabled is sameas true %}<span class="badge online">вкл</span>{% elif item.enabled is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge idle">?</span>{% endif %}
+                      </div>
+                      <div class="muted tiny">automation_id {{ item.id }}</div>
+                    </div>
+                    <button type="submit">{% if item.enabled %}Выключить{% else %}Включить{% endif %}</button>
+                  </div>
+                </form>
+              {% else %}
+                <div class="muted">Автоматизаций тут пока не видно.</div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </article>
+    {% else %}
+      <div class="muted">Пока не задан ни один home_id. Добавь их в Настройках, и сюда подтянутся сцены из Smart Life.</div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <div>
       <h2>Активные правила</h2>
       <div class="muted tiny">Редактируй без приключений: цель, время, дни недели и ручной запуск — всё на одном экране.</div>
     </div>
@@ -117,19 +210,23 @@
           <label>Название
             <input class="input" type="text" name="name" value="{{ rule.name }}">
           </label>
-          <label>Что переключать
+          <label>Что запускать
             <select class="input" name="target_key" required>
               {% for item in automation_target_choices %}
-                <option value="{{ item.value }}" {% if item.device_id == rule.device_id and item.code == rule.target_code %}selected{% endif %}>{{ item.label }}</option>
+                <option value="{{ item.value }}"
+                  {% if item.action_kind == 'tuya_scene' and rule.action_kind == 'tuya_scene' and item.home_id == rule.tuya_home_id and item.scene_id == rule.tuya_scene_id %}selected{% endif %}
+                  {% if item.action_kind == 'device_switch' and rule.action_kind == 'device_switch' and item.device_id == rule.device_id and item.code == rule.target_code %}selected{% endif %}
+                >{{ item.label }}</option>
               {% endfor %}
             </select>
           </label>
           <div class="form-grid two-cols">
             <label>Действие
               <select class="input" name="desired_state">
-                <option value="on" {% if rule.desired_state %}selected{% endif %}>Включить</option>
+                <option value="on" {% if rule.desired_state %}selected{% endif %}>Включить / запустить</option>
                 <option value="off" {% if not rule.desired_state %}selected{% endif %}>Выключить</option>
               </select>
+              <div class="muted tiny">Для Tuya-сцены это поле игнорируется: сценарий просто запустит её.</div>
             </label>
             <label>Время
               <input class="input" type="time" name="schedule_time" value="{{ rule.schedule_time }}" required>

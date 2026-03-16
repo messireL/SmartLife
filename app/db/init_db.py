@@ -110,8 +110,11 @@ def _apply_postgres_migrations() -> None:
         "CREATE TABLE IF NOT EXISTS automation_rules ("
         "id SERIAL PRIMARY KEY, "
         "name VARCHAR(128) NOT NULL, "
-        "device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE, "
+        "device_id INTEGER NULL REFERENCES devices(id) ON DELETE CASCADE, "
         "command_code VARCHAR(128) NOT NULL, "
+        "action_kind VARCHAR(32) NOT NULL DEFAULT 'device_switch', "
+        "tuya_home_id VARCHAR(64) NULL, "
+        "tuya_scene_id VARCHAR(128) NULL, "
         "desired_state BOOLEAN NOT NULL DEFAULT TRUE, "
         "schedule_time VARCHAR(5) NOT NULL, "
         "weekdays_csv VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5,6,7', "
@@ -124,6 +127,11 @@ def _apply_postgres_migrations() -> None:
         "created_at TIMESTAMP DEFAULT NOW(), "
         "updated_at TIMESTAMP DEFAULT NOW()"
         ")",
+        "ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS action_kind VARCHAR(32) NOT NULL DEFAULT 'device_switch'",
+        "ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS tuya_home_id VARCHAR(64)",
+        "ALTER TABLE automation_rules ADD COLUMN IF NOT EXISTS tuya_scene_id VARCHAR(128)",
+        "ALTER TABLE automation_rules ALTER COLUMN device_id DROP NOT NULL",
+        "CREATE INDEX IF NOT EXISTS ix_automation_rules_action_kind ON automation_rules(action_kind)",
         "CREATE INDEX IF NOT EXISTS ix_automation_rules_device_id ON automation_rules(device_id)",
         "CREATE INDEX IF NOT EXISTS ix_automation_rules_schedule_time ON automation_rules(schedule_time)",
         "CREATE INDEX IF NOT EXISTS ix_automation_rules_is_enabled ON automation_rules(is_enabled)",

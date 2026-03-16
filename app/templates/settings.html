@@ -75,6 +75,28 @@
   {% endif %}
 </section>
 
+<section class="grid-2">
+
+  <article class="card">
+    <div class="section-header"><h2>Tuya-сцены и home_id</h2></div>
+    <form class="form-stack" method="post" action="/settings/tuya-scenes">
+      <label>Список home_id
+        <textarea class="input" name="tuya_scene_home_ids" rows="3" placeholder="Например: 123456789, 987654321">{{ tuya_scene_bridge.configured_home_ids_csv }}</textarea>
+      </label>
+      <div class="muted tiny">Укажи один или несколько home_id через запятую или с новой строки. Именно по этим домам SmartLife будет подтягивать Tap-to-Run сцены и Tuya-автоматизации.</div>
+      {% if tuya_scene_bridge.errors %}
+        <div class="status-stack">
+          {% for error in tuya_scene_bridge.errors %}
+            <div class="status-row"><span class="muted">Ошибка</span><span>{{ error }}</span></div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <button type="submit">Сохранить home_id</button>
+    </form>
+  </article>
+
+</section>
+
 <section class="card">
   <div class="section-header"><h2>Где хранятся облачные настройки</h2></div>
   <div class="muted">Параметры подключения к облаку теперь хранятся в PostgreSQL (`app_settings`), а не в `.env`. Команда `configure-tuya` записывает их в базу. Legacy secrets остаются только как одноразовый источник для первого импорта при обновлении старого стенда.</div>
