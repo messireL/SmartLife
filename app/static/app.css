@@ -1521,3 +1521,35 @@ button:disabled:hover {
     justify-content: flex-start;
   }
 }
+
+
+.scenario-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.scenario-filter-field {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+}
+
+.scenario-filter-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.log-error-text {
+  color: #ffd1c6;
+}
+
+@media (max-width: 900px) {
+  .scenario-filter-actions {
+    align-items: stretch;
+  }
+}

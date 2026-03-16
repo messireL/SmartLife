@@ -31,6 +31,17 @@ DEVICE_SWITCH_KIND = "device_switch"
 TUYA_SCENE_KIND = "tuya_scene"
 TUYA_AUTOMATION_KIND = "tuya_automation"
 
+RUN_STATUS_META = {
+    "success": {"label": "успех", "badge": "online"},
+    "error": {"label": "ошибка", "badge": "error"},
+    "skipped": {"label": "пропущен", "badge": "idle"},
+}
+
+RUN_TRIGGER_META = {
+    "manual": "ручной запуск",
+    "schedule": "по расписанию",
+}
+
 
 def _is_switch_like_code(code: str | None) -> bool:
     if not code:
@@ -176,6 +187,8 @@ def _hydrate_rule(
         "notes": rule.notes,
         "last_run_at": rule.last_run_at,
         "last_run_status": rule.last_run_status,
+        "last_run_status_label": RUN_STATUS_META.get(rule.last_run_status or "", {}).get("label", rule.last_run_status or "ещё не запускался"),
+        "last_run_status_badge": RUN_STATUS_META.get(rule.last_run_status or "", {}).get("badge", "idle"),
         "last_result_summary": rule.last_result_summary,
         "next_run_local": next_run,
         "next_run_label": next_run.strftime("%d-%m-%Y %H:%M") if next_run else "—",
@@ -206,6 +219,28 @@ def list_recent_automation_runs(db: Session, limit: int = 30) -> list[Automation
         .order_by(AutomationRunLog.requested_at.desc(), AutomationRunLog.id.desc())
         .limit(limit)
     ).scalars().all()
+
+
+def format_automation_runs(rows: list[AutomationRunLog]) -> list[dict[str, Any]]:
+    formatted: list[dict[str, Any]] = []
+    for item in rows:
+        status_meta = RUN_STATUS_META.get(item.status or "", {})
+        formatted.append(
+            {
+                "id": item.id,
+                "requested_at": item.requested_at,
+                "rule": item.rule,
+                "device": item.device,
+                "trigger": item.trigger,
+                "trigger_label": RUN_TRIGGER_META.get(item.trigger or "", item.trigger or "—"),
+                "status": item.status,
+                "status_label": status_meta.get("label", item.status or "—"),
+                "status_badge": status_meta.get("badge", "idle"),
+                "result_summary": item.result_summary,
+                "error_message": item.error_message,
+            }
+        )
+    return formatted
 
 
 def get_automation_target_choices(db: Session, *, tuya_bridge: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -392,6 +427,43 @@ def delete_automation_rule(db: Session, rule_id: int) -> AutomationRule | None:
     db.delete(rule)
     db.commit()
     return rule
+
+
+def set_automation_rule_enabled(db: Session, rule_id: int, enabled: bool) -> AutomationRule:
+    rule = db.get(AutomationRule, rule_id)
+    if rule is None:
+        raise ValueError("Сценарий не найден.")
+    rule.is_enabled = bool(enabled)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+def duplicate_automation_rule(db: Session, rule_id: int) -> AutomationRule:
+    rule = db.get(AutomationRule, rule_id)
+    if rule is None:
+        raise ValueError("Сценарий не найден.")
+    duplicate = AutomationRule(
+        name=f"{rule.name} (копия)",
+        device_id=rule.device_id,
+        command_code=rule.command_code,
+        action_kind=rule.action_kind,
+        tuya_home_id=rule.tuya_home_id,
+        tuya_scene_id=rule.tuya_scene_id,
+        desired_state=rule.desired_state,
+        schedule_time=rule.schedule_time,
+        weekdays_csv=rule.weekdays_csv,
+        is_enabled=False,
+        notes=rule.notes,
+        last_trigger_slot=None,
+        last_run_at=None,
+        last_run_status=None,
+        last_result_summary=None,
+    )
+    db.add(duplicate)
+    db.commit()
+    db.refresh(duplicate)
+    return duplicate
 
 
 def _log_rule_run(

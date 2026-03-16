@@ -40,10 +40,13 @@ from app.services.automation_service import (
     WEEKDAY_CHOICES,
     create_automation_rule,
     delete_automation_rule,
+    duplicate_automation_rule,
+    format_automation_runs,
     get_automation_target_choices,
     list_automation_rules,
     list_recent_automation_runs,
     run_automation_rule_now,
+    set_automation_rule_enabled,
     update_automation_rule,
 )
 from app.services.tuya_scene_service import (
@@ -314,10 +317,68 @@ def _safe_tuya_scene_bridge_overview(db: Session) -> dict[str, object]:
         }
 
 
+def _normalize_scenario_query(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def _filter_automation_rules_for_ui(rules: list[dict[str, object]], *, search: str, state_filter: str, kind_filter: str) -> list[dict[str, object]]:
+    search_lower = search.lower()
+    filtered: list[dict[str, object]] = []
+    for item in rules:
+        if state_filter == "enabled" and not item.get("is_enabled"):
+            continue
+        if state_filter == "disabled" and item.get("is_enabled"):
+            continue
+        if kind_filter != "all" and item.get("action_kind") != kind_filter:
+            continue
+        haystack = " ".join(
+            str(part or "")
+            for part in (
+                item.get("name"),
+                item.get("target_label"),
+                item.get("device_name"),
+                item.get("notes"),
+                item.get("desired_state_label"),
+            )
+        ).lower()
+        if search_lower and search_lower not in haystack:
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def _filter_automation_runs_for_ui(runs: list[dict[str, object]], *, search: str, status_filter: str) -> list[dict[str, object]]:
+    search_lower = search.lower()
+    filtered: list[dict[str, object]] = []
+    for item in runs:
+        if status_filter != "all" and item.get("status") != status_filter:
+            continue
+        rule = item.get("rule")
+        device = item.get("device")
+        haystack = " ".join(
+            str(part or "")
+            for part in (
+                getattr(rule, "name", ""),
+                getattr(device, "name", ""),
+                item.get("result_summary"),
+                item.get("error_message"),
+                item.get("trigger_label"),
+            )
+        ).lower()
+        if search_lower and search_lower not in haystack:
+            continue
+        filtered.append(item)
+    return filtered
+
+
 @router.get("/scenarios", response_class=HTMLResponse)
 def scenarios_page(
     request: Request,
     scenario_tab: str = Query(default="local"),
+    scenario_search: str = Query(default=""),
+    scenario_state: str = Query(default="all"),
+    scenario_kind: str = Query(default="all"),
+    log_status: str = Query(default="all"),
     db: Session = Depends(get_db),
 ):
     runtime = get_runtime_config(db)
@@ -329,16 +390,55 @@ def scenarios_page(
     )
     if scenario_tab not in {"local", "tuya", "log"}:
         scenario_tab = "local"
+    scenario_search = _normalize_scenario_query(scenario_search)
+    if scenario_state not in {"all", "enabled", "disabled"}:
+        scenario_state = "all"
+    if scenario_kind not in {"all", "device_switch", "tuya_scene", "tuya_automation"}:
+        scenario_kind = "all"
+    if log_status not in {"all", "success", "error", "skipped"}:
+        log_status = "all"
+
+    filtered_rules = _filter_automation_rules_for_ui(rules, search=scenario_search, state_filter=scenario_state, kind_filter=scenario_kind)
+    formatted_runs = format_automation_runs(list_recent_automation_runs(db, limit=40))
+    filtered_runs = _filter_automation_runs_for_ui(formatted_runs, search=scenario_search, status_filter=log_status)
+
     context = _base_context(request=request, active_nav="scenarios", page_title="Сценарии", runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
-            "automation_rules": rules,
+            "automation_rules": filtered_rules,
+            "automation_rules_total": len(rules),
+            "automation_rules_filtered": len(filtered_rules),
             "automation_target_choices": get_automation_target_choices(db, tuya_bridge=tuya_scene_bridge),
-            "automation_runs": list_recent_automation_runs(db, limit=24),
+            "automation_runs": filtered_runs,
+            "automation_runs_total": len(formatted_runs),
+            "automation_runs_filtered": len(filtered_runs),
             "weekday_choices": WEEKDAY_CHOICES,
             "tuya_scene_bridge": tuya_scene_bridge,
             "scenario_tab": scenario_tab,
+            "scenario_search": scenario_search,
+            "scenario_state": scenario_state,
+            "scenario_kind": scenario_kind,
+            "log_status": log_status,
+            "scenario_filters": {
+                "state_choices": [
+                    {"value": "all", "label": "Все"},
+                    {"value": "enabled", "label": "Только активные"},
+                    {"value": "disabled", "label": "Только пауза"},
+                ],
+                "kind_choices": [
+                    {"value": "all", "label": "Все цели"},
+                    {"value": "device_switch", "label": "Локальные устройства"},
+                    {"value": "tuya_scene", "label": "Tuya Tap-to-Run"},
+                    {"value": "tuya_automation", "label": "Tuya Automation"},
+                ],
+                "log_status_choices": [
+                    {"value": "all", "label": "Любой статус"},
+                    {"value": "success", "label": "Успех"},
+                    {"value": "error", "label": "Ошибки"},
+                    {"value": "skipped", "label": "Пропущено"},
+                ],
+            },
             "automation_summary": {
                 "total": len(rules),
                 "enabled": len([item for item in rules if item["is_enabled"]]),
@@ -347,8 +447,6 @@ def scenarios_page(
         }
     )
     return templates.TemplateResponse(request, "scenarios.html", context)
-
-
 
 
 @router.post("/scenarios/tuya-scenes/run")
@@ -446,6 +544,30 @@ def run_scenario_action(rule_id: int, db: Session = Depends(get_db)):
     try:
         result = run_automation_rule_now(db, rule_id)
         flash = f"Сценарий выполнен: {result['message']}"
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/scenarios?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/scenarios/{rule_id}/toggle-enabled")
+def toggle_scenario_enabled_action(
+    rule_id: int,
+    enabled: str = Form(default="1"),
+    db: Session = Depends(get_db),
+):
+    try:
+        rule = set_automation_rule_enabled(db, rule_id, str(enabled).lower() in {"1", "true", "on", "yes"})
+        flash = f"Сценарий «{rule.name}» {'включён' if rule.is_enabled else 'поставлен на паузу'}."
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/scenarios?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/scenarios/{rule_id}/duplicate")
+def duplicate_scenario_action(rule_id: int, db: Session = Depends(get_db)):
+    try:
+        rule = duplicate_automation_rule(db, rule_id)
+        flash = f"Создана копия сценария: «{rule.name}». Копия стартует в паузе, чтобы не устроить самодеятельность без спроса."
     except ValueError as exc:
         flash = str(exc)
     return RedirectResponse(url=f"/scenarios?flash={quote_plus(flash)}", status_code=303)

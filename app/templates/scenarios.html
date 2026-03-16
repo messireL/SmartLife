@@ -4,13 +4,13 @@
   <div class="section-header scenario-hero-header">
     <div>
       <h1>Сценарии</h1>
-      <div class="muted">Локальные расписания SmartLife и штатные Tuya-сцены теперь не толкаются в одном углу. Разнесли по вкладкам, выровняли карточки и добавили быстрый ручной refresh без танцев с перезагрузкой всей жизни.</div>
+      <div class="muted">Локальные расписания SmartLife и штатные Tuya-сцены теперь не толкаются в одном углу. Разнесли по вкладкам, добавили фильтры, поиск, дублирование и понятную паузу, чтобы этот раздел уже был рабочим центром управления, а не просто складом идей.</div>
     </div>
     <div class="scenario-toolbar">
-      <a class="tab-link {% if scenario_tab == 'local' %}active{% endif %}" href="/scenarios?scenario_tab=local">Локальные</a>
-      <a class="tab-link {% if scenario_tab == 'tuya' %}active{% endif %}" href="/scenarios?scenario_tab=tuya">Tuya-мост</a>
-      <a class="tab-link {% if scenario_tab == 'log' %}active{% endif %}" href="/scenarios?scenario_tab=log">Журнал</a>
-      <a class="tab-link" href="/scenarios?scenario_tab={{ scenario_tab }}">Обновить список</a>
+      <a class="tab-link {% if scenario_tab == 'local' %}active{% endif %}" href="/scenarios?scenario_tab=local&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&log_status={{ log_status|urlq }}">Локальные</a>
+      <a class="tab-link {% if scenario_tab == 'tuya' %}active{% endif %}" href="/scenarios?scenario_tab=tuya&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&log_status={{ log_status|urlq }}">Tuya-мост</a>
+      <a class="tab-link {% if scenario_tab == 'log' %}active{% endif %}" href="/scenarios?scenario_tab=log&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&log_status={{ log_status|urlq }}">Журнал</a>
+      <a class="tab-link" href="/scenarios?scenario_tab={{ scenario_tab }}&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&log_status={{ log_status|urlq }}">Обновить список</a>
     </div>
   </div>
 </section>
@@ -94,9 +94,34 @@
     <div class="section-header">
       <div>
         <h2>Активные правила</h2>
-        <div class="muted tiny">Редактируй цель, время, дни недели и ручной запуск без ощущения, что ты настраиваешь космодром.</div>
+        <div class="muted tiny">Поиск, фильтры, быстрый запуск, дублирование и пауза — всё в одном месте, без космодрома и шаманства.</div>
       </div>
+      <div class="muted tiny">Показано {{ automation_rules_filtered }} из {{ automation_rules_total }}</div>
     </div>
+    <form class="scenario-filter-bar" method="get" action="/scenarios">
+      <input type="hidden" name="scenario_tab" value="local">
+      <label class="scenario-filter-field">Поиск
+        <input class="input" type="search" name="scenario_search" value="{{ scenario_search }}" placeholder="Название, цель, заметка">
+      </label>
+      <label class="scenario-filter-field">Состояние
+        <select class="input" name="scenario_state">
+          {% for item in scenario_filters.state_choices %}
+            <option value="{{ item.value }}" {% if item.value == scenario_state %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="scenario-filter-field">Тип цели
+        <select class="input" name="scenario_kind">
+          {% for item in scenario_filters.kind_choices %}
+            <option value="{{ item.value }}" {% if item.value == scenario_kind %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="scenario-filter-actions">
+        <button type="submit">Применить</button>
+        <a class="tab-link" href="/scenarios?scenario_tab=local">Сбросить</a>
+      </div>
+    </form>
     <div class="rule-list">
       {% for rule in automation_rules %}
         <article class="rule-card">
@@ -104,13 +129,20 @@
             <div>
               <div class="rule-title-row">
                 <h3>{{ rule.name }}</h3>
-                {% if rule.is_enabled %}<span class="badge online">включён</span>{% else %}<span class="badge off">выключен</span>{% endif %}
+                {% if rule.is_enabled %}<span class="badge online">включён</span>{% else %}<span class="badge idle">пауза</span>{% endif %}
+                {% if rule.action_kind == 'device_switch' %}<span class="badge">локальный</span>{% elif rule.action_kind == 'tuya_scene' %}<span class="badge">Tap-to-Run</span>{% else %}<span class="badge">Tuya Automation</span>{% endif %}
               </div>
               <div class="muted tiny">{{ rule.target_label }} · {{ rule.desired_state_label }} в {{ rule.schedule_time }} · {{ rule.weekdays_label }}</div>
               <div class="muted tiny">Следующий запуск: {{ rule.next_run_label }}</div>
+              <div class="muted tiny">Последний итог: <span class="badge {{ rule.last_run_status_badge }}">{{ rule.last_run_status_label }}</span>{% if rule.last_result_summary %} · {{ rule.last_result_summary }}{% endif %}</div>
             </div>
             <div class="rule-head-actions">
               <form method="post" action="/scenarios/{{ rule.id }}/run"><button type="submit">Запустить сейчас</button></form>
+              <form method="post" action="/scenarios/{{ rule.id }}/duplicate"><button type="submit">Дублировать</button></form>
+              <form method="post" action="/scenarios/{{ rule.id }}/toggle-enabled">
+                <input type="hidden" name="enabled" value="{{ 0 if rule.is_enabled else 1 }}">
+                <button type="submit">{% if rule.is_enabled %}Пауза{% else %}Включить{% endif %}</button>
+              </form>
               <form method="post" action="/scenarios/{{ rule.id }}/delete" onsubmit="return confirm('Удалить сценарий безвозвратно?');"><button class="danger-ghost" type="submit">Удалить</button></form>
             </div>
           </div>
@@ -160,7 +192,7 @@
           </form>
         </article>
       {% else %}
-        <div class="muted">Пока нет ни одного сценария. Самое время научить дом хоть чему-то кроме красивого стояния в интерфейсе.</div>
+        <div class="muted">По этим фильтрам ничего не нашлось. Дом не обиделся, просто запрос сейчас слишком строгий.</div>
       {% endfor %}
     </div>
   </section>
@@ -260,23 +292,48 @@
   <section class="card">
     <div class="section-header">
       <div>
-        <h2>Последние срабатывания</h2>
-        <div class="muted tiny">Здесь видно, кто отработал, а кто решил немного покапризничать.</div>
+        <h2>Журнал запусков</h2>
+        <div class="muted tiny">Здесь видно, кто отработал, а кто решил покапризничать. Фильтры и поиск помогают быстро выловить проблемную автоматику без ныряния в логи контейнера.</div>
       </div>
+      <div class="muted tiny">Показано {{ automation_runs_filtered }} из {{ automation_runs_total }}</div>
     </div>
+    <form class="scenario-filter-bar" method="get" action="/scenarios">
+      <input type="hidden" name="scenario_tab" value="log">
+      <label class="scenario-filter-field">Поиск
+        <input class="input" type="search" name="scenario_search" value="{{ scenario_search }}" placeholder="Сценарий, устройство, текст ошибки">
+      </label>
+      <label class="scenario-filter-field">Статус
+        <select class="input" name="log_status">
+          {% for item in scenario_filters.log_status_choices %}
+            <option value="{{ item.value }}" {% if item.value == log_status %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="scenario-filter-actions">
+        <button type="submit">Применить</button>
+        <a class="tab-link" href="/scenarios?scenario_tab=log">Сбросить</a>
+      </div>
+    </form>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Время</th><th>Сценарий</th><th>Статус</th><th>Итог</th></tr></thead>
+        <thead><tr><th>Время</th><th>Сценарий</th><th>Запуск</th><th>Статус</th><th>Итог</th></tr></thead>
         <tbody>
           {% for item in automation_runs %}
             <tr>
               <td>{{ item.requested_at|localdt }}</td>
               <td>{{ item.rule.name if item.rule else 'Удалённый сценарий' }}</td>
-              <td>{% if item.status == 'success' %}<span class="badge online">ok</span>{% else %}<span class="badge error">ошибка</span>{% endif %}</td>
-              <td>{{ item.result_summary or item.error_message or '—' }}</td>
+              <td>{{ item.trigger_label }}</td>
+              <td><span class="badge {{ item.status_badge }}">{{ item.status_label }}</span></td>
+              <td>
+                {% if item.error_message %}
+                  <span class="log-error-text">{{ item.error_message }}</span>
+                {% else %}
+                  {{ item.result_summary or '—' }}
+                {% endif %}
+              </td>
             </tr>
           {% else %}
-            <tr><td colspan="4" class="muted">Запусков пока не было.</td></tr>
+            <tr><td colspan="5" class="muted">По этим фильтрам запусков пока не видно.</td></tr>
           {% endfor %}
         </tbody>
       </table>
