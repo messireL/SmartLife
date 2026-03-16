@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card page-hero">
+  <div class="section-header">
+    <div>
+      <h1>Сценарии</h1>
+      <div class="muted">Автоматические включения и выключения по времени. Пока это первый взрослый слой: расписания на дни недели, ручной запуск и журнал срабатываний.</div>
+    </div>
+  </div>
+</section>
+
+<section class="summary-grid metrics-grid">
+  <article class="card stat-card"><div class="muted">Всего сценариев</div><div class="stat-value">{{ automation_summary.total }}</div></article>
+  <article class="card stat-card"><div class="muted">Активных</div><div class="stat-value">{{ automation_summary.enabled }}</div></article>
+  <article class="card stat-card"><div class="muted">Отключённых</div><div class="stat-value">{{ automation_summary.disabled }}</div></article>
+</section>
+
+<section class="grid-2 automation-page-grid">
+  <article class="card">
+    <div class="section-header">
+      <div>
+        <h2>Новый сценарий</h2>
+        <div class="muted tiny">Выбираешь канал или питание устройства, время и дни недели. Для расписаний нужен работающий фон SmartLife.</div>
+      </div>
+    </div>
+    <form class="form-stack" method="post" action="/scenarios/create">
+      <label>Название
+        <input class="input" type="text" name="name" placeholder="Например: Чайник утром">
+      </label>
+      <label>Что переключать
+        <select class="input" name="target_key" required>
+          <option value="">Выбери устройство или канал</option>
+          {% for item in automation_target_choices %}
+            <option value="{{ item.value }}">{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="form-grid two-cols">
+        <label>Действие
+          <select class="input" name="desired_state">
+            <option value="on">Включить</option>
+            <option value="off">Выключить</option>
+          </select>
+        </label>
+        <label>Время
+          <input class="input" type="time" name="schedule_time" value="23:00" required>
+        </label>
+      </div>
+      <fieldset class="input-group">
+        <legend>Дни недели</legend>
+        <div class="weekday-grid">
+          {% for item in weekday_choices %}
+            <label class="weekday-pill"><input type="checkbox" name="weekdays" value="{{ item.value }}" checked> <span>{{ item.label }}</span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <label>Заметки
+        <textarea class="input" name="notes" rows="3" placeholder="Например: только для ночного тарифа второй квартиры"></textarea>
+      </label>
+      <label class="checkbox-inline"><input type="checkbox" name="is_enabled" value="1" checked> <span>Сразу включить сценарий</span></label>
+      <button type="submit">Создать сценарий</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <div class="section-header">
+      <div>
+        <h2>Последние срабатывания</h2>
+        <div class="muted tiny">Здесь видно, кто отработал, а кто решил покапризничать.</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Время</th><th>Сценарий</th><th>Статус</th><th>Итог</th></tr></thead>
+        <tbody>
+          {% for item in automation_runs %}
+            <tr>
+              <td>{{ item.requested_at|localdt }}</td>
+              <td>{{ item.rule.name if item.rule else 'Удалённый сценарий' }}</td>
+              <td>{% if item.status == 'success' %}<span class="badge online">ok</span>{% else %}<span class="badge error">ошибка</span>{% endif %}</td>
+              <td>{{ item.result_summary or item.error_message or '—' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="muted">Запусков пока не было.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <div>
+      <h2>Активные правила</h2>
+      <div class="muted tiny">Редактируй без приключений: цель, время, дни недели и ручной запуск — всё на одном экране.</div>
+    </div>
+  </div>
+  <div class="rule-list">
+    {% for rule in automation_rules %}
+      <article class="rule-card">
+        <div class="rule-card-head">
+          <div>
+            <div class="rule-title-row">
+              <h3>{{ rule.name }}</h3>
+              {% if rule.is_enabled %}<span class="badge online">включён</span>{% else %}<span class="badge off">выключен</span>{% endif %}
+            </div>
+            <div class="muted tiny">{{ rule.target_label }} · {{ rule.desired_state_label }} в {{ rule.schedule_time }} · {{ rule.weekdays_label }}</div>
+            <div class="muted tiny">Следующий запуск: {{ rule.next_run_label }}</div>
+          </div>
+          <div class="rule-head-actions">
+            <form method="post" action="/scenarios/{{ rule.id }}/run"><button type="submit">Запустить сейчас</button></form>
+            <form method="post" action="/scenarios/{{ rule.id }}/delete" onsubmit="return confirm('Удалить сценарий безвозвратно?');"><button class="danger-ghost" type="submit">Удалить</button></form>
+          </div>
+        </div>
+        <form class="form-stack" method="post" action="/scenarios/{{ rule.id }}/update">
+          <label>Название
+            <input class="input" type="text" name="name" value="{{ rule.name }}">
+          </label>
+          <label>Что переключать
+            <select class="input" name="target_key" required>
+              {% for item in automation_target_choices %}
+                <option value="{{ item.value }}" {% if item.device_id == rule.device_id and item.code == rule.target_code %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="form-grid two-cols">
+            <label>Действие
+              <select class="input" name="desired_state">
+                <option value="on" {% if rule.desired_state %}selected{% endif %}>Включить</option>
+                <option value="off" {% if not rule.desired_state %}selected{% endif %}>Выключить</option>
+              </select>
+            </label>
+            <label>Время
+              <input class="input" type="time" name="schedule_time" value="{{ rule.schedule_time }}" required>
+            </label>
+          </div>
+          <fieldset class="input-group">
+            <legend>Дни недели</legend>
+            <div class="weekday-grid">
+              {% for item in weekday_choices %}
+                <label class="weekday-pill"><input type="checkbox" name="weekdays" value="{{ item.value }}" {% if item.value in rule.weekdays_set %}checked{% endif %}> <span>{{ item.label }}</span></label>
+              {% endfor %}
+            </div>
+          </fieldset>
+          <label>Заметки
+            <textarea class="input" name="notes" rows="2">{{ rule.notes or '' }}</textarea>
+          </label>
+          <label class="checkbox-inline"><input type="checkbox" name="is_enabled" value="1" {% if rule.is_enabled %}checked{% endif %}> <span>Сценарий активен</span></label>
+          <div class="rule-footer">
+            <div class="muted tiny">Последний запуск: {{ rule.last_run_at|localdt if rule.last_run_at else 'ещё не было' }}{% if rule.last_result_summary %} · {{ rule.last_result_summary }}{% endif %}</div>
+            <button type="submit">Сохранить сценарий</button>
+          </div>
+        </form>
+      </article>
+    {% else %}
+      <div class="muted">Пока нет ни одного сценария. Самое время научить дом хоть чему-то кроме красивого стояния в интерфейсе.</div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

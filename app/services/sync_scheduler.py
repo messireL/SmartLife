@@ -7,6 +7,7 @@ from contextlib import suppress
 from app.core.config import get_settings
 from app.db.models import SyncRunTrigger
 from app.services.sync_runner import run_sync_job
+from app.services.automation_service import run_due_automation_cycle
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,13 @@ async def run_background_sync_loop(stop_event: asyncio.Event) -> None:
                 await asyncio.to_thread(run_sync_job, trigger=trigger, fail_if_running=False)
             except Exception:  # noqa: BLE001
                 logger.exception("Background sync failed")
+
+        try:
+            automation_outcome = await asyncio.to_thread(run_due_automation_cycle)
+            if automation_outcome.get("executed"):
+                logger.info("Automation cycle executed %s rules at %s", automation_outcome.get("executed"), automation_outcome.get("slot"))
+        except Exception:  # noqa: BLE001
+            logger.exception("Automation cycle failed")
 
         first_cycle = False
 

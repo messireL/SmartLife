@@ -36,6 +36,16 @@ from app.services.badge_service import ALLOWED_BADGE_COLORS, assign_badge_to_dev
 from app.services.channel_style_service import get_channel_icon_choices, get_channel_role_choices, normalize_channel_icon_key, normalize_channel_role_key
 from app.services.device_query_service import get_badge_choices, get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
+from app.services.automation_service import (
+    WEEKDAY_CHOICES,
+    create_automation_rule,
+    delete_automation_rule,
+    get_automation_target_choices,
+    list_automation_rules,
+    list_recent_automation_runs,
+    run_automation_rule_now,
+    update_automation_rule,
+)
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
 from app.services.runtime_config_service import (
     configure_demo_provider,
@@ -69,6 +79,7 @@ NAV_ITEMS = [
     {"key": "devices", "href": "/devices", "label": "Устройства"},
     {"key": "rooms", "href": "/rooms", "label": "Комнаты"},
     {"key": "badges", "href": "/badges", "label": "Плашки"},
+    {"key": "scenarios", "href": "/scenarios", "label": "Сценарии"},
     {"key": "consumption", "href": "/consumption", "label": "Потребление"},
     {"key": "sync", "href": "/sync", "label": "Синхронизация"},
     {"key": "settings", "href": "/settings", "label": "Настройки"},
@@ -273,6 +284,103 @@ def delete_badge_action(badge_id: int, db: Session = Depends(get_db)):
     else:
         flash = f"Плашка «{badge.name}» удалена. С устройств снято назначений: {affected}."
     return RedirectResponse(url=f"/badges?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.get("/scenarios", response_class=HTMLResponse)
+def scenarios_page(request: Request, db: Session = Depends(get_db)):
+    runtime = get_runtime_config(db)
+    rules = list_automation_rules(db)
+    context = _base_context(request=request, active_nav="scenarios", page_title="Сценарии", runtime=runtime)
+    context.update(
+        {
+            "summary": get_dashboard_summary(db),
+            "automation_rules": rules,
+            "automation_target_choices": get_automation_target_choices(db),
+            "automation_runs": list_recent_automation_runs(db, limit=24),
+            "weekday_choices": WEEKDAY_CHOICES,
+            "automation_summary": {
+                "total": len(rules),
+                "enabled": len([item for item in rules if item["is_enabled"]]),
+                "disabled": len([item for item in rules if not item["is_enabled"]]),
+            },
+        }
+    )
+    return templates.TemplateResponse(request, "scenarios.html", context)
+
+
+@router.post("/scenarios/create")
+def create_scenario_action(
+    name: str = Form(default=""),
+    target_key: str = Form(...),
+    desired_state: str = Form(default="on"),
+    schedule_time: str = Form(...),
+    weekdays: list[str] = Form(default=[]),
+    is_enabled: str = Form(default="1"),
+    notes: str = Form(default=""),
+    db: Session = Depends(get_db),
+):
+    try:
+        rule = create_automation_rule(
+            db,
+            name=name,
+            target_key=target_key,
+            desired_state=(desired_state == "on"),
+            schedule_time=schedule_time,
+            weekdays=weekdays,
+            is_enabled=is_enabled.lower() in {"1", "true", "on", "yes"},
+            notes=notes,
+        )
+        flash = f"Сценарий «{rule.name}» создан."
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/scenarios?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/scenarios/{rule_id}/update")
+def update_scenario_action(
+    rule_id: int,
+    name: str = Form(default=""),
+    target_key: str = Form(...),
+    desired_state: str = Form(default="on"),
+    schedule_time: str = Form(...),
+    weekdays: list[str] = Form(default=[]),
+    is_enabled: str = Form(default="0"),
+    notes: str = Form(default=""),
+    db: Session = Depends(get_db),
+):
+    try:
+        rule = update_automation_rule(
+            db,
+            rule_id=rule_id,
+            name=name,
+            target_key=target_key,
+            desired_state=(desired_state == "on"),
+            schedule_time=schedule_time,
+            weekdays=weekdays,
+            is_enabled=is_enabled.lower() in {"1", "true", "on", "yes"},
+            notes=notes,
+        )
+        flash = f"Сценарий «{rule.name}» обновлён."
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/scenarios?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/scenarios/{rule_id}/run")
+def run_scenario_action(rule_id: int, db: Session = Depends(get_db)):
+    try:
+        result = run_automation_rule_now(db, rule_id)
+        flash = f"Сценарий выполнен: {result['message']}"
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/scenarios?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/scenarios/{rule_id}/delete")
+def delete_scenario_action(rule_id: int, db: Session = Depends(get_db)):
+    rule = delete_automation_rule(db, rule_id)
+    flash = f"Сценарий «{rule.name}» удалён." if rule else "Сценарий не найден."
+    return RedirectResponse(url=f"/scenarios?flash={quote_plus(flash)}", status_code=303)
 
 
 @router.get("/rooms", response_class=HTMLResponse)

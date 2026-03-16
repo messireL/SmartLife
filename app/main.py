@@ -36,9 +36,7 @@ async def lifespan(app: FastAPI):
             restore_non_demo_deleted_devices(db)
             purge_demo_devices(db)
     stop_event = asyncio.Event()
-    background_task = None
-    if settings.smartlife_background_sync_enabled or settings.smartlife_sync_on_startup:
-        background_task = asyncio.create_task(run_background_sync_loop(stop_event), name="smartlife-background-sync")
+    background_task = asyncio.create_task(run_background_sync_loop(stop_event), name="smartlife-background-sync")
     app.state.smartlife_sync_stop_event = stop_event
     app.state.smartlife_sync_task = background_task
     try:

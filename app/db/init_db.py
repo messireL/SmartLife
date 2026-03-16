@@ -107,6 +107,42 @@ def _apply_postgres_migrations() -> None:
         "updated_at TIMESTAMP DEFAULT NOW()"
         ")",
         "CREATE INDEX IF NOT EXISTS ix_app_settings_key ON app_settings(key)",
+        "CREATE TABLE IF NOT EXISTS automation_rules ("
+        "id SERIAL PRIMARY KEY, "
+        "name VARCHAR(128) NOT NULL, "
+        "device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE, "
+        "command_code VARCHAR(128) NOT NULL, "
+        "desired_state BOOLEAN NOT NULL DEFAULT TRUE, "
+        "schedule_time VARCHAR(5) NOT NULL, "
+        "weekdays_csv VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5,6,7', "
+        "is_enabled BOOLEAN NOT NULL DEFAULT TRUE, "
+        "notes TEXT NULL, "
+        "last_trigger_slot VARCHAR(32) NULL, "
+        "last_run_at TIMESTAMP NULL, "
+        "last_run_status VARCHAR(32) NULL, "
+        "last_result_summary TEXT NULL, "
+        "created_at TIMESTAMP DEFAULT NOW(), "
+        "updated_at TIMESTAMP DEFAULT NOW()"
+        ")",
+        "CREATE INDEX IF NOT EXISTS ix_automation_rules_device_id ON automation_rules(device_id)",
+        "CREATE INDEX IF NOT EXISTS ix_automation_rules_schedule_time ON automation_rules(schedule_time)",
+        "CREATE INDEX IF NOT EXISTS ix_automation_rules_is_enabled ON automation_rules(is_enabled)",
+        "CREATE TABLE IF NOT EXISTS automation_run_logs ("
+        "id SERIAL PRIMARY KEY, "
+        "rule_id INTEGER NOT NULL REFERENCES automation_rules(id) ON DELETE CASCADE, "
+        "device_id INTEGER NULL REFERENCES devices(id) ON DELETE CASCADE, "
+        "trigger VARCHAR(32) NOT NULL, "
+        "status VARCHAR(32) NOT NULL, "
+        "requested_at TIMESTAMP NOT NULL, "
+        "result_summary TEXT NULL, "
+        "error_message TEXT NULL, "
+        "created_at TIMESTAMP DEFAULT NOW()"
+        ")",
+        "CREATE INDEX IF NOT EXISTS ix_automation_run_logs_rule_id ON automation_run_logs(rule_id)",
+        "CREATE INDEX IF NOT EXISTS ix_automation_run_logs_device_id ON automation_run_logs(device_id)",
+        "CREATE INDEX IF NOT EXISTS ix_automation_run_logs_trigger ON automation_run_logs(trigger)",
+        "CREATE INDEX IF NOT EXISTS ix_automation_run_logs_status ON automation_run_logs(status)",
+        "CREATE INDEX IF NOT EXISTS ix_automation_run_logs_requested_at ON automation_run_logs(requested_at)",
     ]
     with engine.begin() as connection:
         for statement in statements:

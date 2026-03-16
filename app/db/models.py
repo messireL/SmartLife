@@ -126,6 +126,8 @@ class Device(Base):
         back_populates="device", cascade="all, delete-orphan", order_by="desc(DeviceCommandLog.requested_at)"
     )
     badge: Mapped[DeviceBadge | None] = relationship(back_populates="devices")
+    automation_rules: Mapped[list["AutomationRule"]] = relationship(back_populates="device", cascade="all, delete-orphan")
+    automation_runs: Mapped[list["AutomationRunLog"]] = relationship(back_populates="device", cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint("provider", "external_id", name="uq_devices_provider_external_id"),)
 
@@ -161,6 +163,50 @@ class Device(Base):
     def channel_icons(self) -> dict[str, str]:
         raw = _parse_json_dict(self.channel_icons_json)
         return {str(key): str(value).strip() for key, value in raw.items() if str(key).strip() and str(value).strip()}
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
+    command_code: Mapped[str] = mapped_column(String(128))
+    desired_state: Mapped[bool] = mapped_column(Boolean, default=True)
+    schedule_time: Mapped[str] = mapped_column(String(5), index=True)
+    weekdays_csv: Mapped[str] = mapped_column(String(32), default="1,2,3,4,5,6,7")
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_trigger_slot: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    last_run_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now())
+
+    device: Mapped[Device] = relationship(back_populates="automation_rules")
+    run_logs: Mapped[list["AutomationRunLog"]] = relationship(back_populates="rule", cascade="all, delete-orphan", order_by="desc(AutomationRunLog.requested_at)")
+
+    @property
+    def weekdays(self) -> list[str]:
+        return [item for item in str(self.weekdays_csv or '').split(',') if item]
+
+
+class AutomationRunLog(Base):
+    __tablename__ = "automation_run_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("automation_rules.id", ondelete="CASCADE"), index=True)
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), nullable=True, index=True)
+    trigger: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+
+    rule: Mapped[AutomationRule] = relationship(back_populates="run_logs")
+    device: Mapped[Device | None] = relationship(back_populates="automation_runs")
 
 
 class AppSetting(Base):

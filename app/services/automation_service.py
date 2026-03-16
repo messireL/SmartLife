@@ -1,0 +1,361 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from typing import Iterable
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
+
+from app.core.timeutils import get_app_timezone, utc_now_naive
+from app.db.models import AutomationRule, AutomationRunLog, Device
+from app.db.session import SessionLocal
+from app.services.device_control_service import DeviceControlError, set_device_switch_code_state
+
+WEEKDAY_CHOICES = [
+    {"value": "1", "label": "Пн"},
+    {"value": "2", "label": "Вт"},
+    {"value": "3", "label": "Ср"},
+    {"value": "4", "label": "Чт"},
+    {"value": "5", "label": "Пт"},
+    {"value": "6", "label": "Сб"},
+    {"value": "7", "label": "Вс"},
+]
+
+
+def _is_switch_like_code(code: str | None) -> bool:
+    if not code:
+        return False
+    if code in {"switch", "switch_usb"}:
+        return True
+    if code.startswith("switch_") and code[7:].isdigit():
+        return True
+    if code.startswith("switch_usb") and code[10:].isdigit():
+        return True
+    return False
+
+
+
+def _label_for_switch_code(device: Device, code: str) -> str:
+    alias = device.channel_aliases.get(code)
+    if alias:
+        return alias
+    if code == "switch":
+        return "Главное питание"
+    if code == "switch_usb":
+        return "USB блок"
+    if code.startswith("switch_usb") and code[10:].isdigit():
+        idx = code[10:]
+        return f"USB {idx}"
+    if code.startswith("switch_") and code[7:].isdigit():
+        idx = code[7:]
+        return f"Розетка {idx}"
+    return code
+
+
+
+def _normalize_time(raw: str) -> str:
+    value = (raw or "").strip()
+    try:
+        parsed = datetime.strptime(value, "%H:%M")
+    except ValueError as exc:
+        raise ValueError("Время должно быть в формате ЧЧ:ММ, например 23:15.") from exc
+    return parsed.strftime("%H:%M")
+
+
+
+def _normalize_weekdays(values: Iterable[str]) -> str:
+    normalized = sorted({str(item).strip() for item in values if str(item).strip() in {str(i) for i in range(1, 8)}})
+    if not normalized:
+        raise ValueError("Выбери хотя бы один день недели.")
+    return ",".join(normalized)
+
+
+
+def _parse_target_key(raw: str) -> tuple[int, str]:
+    value = (raw or "").strip()
+    if ":" not in value:
+        raise ValueError("Нужно выбрать конкретное устройство или канал.")
+    device_raw, code = value.split(":", 1)
+    if not device_raw.isdigit():
+        raise ValueError("Некорректное устройство в цели сценария.")
+    code = code.strip()
+    if not _is_switch_like_code(code):
+        raise ValueError("Сценарий пока умеет работать только с выключателями и каналами питания.")
+    return int(device_raw), code
+
+
+
+def _rule_target_label(device: Device, code: str) -> str:
+    return f"{device.display_name} · {_label_for_switch_code(device, code)}"
+
+
+
+def _hydrate_rule(rule: AutomationRule) -> dict:
+    weekdays_set = set(rule.weekdays)
+    next_run = get_rule_next_run(rule)
+    return {
+        "id": rule.id,
+        "name": rule.name,
+        "device_id": rule.device_id,
+        "device_name": rule.device.display_name if rule.device else "Устройство удалено",
+        "device_badge": rule.device.badge.name if rule.device and rule.device.badge else None,
+        "target_code": rule.command_code,
+        "target_label": _rule_target_label(rule.device, rule.command_code) if rule.device else rule.command_code,
+        "desired_state": rule.desired_state,
+        "desired_state_label": "включить" if rule.desired_state else "выключить",
+        "schedule_time": rule.schedule_time,
+        "weekdays": rule.weekdays,
+        "weekdays_set": weekdays_set,
+        "weekdays_label": ", ".join(item["label"] for item in WEEKDAY_CHOICES if item["value"] in weekdays_set),
+        "is_enabled": rule.is_enabled,
+        "notes": rule.notes,
+        "last_run_at": rule.last_run_at,
+        "last_run_status": rule.last_run_status,
+        "last_result_summary": rule.last_result_summary,
+        "next_run_local": next_run,
+        "next_run_label": next_run.strftime("%d-%m-%Y %H:%M") if next_run else "—",
+    }
+
+
+
+def list_automation_rules(db: Session) -> list[dict]:
+    rows = db.execute(
+        select(AutomationRule)
+        .options(joinedload(AutomationRule.device).joinedload(Device.badge))
+        .order_by(AutomationRule.is_enabled.desc(), AutomationRule.schedule_time.asc(), AutomationRule.name.asc())
+    ).scalars().all()
+    return [_hydrate_rule(item) for item in rows]
+
+
+
+def list_recent_automation_runs(db: Session, limit: int = 30) -> list[AutomationRunLog]:
+    limit = max(1, min(limit, 100))
+    return db.execute(
+        select(AutomationRunLog)
+        .options(joinedload(AutomationRunLog.rule), joinedload(AutomationRunLog.device))
+        .order_by(AutomationRunLog.requested_at.desc(), AutomationRunLog.id.desc())
+        .limit(limit)
+    ).scalars().all()
+
+
+
+def get_automation_target_choices(db: Session) -> list[dict]:
+    devices = db.execute(
+        select(Device)
+        .where(Device.is_deleted.is_(False), Device.is_hidden.is_(False))
+        .order_by(Device.custom_room_name.asc().nulls_last(), Device.room_name.asc().nulls_last(), Device.name.asc())
+    ).scalars().all()
+    choices: list[dict] = []
+    for device in devices:
+        codes = sorted({code for code in device.control_codes if _is_switch_like_code(code)})
+        for code in codes:
+            choices.append(
+                {
+                    "value": f"{device.id}:{code}",
+                    "device_id": device.id,
+                    "code": code,
+                    "label": _rule_target_label(device, code),
+                    "room": device.display_room_name or "Без комнаты",
+                    "device_name": device.display_name,
+                    "channel_name": _label_for_switch_code(device, code),
+                }
+            )
+    return choices
+
+
+
+def create_automation_rule(
+    db: Session,
+    *,
+    name: str,
+    target_key: str,
+    desired_state: bool,
+    schedule_time: str,
+    weekdays: Iterable[str],
+    is_enabled: bool,
+    notes: str = "",
+) -> AutomationRule:
+    device_id, command_code = _parse_target_key(target_key)
+    device = db.get(Device, device_id)
+    if device is None or device.is_deleted:
+        raise ValueError("Устройство для сценария не найдено.")
+    if command_code not in set(device.control_codes):
+        raise ValueError("Это устройство больше не отдаёт выбранный канал управления.")
+    rule = AutomationRule(
+        name=(name or "").strip() or _rule_target_label(device, command_code),
+        device_id=device.id,
+        command_code=command_code,
+        desired_state=bool(desired_state),
+        schedule_time=_normalize_time(schedule_time),
+        weekdays_csv=_normalize_weekdays(weekdays),
+        is_enabled=bool(is_enabled),
+        notes=(notes or "").strip() or None,
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+
+def update_automation_rule(
+    db: Session,
+    *,
+    rule_id: int,
+    name: str,
+    target_key: str,
+    desired_state: bool,
+    schedule_time: str,
+    weekdays: Iterable[str],
+    is_enabled: bool,
+    notes: str = "",
+) -> AutomationRule:
+    rule = db.get(AutomationRule, rule_id)
+    if rule is None:
+        raise ValueError("Сценарий не найден.")
+    device_id, command_code = _parse_target_key(target_key)
+    device = db.get(Device, device_id)
+    if device is None or device.is_deleted:
+        raise ValueError("Устройство для сценария не найдено.")
+    if command_code not in set(device.control_codes):
+        raise ValueError("Это устройство больше не отдаёт выбранный канал управления.")
+    rule.name = (name or "").strip() or _rule_target_label(device, command_code)
+    rule.device_id = device.id
+    rule.command_code = command_code
+    rule.desired_state = bool(desired_state)
+    rule.schedule_time = _normalize_time(schedule_time)
+    rule.weekdays_csv = _normalize_weekdays(weekdays)
+    rule.is_enabled = bool(is_enabled)
+    rule.notes = (notes or "").strip() or None
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+
+def delete_automation_rule(db: Session, rule_id: int) -> AutomationRule | None:
+    rule = db.get(AutomationRule, rule_id)
+    if rule is None:
+        return None
+    db.delete(rule)
+    db.commit()
+    return rule
+
+
+
+def _log_rule_run(
+    db: Session,
+    *,
+    rule: AutomationRule,
+    trigger: str,
+    status: str,
+    result_summary: str | None = None,
+    error_message: str | None = None,
+) -> AutomationRunLog:
+    log = AutomationRunLog(
+        rule_id=rule.id,
+        device_id=rule.device_id,
+        trigger=trigger,
+        status=status,
+        requested_at=utc_now_naive(),
+        result_summary=result_summary,
+        error_message=error_message,
+    )
+    db.add(log)
+    rule.last_run_at = log.requested_at
+    rule.last_run_status = status
+    rule.last_result_summary = result_summary or error_message
+    return log
+
+
+
+def execute_automation_rule(db: Session, rule: AutomationRule, *, trigger: str, slot_key: str | None = None) -> dict:
+    device = db.get(Device, rule.device_id)
+    if device is None or device.is_deleted:
+        _log_rule_run(db, rule=rule, trigger=trigger, status="error", error_message="Устройство больше не найдено.")
+        if slot_key:
+            rule.last_trigger_slot = slot_key
+        db.commit()
+        return {"status": "error", "message": "Устройство больше не найдено."}
+    try:
+        result = set_device_switch_code_state(
+            db,
+            device.id,
+            rule.command_code,
+            rule.desired_state,
+            trigger=trigger,
+        )
+        summary = f"{device.display_name} · {result['command_code']} → {'вкл' if rule.desired_state else 'выкл'}"
+        _log_rule_run(db, rule=rule, trigger=trigger, status="success", result_summary=summary)
+    except DeviceControlError as exc:
+        _log_rule_run(db, rule=rule, trigger=trigger, status="error", error_message=str(exc))
+        summary = str(exc)
+    if slot_key:
+        rule.last_trigger_slot = slot_key
+    db.commit()
+    return {"status": rule.last_run_status, "message": summary}
+
+
+
+def run_automation_rule_now(db: Session, rule_id: int) -> dict:
+    rule = db.get(AutomationRule, rule_id)
+    if rule is None:
+        raise ValueError("Сценарий не найден.")
+    return execute_automation_rule(db, rule, trigger="manual")
+
+
+
+def get_rule_next_run(rule: AutomationRule, *, now_local: datetime | None = None) -> datetime | None:
+    if not rule.is_enabled:
+        return None
+    now_local = now_local or datetime.now(get_app_timezone())
+    weekdays = {int(item) for item in rule.weekdays if str(item).isdigit()}
+    if not weekdays:
+        return None
+    hh, mm = [int(item) for item in rule.schedule_time.split(":", 1)]
+    for offset in range(0, 8):
+        candidate = now_local.replace(hour=hh, minute=mm, second=0, microsecond=0) + timedelta(days=offset)
+        if candidate.isoweekday() not in weekdays:
+            continue
+        if offset == 0 and candidate <= now_local:
+            continue
+        return candidate
+    return None
+
+
+
+def execute_due_automation_rules(db: Session, *, now_local: datetime | None = None) -> dict:
+    now_local = now_local or datetime.now(get_app_timezone())
+    slot_hhmm = now_local.strftime("%H:%M")
+    slot_key = now_local.strftime("%Y-%m-%d %H:%M")
+    weekday = str(now_local.isoweekday())
+    rules = db.execute(
+        select(AutomationRule)
+        .where(AutomationRule.is_enabled.is_(True), AutomationRule.schedule_time == slot_hhmm)
+        .order_by(AutomationRule.id.asc())
+    ).scalars().all()
+    matched = 0
+    executed = 0
+    errors = 0
+    for rule in rules:
+        if weekday not in set(rule.weekdays):
+            continue
+        matched += 1
+        if rule.last_trigger_slot == slot_key:
+            continue
+        result = execute_automation_rule(db, rule, trigger="schedule", slot_key=slot_key)
+        executed += 1
+        if result["status"] != "success":
+            errors += 1
+    return {
+        "matched": matched,
+        "executed": executed,
+        "errors": errors,
+        "slot": slot_key,
+    }
+
+
+
+def run_due_automation_cycle() -> dict:
+    with SessionLocal() as db:
+        return execute_due_automation_rules(db)
