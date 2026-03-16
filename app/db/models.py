@@ -103,6 +103,7 @@ class Device(Base):
     control_codes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     available_modes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     channel_aliases_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tariff_profile_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     target_temperature_min_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     target_temperature_max_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     target_temperature_step_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)

@@ -14,6 +14,12 @@ from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
 from app.services.chart_service import build_bar_chart, build_line_chart
 from app.services.runtime_config_service import get_runtime_config
 from app.services.sync_runner import is_sync_running
+from app.services.tariff_profile_service import (
+    get_device_tariff_profile_choice,
+    get_device_tariff_runtime,
+    get_tariff_runtime_map,
+    list_tariff_profiles,
+)
 from app.services.tariff_service import calculate_tariff_costs
 
 ZERO = Decimal("0.000")
@@ -63,7 +69,9 @@ def _profile_label(value: str | None) -> str | None:
     return None
 
 
-def _rate_label(value: Decimal | None, currency: str) -> str:
+def _rate_label(value: Decimal | None, currency: str, *, mixed: bool = False) -> str:
+    if mixed or value is None:
+        return "разные ставки"
     rate = _money(value)
     return f"{rate} {currency}/kWh"
 
@@ -74,7 +82,7 @@ def _zone_breakdown(items: list[dict], currency: str) -> list[dict]:
         breakdown.append(
             {
                 "label": str(item.get("label") or "Зона"),
-                "rate": _rate_label(item.get("rate"), currency),
+                "rate": _rate_label(item.get("rate"), currency, mixed=bool(item.get("mixed_rate"))),
                 "energy_display": f"{item.get('energy_kwh', Decimal('0.000'))} kWh",
                 "cost_display": f"{_money(item.get('cost'))} {currency}",
             }
@@ -82,6 +90,25 @@ def _zone_breakdown(items: list[dict], currency: str) -> list[dict]:
     return breakdown
 
 
+
+
+
+def _device_runtime_map(db: Session, runtime) -> dict[int, object]:
+    runtime_map = get_tariff_runtime_map(db, runtime)
+    rows = db.execute(select(Device.id, Device.tariff_profile_key).where(Device.is_hidden.is_(False), Device.is_deleted.is_(False))).all()
+    mapping: dict[int, object] = {}
+    for device_id, profile_key in rows:
+        if profile_key and profile_key in runtime_map:
+            mapping[int(device_id)] = runtime_map[profile_key]
+        else:
+            mapping[int(device_id)] = runtime
+    return mapping
+
+
+def _mixed_tariff_display(tariff_costs: dict, runtime) -> tuple[str, str]:
+    if tariff_costs.get("mixed_modes"):
+        return "Смешанный тариф", "Часть устройств считает стоимость по разным тарифным профилям."
+    return runtime.tariff_mode_label, runtime.tariff_display
 
 def get_dashboard_summary(db: Session) -> dict:
     today = local_today()
@@ -124,12 +151,14 @@ def get_dashboard_summary(db: Session) -> dict:
         )
     ) or 0
 
-    tariff_costs = calculate_tariff_costs(db, runtime, device_ids=_visible_device_ids(db))
+    visible_ids = _visible_device_ids(db)
+    tariff_costs = calculate_tariff_costs(db, runtime, device_ids=visible_ids, runtime_by_device_id=_device_runtime_map(db, runtime))
 
     day_total_cost = _money(tariff_costs["today_total_cost"])
     month_total_cost = _money(tariff_costs["month_total_cost"])
     day_zone_costs = tariff_costs["today_zones"]
     month_zone_costs = tariff_costs["month_zones"]
+    tariff_mode_label, tariff_display = _mixed_tariff_display(tariff_costs, runtime)
 
     return {
         "devices_total": devices_total,
@@ -144,10 +173,10 @@ def get_dashboard_summary(db: Session) -> dict:
         "day_breakdown": _zone_breakdown(day_zone_costs, runtime.tariff_currency),
         "month_breakdown": _zone_breakdown(month_zone_costs, runtime.tariff_currency),
         "tariff_price_per_kwh": runtime.tariff_primary_price_decimal,
-        "tariff_currency": runtime.tariff_currency,
-        "tariff_display": runtime.tariff_display,
+        "tariff_currency": tariff_costs.get("tariff_currency") or runtime.tariff_currency,
+        "tariff_display": tariff_display,
         "tariff_mode": runtime.tariff_mode,
-        "tariff_mode_label": runtime.tariff_mode_label,
+        "tariff_mode_label": tariff_mode_label,
         "tariff_windows": runtime.tariff_windows,
         "live_power_total_w": _quantize(live_power_total),
         "power_now_total": power_now_total,
@@ -496,6 +525,9 @@ def _build_channel_summary(channels: list[dict]) -> dict:
 def get_device_dashboard(db: Session, device: Device) -> dict:
     today = local_today()
     runtime = get_runtime_config(db)
+    tariff_profiles = list_tariff_profiles(db, runtime)
+    tariff_runtime = get_device_tariff_runtime(device, runtime, get_tariff_runtime_map(db, runtime))
+    selected_tariff_profile = get_device_tariff_profile_choice(device, tariff_profiles)
     month_start = today.replace(day=1)
 
     daily_rows = db.execute(
@@ -570,7 +602,7 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
         suffix=" kWh",
     )
 
-    cost_data = calculate_tariff_costs(db, runtime, device_ids=[device.id])["per_device"].get(device.id, {})
+    cost_data = calculate_tariff_costs(db, tariff_runtime, device_ids=[device.id])["per_device"].get(device.id, {})
 
     control_codes = set(device.control_codes)
     target_min = _quantize(device.target_temperature_min_c) if device.target_temperature_min_c is not None else None
@@ -595,11 +627,11 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "month_cost": _money(cost_data.get("month_cost", Decimal("0.00"))),
             "today_zone_costs": cost_data.get("today_zones_list", []),
             "month_zone_costs": cost_data.get("month_zones_list", []),
-            "today_breakdown": _zone_breakdown(cost_data.get("today_zones_list", []), runtime.tariff_currency),
-            "month_breakdown": _zone_breakdown(cost_data.get("month_zones_list", []), runtime.tariff_currency),
-            "tariff_display": runtime.tariff_display,
-            "tariff_currency": runtime.tariff_currency,
-            "tariff_mode_label": runtime.tariff_mode_label,
+            "today_breakdown": _zone_breakdown(cost_data.get("today_zones_list", []), tariff_runtime.tariff_currency),
+            "month_breakdown": _zone_breakdown(cost_data.get("month_zones_list", []), tariff_runtime.tariff_currency),
+            "tariff_display": tariff_runtime.tariff_display,
+            "tariff_currency": tariff_runtime.tariff_currency,
+            "tariff_mode_label": tariff_runtime.tariff_mode_label,
             "latest_power_w": _quantize(device.current_power_w),
             "latest_voltage_v": _quantize(device.current_voltage_v),
             "peak_power_w": _quantize(max(power_values) if power_values else Decimal("0.00")),
@@ -608,6 +640,14 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "target_temperature_c": _quantize(device.target_temperature_c) if device.target_temperature_c is not None else None,
             "peak_temperature_c": _quantize(max(temp_values) if temp_values else device.current_temperature_c) if (temp_values or device.current_temperature_c is not None) else None,
             "snapshots_total": len(snapshot_rows),
+        },
+        "tariff_profile": {
+            "key": selected_tariff_profile["key"],
+            "name": selected_tariff_profile["name"],
+            "is_system": bool(selected_tariff_profile.get("is_system")),
+            "note": selected_tariff_profile.get("note"),
+            "tariff_display": tariff_runtime.tariff_display,
+            "tariff_mode_label": tariff_runtime.tariff_mode_label,
         },
         "profile": {
             "key": device.device_profile,

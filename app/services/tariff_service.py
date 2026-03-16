@@ -13,6 +13,7 @@ from app.db.models import DeviceStatusSnapshot
 
 ZERO = Decimal("0.000")
 MONEY_ZERO = Decimal("0.00")
+ZONE_ORDER = {"flat": 0, "day": 1, "night": 2, "peak": 3}
 
 
 @dataclass(slots=True)
@@ -196,7 +197,39 @@ def _period_start_utc_naive(local_date_value: date, tz: ZoneInfo) -> datetime:
 
 
 
-def calculate_tariff_costs(db: Session, runtime, *, device_ids: list[int] | None = None) -> dict:
+def _zone_meta(plan) -> dict[str, tuple[str, Decimal]]:
+    return {item.key: (item.label, item.rate) for item in get_tariff_zone_definitions(plan)}
+
+
+
+def _new_zone_aggregate(key: str, label: str) -> dict:
+    return {"key": key, "label": label, "energy_kwh": ZERO, "cost": MONEY_ZERO, "rates": set()}
+
+
+
+def _bucket_list(buckets: dict[str, dict], default_mode: str) -> list[dict]:
+    result: list[dict] = []
+    for bucket in sorted(buckets.values(), key=lambda item: (ZONE_ORDER.get(item["key"], 99), item["label"])):
+        energy = _quantize_energy(bucket["energy_kwh"])
+        cost = _quantize_money(bucket["cost"])
+        if energy <= ZERO and default_mode != "flat" and bucket["key"] != "flat":
+            continue
+        rates = sorted(bucket["rates"])
+        result.append(
+            {
+                "key": bucket["key"],
+                "label": bucket["label"],
+                "rate": _quantize_money(rates[0]) if len(rates) == 1 else None,
+                "mixed_rate": len(rates) > 1,
+                "energy_kwh": energy,
+                "cost": cost,
+            }
+        )
+    return result
+
+
+
+def calculate_tariff_costs(db: Session, runtime, *, device_ids: list[int] | None = None, runtime_by_device_id: dict[int, object] | None = None) -> dict:
     tz = get_app_timezone()
     today = datetime.now(tz).date()
     month_start = today.replace(day=1)
@@ -211,16 +244,19 @@ def calculate_tariff_costs(db: Session, runtime, *, device_ids: list[int] | None
         stmt = stmt.where(DeviceStatusSnapshot.device_id.in_(device_ids))
 
     rows = db.execute(stmt).all()
-    today_plan = get_tariff_plan_for_local_date(runtime, today)
-    month_plan = get_tariff_plan_for_local_date(runtime, month_start)
+    default_today_plan = get_tariff_plan_for_local_date(runtime, today)
+    default_month_plan = get_tariff_plan_for_local_date(runtime, month_start)
 
-    def fresh_buckets(plan) -> dict[str, ZoneBucket]:
-        return {item.key: ZoneBucket(key=item.key, label=item.label, rate=item.rate) for item in get_tariff_zone_definitions(plan)}
-
-    today_buckets = fresh_buckets(today_plan)
-    month_buckets = fresh_buckets(month_plan)
+    today_buckets: dict[str, dict] = {
+        item.key: _new_zone_aggregate(item.key, item.label) for item in get_tariff_zone_definitions(default_today_plan)
+    }
+    month_buckets: dict[str, dict] = {
+        item.key: _new_zone_aggregate(item.key, item.label) for item in get_tariff_zone_definitions(default_month_plan)
+    }
     per_device: dict[int, dict] = {}
     previous: dict[int, tuple[datetime, Decimal]] = {}
+    mode_set: set[str] = set()
+    currency_set: set[str] = set()
 
     for device_id, recorded_at, energy_total_kwh in rows:
         current_total = _quantize_energy(energy_total_kwh)
@@ -235,66 +271,81 @@ def calculate_tariff_costs(db: Session, runtime, *, device_ids: list[int] | None
         local_dt = to_local(recorded_at)
         if local_dt is None:
             continue
-        plan = get_tariff_plan_for_local_date(runtime, local_dt.date())
+
+        active_runtime = (runtime_by_device_id or {}).get(device_id, runtime)
+        today_plan = get_tariff_plan_for_local_date(active_runtime, today)
+        month_plan = get_tariff_plan_for_local_date(active_runtime, month_start)
+        plan = get_tariff_plan_for_local_date(active_runtime, local_dt.date())
+        mode_set.add(getattr(active_runtime, "tariff_mode", "flat"))
+        currency_set.add((getattr(active_runtime, "tariff_currency", "₽") or "₽").strip() or "₽")
+
         if device_id not in per_device:
             per_device[device_id] = {
                 "today_cost": MONEY_ZERO,
                 "month_cost": MONEY_ZERO,
                 "today_energy_kwh": ZERO,
                 "month_energy_kwh": ZERO,
-                "today_zones": fresh_buckets(today_plan),
-                "month_zones": fresh_buckets(month_plan),
+                "today_zones": {item.key: _new_zone_aggregate(item.key, item.label) for item in get_tariff_zone_definitions(today_plan)},
+                "month_zones": {item.key: _new_zone_aggregate(item.key, item.label) for item in get_tariff_zone_definitions(month_plan)},
+                "tariff_mode": getattr(active_runtime, "tariff_mode", "flat"),
+                "tariff_currency": (getattr(active_runtime, "tariff_currency", "₽") or "₽").strip() or "₽",
             }
+
         zone_key = get_tariff_zone_for_local_datetime(plan, local_dt)
-        rate = get_tariff_rate_for_zone(plan, zone_key)
-        cost = _quantize_money(delta * rate)
+        zone_meta = _zone_meta(plan)
+        zone_label, zone_rate = zone_meta.get(zone_key, (zone_key, get_tariff_rate_for_zone(plan, zone_key)))
+        cost = _quantize_money(delta * zone_rate)
+
         if local_dt.date() >= month_start:
-            if zone_key not in month_buckets:
-                month_buckets[zone_key] = ZoneBucket(key=zone_key, label=zone_key, rate=rate)
-                per_device[device_id]["month_zones"][zone_key] = ZoneBucket(key=zone_key, label=zone_key, rate=rate)
-            month_buckets[zone_key].energy_kwh += delta
-            month_buckets[zone_key].cost += cost
+            month_bucket = month_buckets.setdefault(zone_key, _new_zone_aggregate(zone_key, zone_label))
+            month_bucket["label"] = zone_label
+            month_bucket["energy_kwh"] += delta
+            month_bucket["cost"] += cost
+            month_bucket["rates"].add(zone_rate)
+
+            device_bucket = per_device[device_id]["month_zones"].setdefault(zone_key, _new_zone_aggregate(zone_key, zone_label))
+            device_bucket["label"] = zone_label
+            device_bucket["energy_kwh"] += delta
+            device_bucket["cost"] += cost
+            device_bucket["rates"].add(zone_rate)
             per_device[device_id]["month_cost"] += cost
             per_device[device_id]["month_energy_kwh"] += delta
-            per_device[device_id]["month_zones"][zone_key].energy_kwh += delta
-            per_device[device_id]["month_zones"][zone_key].cost += cost
+
         if local_dt.date() == today:
-            if zone_key not in today_buckets:
-                today_buckets[zone_key] = ZoneBucket(key=zone_key, label=zone_key, rate=rate)
-                per_device[device_id]["today_zones"][zone_key] = ZoneBucket(key=zone_key, label=zone_key, rate=rate)
-            today_buckets[zone_key].energy_kwh += delta
-            today_buckets[zone_key].cost += cost
+            today_bucket = today_buckets.setdefault(zone_key, _new_zone_aggregate(zone_key, zone_label))
+            today_bucket["label"] = zone_label
+            today_bucket["energy_kwh"] += delta
+            today_bucket["cost"] += cost
+            today_bucket["rates"].add(zone_rate)
+
+            device_bucket = per_device[device_id]["today_zones"].setdefault(zone_key, _new_zone_aggregate(zone_key, zone_label))
+            device_bucket["label"] = zone_label
+            device_bucket["energy_kwh"] += delta
+            device_bucket["cost"] += cost
+            device_bucket["rates"].add(zone_rate)
             per_device[device_id]["today_cost"] += cost
             per_device[device_id]["today_energy_kwh"] += delta
-            per_device[device_id]["today_zones"][zone_key].energy_kwh += delta
-            per_device[device_id]["today_zones"][zone_key].cost += cost
-
-    def bucket_list(buckets: dict[str, ZoneBucket], mode: str) -> list[dict]:
-        return [
-            {
-                "key": bucket.key,
-                "label": bucket.label,
-                "rate": _quantize_money(bucket.rate),
-                "energy_kwh": _quantize_energy(bucket.energy_kwh),
-                "cost": _quantize_money(bucket.cost),
-            }
-            for bucket in buckets.values()
-            if bucket.energy_kwh > ZERO or mode == "flat"
-        ]
 
     for device_data in per_device.values():
         device_data["today_cost"] = _quantize_money(device_data["today_cost"])
         device_data["month_cost"] = _quantize_money(device_data["month_cost"])
         device_data["today_energy_kwh"] = _quantize_energy(device_data["today_energy_kwh"])
         device_data["month_energy_kwh"] = _quantize_energy(device_data["month_energy_kwh"])
-        device_data["today_zones_list"] = bucket_list(device_data["today_zones"], getattr(today_plan, "tariff_mode", "flat"))
-        device_data["month_zones_list"] = bucket_list(device_data["month_zones"], getattr(month_plan, "tariff_mode", "flat"))
+        device_data["today_zones_list"] = _bucket_list(device_data["today_zones"], device_data["tariff_mode"])
+        device_data["month_zones_list"] = _bucket_list(device_data["month_zones"], device_data["tariff_mode"])
+
+    mixed_modes = len(mode_set) > 1
+    mixed_currency = len(currency_set) > 1
+    primary_currency = next(iter(currency_set), (getattr(runtime, "tariff_currency", "₽") or "₽").strip() or "₽")
 
     return {
-        "today_total_cost": _quantize_money(sum((bucket.cost for bucket in today_buckets.values()), MONEY_ZERO)),
-        "month_total_cost": _quantize_money(sum((bucket.cost for bucket in month_buckets.values()), MONEY_ZERO)),
-        "today_zones": bucket_list(today_buckets, getattr(today_plan, "tariff_mode", "flat")),
-        "month_zones": bucket_list(month_buckets, getattr(month_plan, "tariff_mode", "flat")),
+        "today_total_cost": _quantize_money(sum((bucket["cost"] for bucket in today_buckets.values()), MONEY_ZERO)),
+        "month_total_cost": _quantize_money(sum((bucket["cost"] for bucket in month_buckets.values()), MONEY_ZERO)),
+        "today_zones": _bucket_list(today_buckets, getattr(default_today_plan, "tariff_mode", "flat")),
+        "month_zones": _bucket_list(month_buckets, getattr(default_month_plan, "tariff_mode", "flat")),
         "per_device": per_device,
-        "mode_label": _mode_label(getattr(today_plan, "tariff_mode", "flat")),
+        "mode_label": "Смешанный" if mixed_modes else _mode_label(getattr(default_today_plan, "tariff_mode", "flat")),
+        "mixed_modes": mixed_modes,
+        "mixed_currency": mixed_currency,
+        "tariff_currency": primary_currency,
     }

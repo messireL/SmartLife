@@ -225,6 +225,98 @@
   </form>
 </section>
 
+
+<section class="card">
+  <div class="section-header"><h2>Тарифные профили объектов</h2></div>
+  <div class="muted" style="margin-bottom:16px;">Если часть устройств живёт в другой квартире или на другом объекте, создай отдельный профиль и назначь его устройству во вкладке «Локально». Системный тариф остаётся дефолтным, а профили объектов применяются сразу без ожидания 1 числа.</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Профиль</th><th>Режим</th><th>Параметры</th><th>Устройств</th><th></th></tr></thead>
+      <tbody>
+        {% for profile in tariff_profiles %}
+          <tr>
+            <td>
+              <div>{{ profile.name }}</div>
+              {% if profile.note %}<div class="muted tiny">{{ profile.note }}</div>{% endif %}
+            </td>
+            <td>{{ profile.tariff_mode_label }}</td>
+            <td>{{ profile.tariff_display }}</td>
+            <td>{{ profile.assigned_count }}</td>
+            <td>
+              {% if profile.is_system %}
+                <span class="muted tiny">по умолчанию</span>
+              {% else %}
+                <div class="inline-actions">
+                  <a class="text-link" href="/settings?profile_key={{ profile.key|urlq }}">Изменить</a>
+                  <form method="post" action="/settings/tariff-profiles/delete" onsubmit="return confirm('Удалить профиль {{ profile.name }}? Устройства вернутся на системный тариф.');">
+                    <input type="hidden" name="profile_key" value="{{ profile.key }}">
+                    <button type="submit" class="button-link danger-link">Удалить</button>
+                  </form>
+                </div>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-header"><h2>{% if tariff_profile_edit %}Редактировать тарифный профиль{% else %}Новый тарифный профиль{% endif %}</h2>{% if tariff_profile_edit %}<a class="text-link" href="/settings">Создать новый</a>{% endif %}</div>
+  <form class="stack-form" method="post" action="/settings/tariff-profiles/save">
+    <input type="hidden" name="profile_key" value="{{ tariff_profile_edit.key if tariff_profile_edit else '' }}">
+    <div class="grid-2">
+      <label>
+        <span>Название профиля</span>
+        <input type="text" name="profile_name" value="{{ tariff_profile_edit.name if tariff_profile_edit else '' }}" placeholder="Например: Квартира на даче">
+      </label>
+      <label>
+        <span>Короткая заметка</span>
+        <input type="text" name="profile_note" value="{{ tariff_profile_edit.note if tariff_profile_edit else '' }}" placeholder="Например: другой объект / другая зона">
+      </label>
+      <label>
+        <span>Режим тарифа</span>
+        <select name="tariff_mode">
+          {% set edit_mode = tariff_profile_edit.tariff_mode if tariff_profile_edit else 'flat' %}
+          <option value="flat" {% if edit_mode == 'flat' %}selected{% endif %}>Единый</option>
+          <option value="two_zone" {% if edit_mode == 'two_zone' %}selected{% endif %}>Двухзонный</option>
+          <option value="three_zone" {% if edit_mode == 'three_zone' %}selected{% endif %}>Трёхзонный</option>
+        </select>
+      </label>
+      <label>
+        <span>Валюта / символ</span>
+        <input type="text" name="tariff_currency" value="{{ tariff_profile_edit.tariff_currency if tariff_profile_edit else '₽' }}" placeholder="₽">
+      </label>
+    </div>
+
+    <div class="grid-3">
+      <label><span>Единый тариф</span><input type="text" name="tariff_flat_price_per_kwh" value="{{ tariff_profile_edit.tariff_flat_price_per_kwh if tariff_profile_edit else '0.00' }}" placeholder="7.35"></label>
+      <label><span>2 зоны: день</span><input type="text" name="tariff_two_day_price_per_kwh" value="{{ tariff_profile_edit.tariff_two_day_price_per_kwh if tariff_profile_edit else '0.00' }}" placeholder="8.12"></label>
+      <label><span>2 зоны: ночь</span><input type="text" name="tariff_two_night_price_per_kwh" value="{{ tariff_profile_edit.tariff_two_night_price_per_kwh if tariff_profile_edit else '0.00' }}" placeholder="3.25"></label>
+      <label><span>2 зоны: день с</span><input type="text" name="tariff_two_day_start" value="{{ tariff_profile_edit.tariff_two_day_start if tariff_profile_edit else '07:00' }}" placeholder="07:00"></label>
+      <label><span>2 зоны: ночь с</span><input type="text" name="tariff_two_night_start" value="{{ tariff_profile_edit.tariff_two_night_start if tariff_profile_edit else '23:00' }}" placeholder="23:00"></label>
+      <div></div>
+      <label><span>3 зоны: день</span><input type="text" name="tariff_three_day_price_per_kwh" value="{{ tariff_profile_edit.tariff_three_day_price_per_kwh if tariff_profile_edit else '0.00' }}" placeholder="7.10"></label>
+      <label><span>3 зоны: ночь</span><input type="text" name="tariff_three_night_price_per_kwh" value="{{ tariff_profile_edit.tariff_three_night_price_per_kwh if tariff_profile_edit else '0.00' }}" placeholder="2.85"></label>
+      <label><span>3 зоны: пик</span><input type="text" name="tariff_three_peak_price_per_kwh" value="{{ tariff_profile_edit.tariff_three_peak_price_per_kwh if tariff_profile_edit else '0.00' }}" placeholder="9.40"></label>
+      <label><span>3 зоны: день с</span><input type="text" name="tariff_three_day_start" value="{{ tariff_profile_edit.tariff_three_day_start if tariff_profile_edit else '07:00' }}" placeholder="07:00"></label>
+      <label><span>3 зоны: ночь с</span><input type="text" name="tariff_three_night_start" value="{{ tariff_profile_edit.tariff_three_night_start if tariff_profile_edit else '23:00' }}" placeholder="23:00"></label>
+      <div></div>
+      <label><span>Пик 1: начало</span><input type="text" name="tariff_three_peak_morning_start" value="{{ tariff_profile_edit.tariff_three_peak_morning_start if tariff_profile_edit else '07:00' }}" placeholder="07:00"></label>
+      <label><span>Пик 1: конец</span><input type="text" name="tariff_three_peak_morning_end" value="{{ tariff_profile_edit.tariff_three_peak_morning_end if tariff_profile_edit else '10:00' }}" placeholder="10:00"></label>
+      <div></div>
+      <label><span>Пик 2: начало</span><input type="text" name="tariff_three_peak_evening_start" value="{{ tariff_profile_edit.tariff_three_peak_evening_start if tariff_profile_edit else '17:00' }}" placeholder="17:00"></label>
+      <label><span>Пик 2: конец</span><input type="text" name="tariff_three_peak_evening_end" value="{{ tariff_profile_edit.tariff_three_peak_evening_end if tariff_profile_edit else '21:00' }}" placeholder="21:00"></label>
+    </div>
+
+    <div class="muted">Этот профиль можно назначить конкретным устройствам. Для него пока нет календаря смен по месяцам — он действует сразу, чтобы не устраивать бухгалтерский хоррор на ровном месте.</div>
+    <div class="form-actions">
+      <button class="button-primary" type="submit">Сохранить тарифный профиль</button>
+    </div>
+  </form>
+</section>
+
 <section class="card">
   <div class="section-header"><h2>Подсказка по бэкапам</h2><a class="text-link" href="/backups">Открыть резервные копии</a></div>
   <pre class="command-block">./scripts/manage.sh backup-db

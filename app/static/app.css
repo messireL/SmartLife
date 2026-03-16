@@ -1138,3 +1138,56 @@ button:disabled:hover {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
+
+.channel-alias-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.channel-alias-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(255,255,255,0.02);
+}
+
+.channel-alias-title {
+  font-weight: 560;
+  color: var(--text-strong);
+}
+
+.inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.button-link {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  padding: 0;
+  min-height: auto;
+  box-shadow: none;
+}
+
+.button-link:hover {
+  transform: none;
+  box-shadow: none;
+  text-decoration: underline;
+}
+
+.danger-link {
+  color: #fda4af;
+}
+
+@media (max-width: 860px) {
+  .channel-alias-row {
+    grid-template-columns: 1fr;
+  }
+}

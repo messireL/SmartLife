@@ -42,6 +42,13 @@ from app.services.runtime_config_service import (
     get_tariff_editor_plan,
 )
 from app.services.runtime_diagnostics_service import get_runtime_diagnostics
+from app.services.tariff_profile_service import (
+    SYSTEM_TARIFF_PROFILE_KEY,
+    delete_tariff_profile,
+    get_tariff_profile,
+    list_tariff_profiles,
+    upsert_tariff_profile,
+)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -62,6 +69,73 @@ NAV_ITEMS = [
     {"key": "settings", "href": "/settings", "label": "Настройки"},
     {"key": "backups", "href": "/backups", "label": "Резервные копии"},
 ]
+
+
+from datetime import time
+from decimal import Decimal, InvalidOperation
+
+
+def _normalize_price(raw: str, label: str) -> str:
+    raw = (raw or "0.00").strip().replace(",", ".")
+    try:
+        price = Decimal(raw)
+        if price < 0:
+            raise InvalidOperation
+        return f"{price.quantize(Decimal('0.01'))}"
+    except Exception:
+        raise ValueError(f"Поле «{label}» должно быть неотрицательным числом, например 7.35")
+
+
+def _normalize_time(raw: str, label: str) -> str:
+    raw = (raw or "").strip()
+    try:
+        hh, mm = raw.split(":", 1)
+        parsed = time(int(hh), int(mm))
+        return parsed.strftime("%H:%M")
+    except Exception:
+        raise ValueError(f"Поле «{label}» должно быть в формате ЧЧ:ММ, например 23:00")
+
+
+def _parse_tariff_form_payload(
+    *,
+    tariff_mode: str,
+    tariff_currency: str,
+    tariff_flat_price_per_kwh: str,
+    tariff_two_day_price_per_kwh: str,
+    tariff_two_night_price_per_kwh: str,
+    tariff_two_day_start: str,
+    tariff_two_night_start: str,
+    tariff_three_day_price_per_kwh: str,
+    tariff_three_night_price_per_kwh: str,
+    tariff_three_peak_price_per_kwh: str,
+    tariff_three_day_start: str,
+    tariff_three_night_start: str,
+    tariff_three_peak_morning_start: str,
+    tariff_three_peak_morning_end: str,
+    tariff_three_peak_evening_start: str,
+    tariff_three_peak_evening_end: str,
+) -> dict[str, str]:
+    mode = (tariff_mode or "flat").strip()
+    if mode not in {"flat", "two_zone", "three_zone"}:
+        raise ValueError("Неизвестный режим тарифа. Используй flat, two_zone или three_zone.")
+    return {
+        "tariff_mode": mode,
+        "tariff_currency": (tariff_currency or "₽").strip() or "₽",
+        "tariff_flat_price_per_kwh": _normalize_price(tariff_flat_price_per_kwh, "Единый тариф"),
+        "tariff_two_day_price_per_kwh": _normalize_price(tariff_two_day_price_per_kwh, "Двухзонный день"),
+        "tariff_two_night_price_per_kwh": _normalize_price(tariff_two_night_price_per_kwh, "Двухзонная ночь"),
+        "tariff_two_day_start": _normalize_time(tariff_two_day_start, "Начало дня (2 зоны)"),
+        "tariff_two_night_start": _normalize_time(tariff_two_night_start, "Начало ночи (2 зоны)"),
+        "tariff_three_day_price_per_kwh": _normalize_price(tariff_three_day_price_per_kwh, "Трёхзонный день"),
+        "tariff_three_night_price_per_kwh": _normalize_price(tariff_three_night_price_per_kwh, "Трёхзонная ночь"),
+        "tariff_three_peak_price_per_kwh": _normalize_price(tariff_three_peak_price_per_kwh, "Трёхзонный пик"),
+        "tariff_three_day_start": _normalize_time(tariff_three_day_start, "Начало дня (3 зоны)"),
+        "tariff_three_night_start": _normalize_time(tariff_three_night_start, "Начало ночи (3 зоны)"),
+        "tariff_three_peak_morning_start": _normalize_time(tariff_three_peak_morning_start, "Пик 1 старт"),
+        "tariff_three_peak_morning_end": _normalize_time(tariff_three_peak_morning_end, "Пик 1 конец"),
+        "tariff_three_peak_evening_start": _normalize_time(tariff_three_peak_evening_start, "Пик 2 старт"),
+        "tariff_three_peak_evening_end": _normalize_time(tariff_three_peak_evening_end, "Пик 2 конец"),
+    }
 
 
 def _base_context(*, request: Request, active_nav: str, page_title: str, flash: str | None = None, refresh_seconds: int | None = None, auto_refresh: bool = False, runtime: object | None = None) -> dict:
@@ -232,12 +306,14 @@ def sync_page(request: Request, auto_refresh: bool = Query(default=True), db: Se
 
 
 @router.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request, db: Session = Depends(get_db)):
+def settings_page(request: Request, profile_key: str = Query(default=""), db: Session = Depends(get_db)):
     runtime = get_runtime_config(db)
     tariff_editor_plan = get_tariff_editor_plan(db)
     next_tariff_plan = get_next_scheduled_tariff_plan(db)
     change_target_month = get_tariff_change_target_month()
     context = _base_context(request=request, active_nav="settings", page_title="Настройки", runtime=runtime)
+    tariff_profiles = list_tariff_profiles(db, runtime)
+    tariff_profile_edit = get_tariff_profile(db, profile_key, runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -245,6 +321,8 @@ def settings_page(request: Request, db: Session = Depends(get_db)):
             "tariff_editor_plan": tariff_editor_plan,
             "next_tariff_plan": next_tariff_plan,
             "tariff_change_target_month": change_target_month,
+            "tariff_profiles": tariff_profiles,
+            "tariff_profile_edit": tariff_profile_edit,
         }
     )
     return templates.TemplateResponse(request, "settings.html", context)
@@ -309,51 +387,42 @@ def update_tariff_settings(
     tariff_three_peak_evening_end: str = Form(default="21:00"),
     db: Session = Depends(get_db),
 ):
-    from datetime import time
-    from decimal import Decimal, InvalidOperation
-
-    def _normalize_price(raw: str, label: str) -> str:
-        raw = (raw or "0.00").strip().replace(",", ".")
-        try:
-            price = Decimal(raw)
-            if price < 0:
-                raise InvalidOperation
-            return f"{price.quantize(Decimal('0.01'))}"
-        except Exception:
-            raise ValueError(f"Поле «{label}» должно быть неотрицательным числом, например 7.35")
-
-    def _normalize_time(raw: str, label: str) -> str:
-        raw = (raw or "").strip()
-        try:
-            hh, mm = raw.split(":", 1)
-            parsed = time(int(hh), int(mm))
-            return parsed.strftime("%H:%M")
-        except Exception:
-            raise ValueError(f"Поле «{label}» должно быть в формате ЧЧ:ММ, например 23:00")
-
-    mode = (tariff_mode or "flat").strip()
-    if mode not in {"flat", "two_zone", "three_zone"}:
-        flash = "Неизвестный режим тарифа. Используй flat, two_zone или three_zone."
-        return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
-
     try:
+        parsed = _parse_tariff_form_payload(
+            tariff_mode=tariff_mode,
+            tariff_currency=tariff_currency,
+            tariff_flat_price_per_kwh=tariff_flat_price_per_kwh,
+            tariff_two_day_price_per_kwh=tariff_two_day_price_per_kwh,
+            tariff_two_night_price_per_kwh=tariff_two_night_price_per_kwh,
+            tariff_two_day_start=tariff_two_day_start,
+            tariff_two_night_start=tariff_two_night_start,
+            tariff_three_day_price_per_kwh=tariff_three_day_price_per_kwh,
+            tariff_three_night_price_per_kwh=tariff_three_night_price_per_kwh,
+            tariff_three_peak_price_per_kwh=tariff_three_peak_price_per_kwh,
+            tariff_three_day_start=tariff_three_day_start,
+            tariff_three_night_start=tariff_three_night_start,
+            tariff_three_peak_morning_start=tariff_three_peak_morning_start,
+            tariff_three_peak_morning_end=tariff_three_peak_morning_end,
+            tariff_three_peak_evening_start=tariff_three_peak_evening_start,
+            tariff_three_peak_evening_end=tariff_three_peak_evening_end,
+        )
         values = {
-            "tariff.mode": mode,
-            "tariff.currency": (tariff_currency or "₽").strip() or "₽",
-            "tariff.flat.price_per_kwh": _normalize_price(tariff_flat_price_per_kwh, "Единый тариф"),
-            "tariff.two_zone.day_price_per_kwh": _normalize_price(tariff_two_day_price_per_kwh, "Двухзонный день"),
-            "tariff.two_zone.night_price_per_kwh": _normalize_price(tariff_two_night_price_per_kwh, "Двухзонная ночь"),
-            "tariff.two_zone.day_start": _normalize_time(tariff_two_day_start, "Начало дня (2 зоны)"),
-            "tariff.two_zone.night_start": _normalize_time(tariff_two_night_start, "Начало ночи (2 зоны)"),
-            "tariff.three_zone.day_price_per_kwh": _normalize_price(tariff_three_day_price_per_kwh, "Трёхзонный день"),
-            "tariff.three_zone.night_price_per_kwh": _normalize_price(tariff_three_night_price_per_kwh, "Трёхзонная ночь"),
-            "tariff.three_zone.peak_price_per_kwh": _normalize_price(tariff_three_peak_price_per_kwh, "Трёхзонный пик"),
-            "tariff.three_zone.day_start": _normalize_time(tariff_three_day_start, "Начало дня (3 зоны)"),
-            "tariff.three_zone.night_start": _normalize_time(tariff_three_night_start, "Начало ночи (3 зоны)"),
-            "tariff.three_zone.peak_morning_start": _normalize_time(tariff_three_peak_morning_start, "Пик 1 старт"),
-            "tariff.three_zone.peak_morning_end": _normalize_time(tariff_three_peak_morning_end, "Пик 1 конец"),
-            "tariff.three_zone.peak_evening_start": _normalize_time(tariff_three_peak_evening_start, "Пик 2 старт"),
-            "tariff.three_zone.peak_evening_end": _normalize_time(tariff_three_peak_evening_end, "Пик 2 конец"),
+            "tariff.mode": parsed["tariff_mode"],
+            "tariff.currency": parsed["tariff_currency"],
+            "tariff.flat.price_per_kwh": parsed["tariff_flat_price_per_kwh"],
+            "tariff.two_zone.day_price_per_kwh": parsed["tariff_two_day_price_per_kwh"],
+            "tariff.two_zone.night_price_per_kwh": parsed["tariff_two_night_price_per_kwh"],
+            "tariff.two_zone.day_start": parsed["tariff_two_day_start"],
+            "tariff.two_zone.night_start": parsed["tariff_two_night_start"],
+            "tariff.three_zone.day_price_per_kwh": parsed["tariff_three_day_price_per_kwh"],
+            "tariff.three_zone.night_price_per_kwh": parsed["tariff_three_night_price_per_kwh"],
+            "tariff.three_zone.peak_price_per_kwh": parsed["tariff_three_peak_price_per_kwh"],
+            "tariff.three_zone.day_start": parsed["tariff_three_day_start"],
+            "tariff.three_zone.night_start": parsed["tariff_three_night_start"],
+            "tariff.three_zone.peak_morning_start": parsed["tariff_three_peak_morning_start"],
+            "tariff.three_zone.peak_morning_end": parsed["tariff_three_peak_morning_end"],
+            "tariff.three_zone.peak_evening_start": parsed["tariff_three_peak_evening_start"],
+            "tariff.three_zone.peak_evening_end": parsed["tariff_three_peak_evening_end"],
         }
     except ValueError as exc:
         return RedirectResponse(url=f"/settings?flash={quote_plus(str(exc))}", status_code=303)
@@ -364,6 +433,76 @@ def update_tariff_settings(
         flash = f"Тариф сохранён и действует с {effective_from_label}. Разбивка kWh и стоимости считается по выбранным зонам времени."
     else:
         flash = f"Тариф сохранён в расписание с {effective_from_label}. До этой даты расчёты kWh и стоимости идут по текущему тарифу, затем автоматически переключатся."
+    return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/settings/tariff-profiles/save")
+def save_tariff_profile_settings(
+    profile_key: str = Form(default=""),
+    profile_name: str = Form(default=""),
+    profile_note: str = Form(default=""),
+    tariff_mode: str = Form(default="flat"),
+    tariff_currency: str = Form(default="₽"),
+    tariff_flat_price_per_kwh: str = Form(default="0.00"),
+    tariff_two_day_price_per_kwh: str = Form(default="0.00"),
+    tariff_two_night_price_per_kwh: str = Form(default="0.00"),
+    tariff_two_day_start: str = Form(default="07:00"),
+    tariff_two_night_start: str = Form(default="23:00"),
+    tariff_three_day_price_per_kwh: str = Form(default="0.00"),
+    tariff_three_night_price_per_kwh: str = Form(default="0.00"),
+    tariff_three_peak_price_per_kwh: str = Form(default="0.00"),
+    tariff_three_day_start: str = Form(default="07:00"),
+    tariff_three_night_start: str = Form(default="23:00"),
+    tariff_three_peak_morning_start: str = Form(default="07:00"),
+    tariff_three_peak_morning_end: str = Form(default="10:00"),
+    tariff_three_peak_evening_start: str = Form(default="17:00"),
+    tariff_three_peak_evening_end: str = Form(default="21:00"),
+    db: Session = Depends(get_db),
+):
+    runtime = get_runtime_config(db)
+    try:
+        parsed = _parse_tariff_form_payload(
+            tariff_mode=tariff_mode,
+            tariff_currency=tariff_currency,
+            tariff_flat_price_per_kwh=tariff_flat_price_per_kwh,
+            tariff_two_day_price_per_kwh=tariff_two_day_price_per_kwh,
+            tariff_two_night_price_per_kwh=tariff_two_night_price_per_kwh,
+            tariff_two_day_start=tariff_two_day_start,
+            tariff_two_night_start=tariff_two_night_start,
+            tariff_three_day_price_per_kwh=tariff_three_day_price_per_kwh,
+            tariff_three_night_price_per_kwh=tariff_three_night_price_per_kwh,
+            tariff_three_peak_price_per_kwh=tariff_three_peak_price_per_kwh,
+            tariff_three_day_start=tariff_three_day_start,
+            tariff_three_night_start=tariff_three_night_start,
+            tariff_three_peak_morning_start=tariff_three_peak_morning_start,
+            tariff_three_peak_morning_end=tariff_three_peak_morning_end,
+            tariff_three_peak_evening_start=tariff_three_peak_evening_start,
+            tariff_three_peak_evening_end=tariff_three_peak_evening_end,
+        )
+        profile = upsert_tariff_profile(
+            db,
+            runtime,
+            {
+                **parsed,
+                "profile_key": profile_key,
+                "profile_name": profile_name,
+                "profile_note": profile_note,
+            },
+        )
+    except ValueError as exc:
+        return RedirectResponse(url=f"/settings?flash={quote_plus(str(exc))}", status_code=303)
+
+    flash = f"Тарифный профиль «{profile['name']}» сохранён. Его уже можно назначать устройствам из карточки."
+    return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}&profile_key={quote_plus(profile['key'])}", status_code=303)
+
+
+@router.post("/settings/tariff-profiles/delete")
+def delete_tariff_profile_settings(profile_key: str = Form(default=""), db: Session = Depends(get_db)):
+    runtime = get_runtime_config(db)
+    deleted = delete_tariff_profile(db, runtime, profile_key)
+    flash = "Тарифный профиль не найден."
+    if deleted:
+        flash = "Тарифный профиль удалён. Устройства, которые были к нему привязаны, возвращены на системный тариф."
     return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 
@@ -387,7 +526,7 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
         runtime = get_runtime_config(db)
         return templates.TemplateResponse(request, "not_found.html", _base_context(request=request, active_nav="devices", page_title="Не найдено", runtime=runtime), status_code=404)
 
-    if tab not in {"overview", "charts", "history", "control"}:
+    if tab not in {"overview", "charts", "history", "control", "local"}:
         tab = "overview"
 
     view_model = get_device_dashboard(db, device)
@@ -406,6 +545,8 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
             "auto_refresh": auto_refresh,
             "room_choices": get_room_choices(db),
             "badge_choices": get_badge_choices_service(db),
+            "tariff_profile_choices": list_tariff_profiles(db, runtime),
+            "system_tariff_profile_key": SYSTEM_TARIFF_PROFILE_KEY,
         }
     )
     return templates.TemplateResponse(request, "device_detail.html", context)
@@ -520,6 +661,7 @@ async def save_device_meta_action(
     custom_room_name: str = Form(default=""),
     notes: str = Form(default=""),
     badge_id: str = Form(default=""),
+    tariff_profile_key: str = Form(default=""),
     source_tab: str = Form(default="overview"),
     db: Session = Depends(get_db),
 ):
@@ -539,6 +681,9 @@ async def save_device_meta_action(
         device.custom_room_name = custom_room_name.strip() or None
         device.notes = notes.strip() or None
         device.badge_id = int(badge_id) if badge_id.isdigit() else None
+        selected_profile_key = (tariff_profile_key or "").strip()
+        valid_profile_keys = {item["key"] for item in list_tariff_profiles(db, get_runtime_config(db)) if not item.get("is_system")}
+        device.tariff_profile_key = selected_profile_key if selected_profile_key in valid_profile_keys else None
         device.channel_aliases_json = json.dumps(channel_aliases, ensure_ascii=False, sort_keys=True) if channel_aliases else None
         db.commit()
         flash = f"Карточка устройства «{device.display_name}» обновлена."
