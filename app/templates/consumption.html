@@ -50,6 +50,7 @@
     </div>
   </article>
   <article class="card stat-card"><div class="stat-label muted">Текущая нагрузка, W</div><div class="stat-value">{{ summary.live_power_total_w }}</div></article>
+  <article class="card stat-card"><div class="stat-label muted">Ток сейчас, A</div><div class="stat-value">{{ summary.live_current_total_a }}</div></article>
   <article class="card stat-card"><div class="stat-label muted">Активных сейчас</div><div class="stat-value">{{ summary.power_now_total }}</div></article>
 </section>
 
@@ -132,7 +133,7 @@
     <div class="section-header"><h2>Сейчас тянут нагрузку</h2></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Устройство</th><th>Комната</th><th>W</th><th>V</th></tr></thead>
+        <thead><tr><th>Устройство</th><th>Комната</th><th>W</th><th>V</th><th>A</th></tr></thead>
         <tbody>
           {% for device in dashboard_panels.live_now %}
             <tr>
@@ -140,9 +141,10 @@
               <td>{{ device.display_room_name or '—' }}</td>
               <td>{{ device.current_power_w or '—' }}</td>
               <td>{{ device.current_voltage_v or '—' }}</td>
+              <td>{{ device.current_a or '—' }}</td>
             </tr>
           {% else %}
-            <tr><td colspan="4" class="muted">Сейчас тишина и покой.</td></tr>
+            <tr><td colspan="5" class="muted">Сейчас тишина и покой.</td></tr>
           {% endfor %}
         </tbody>
       </table>

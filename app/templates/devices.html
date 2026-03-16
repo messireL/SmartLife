@@ -102,7 +102,7 @@
                   <div class="tiny muted">цель {{ device.target_temperature_c or '—' }} °C</div>
                 {% elif device.current_power_w is not none %}
                   <div class="metric-main">{{ device.current_power_w }} W</div>
-                  <div class="tiny muted">{{ device.provider.value }}</div>
+                  <div class="tiny muted">{{ device.current_a or '—' }} A · {{ device.current_voltage_v or '—' }} V</div>
                 {% else %}
                   <div class="metric-main">—</div>
                   <div class="tiny muted">{{ device.provider.value }}</div>

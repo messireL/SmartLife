@@ -36,6 +36,9 @@ def _money(value: Decimal | None) -> Decimal:
     return _quantize(value, "0.00")
 
 
+def _amps(value: Decimal | None) -> Decimal:
+    return _quantize(value, "0.000")
+
 
 def _visible_device_ids(db: Session) -> list[int]:
     return list(
@@ -145,6 +148,12 @@ def get_dashboard_summary(db: Session) -> dict:
         )
     ) or Decimal("0.00")
 
+    live_current_total = db.scalar(
+        select(func.coalesce(func.sum(Device.current_a), Decimal("0.000"))).where(
+            Device.is_hidden.is_(False), Device.is_deleted.is_(False), Device.current_a.is_not(None)
+        )
+    ) or Decimal("0.000")
+
     power_now_total = db.scalar(
         select(func.count()).select_from(Device).where(
             Device.is_hidden.is_(False), Device.is_deleted.is_(False), Device.current_power_w.is_not(None), Device.current_power_w > 0
@@ -179,6 +188,7 @@ def get_dashboard_summary(db: Session) -> dict:
         "tariff_mode_label": tariff_mode_label,
         "tariff_windows": runtime.tariff_windows,
         "live_power_total_w": _quantize(live_power_total),
+        "live_current_total_a": _amps(live_current_total),
         "power_now_total": power_now_total,
     }
 
@@ -788,6 +798,7 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "tariff_mode_label": tariff_runtime.tariff_mode_label,
             "latest_power_w": _quantize(device.current_power_w),
             "latest_voltage_v": _quantize(device.current_voltage_v),
+            "latest_current_a": _amps(device.current_a),
             "peak_power_w": _quantize(max(power_values) if power_values else Decimal("0.00")),
             "max_voltage_v": _quantize(max(voltage_values) if voltage_values else Decimal("0.00")),
             "latest_temperature_c": _quantize(device.current_temperature_c) if device.current_temperature_c is not None else None,
