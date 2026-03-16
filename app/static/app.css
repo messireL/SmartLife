@@ -1553,3 +1553,31 @@ button:disabled:hover {
     align-items: stretch;
   }
 }
+
+
+.scenario-command-card {
+  margin-bottom: 18px;
+}
+
+.scenario-alert-stack {
+  margin-bottom: 14px;
+}
+
+.empty-state-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border: 1px dashed rgba(148, 163, 184, 0.22);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.empty-state-card.compact {
+  padding: 14px 16px;
+  border-radius: 16px;
+}
+
+.empty-state-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}

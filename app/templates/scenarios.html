@@ -4,13 +4,12 @@
   <div class="section-header scenario-hero-header">
     <div>
       <h1>Сценарии</h1>
-      <div class="muted">Локальные расписания SmartLife и штатные Tuya-сцены теперь не толкаются в одном углу. Разнесли по вкладкам, добавили фильтры, поиск, дублирование и понятную паузу, чтобы этот раздел уже был рабочим центром управления, а не просто складом идей.</div>
+      <div class="muted">Локальные расписания SmartLife, Tuya-мост и журнал запусков теперь не смешиваются в одну кашу. У каждой вкладки свой режим, а фильтры лежат в одном понятном месте сверху.</div>
     </div>
     <div class="scenario-toolbar">
-      <a class="tab-link {% if scenario_tab == 'local' %}active{% endif %}" href="/scenarios?scenario_tab=local&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&log_status={{ log_status|urlq }}">Локальные</a>
-      <a class="tab-link {% if scenario_tab == 'tuya' %}active{% endif %}" href="/scenarios?scenario_tab=tuya&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&log_status={{ log_status|urlq }}">Tuya-мост</a>
-      <a class="tab-link {% if scenario_tab == 'log' %}active{% endif %}" href="/scenarios?scenario_tab=log&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&log_status={{ log_status|urlq }}">Журнал</a>
-      <a class="tab-link" href="/scenarios?scenario_tab={{ scenario_tab }}&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&log_status={{ log_status|urlq }}">Обновить список</a>
+      <a class="tab-link {% if scenario_tab == 'local' %}active{% endif %}" href="/scenarios?scenario_tab=local&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&tuya_kind={{ tuya_kind|urlq }}&tuya_status={{ tuya_status|urlq }}&log_status={{ log_status|urlq }}">Локальные</a>
+      <a class="tab-link {% if scenario_tab == 'tuya' %}active{% endif %}" href="/scenarios?scenario_tab=tuya&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&tuya_kind={{ tuya_kind|urlq }}&tuya_status={{ tuya_status|urlq }}&log_status={{ log_status|urlq }}">Tuya-мост</a>
+      <a class="tab-link {% if scenario_tab == 'log' %}active{% endif %}" href="/scenarios?scenario_tab=log&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&tuya_kind={{ tuya_kind|urlq }}&tuya_status={{ tuya_status|urlq }}&log_status={{ log_status|urlq }}">Журнал</a>
     </div>
   </div>
 </section>
@@ -22,6 +21,79 @@
   <article class="card stat-card"><div class="muted">Домов Tuya</div><div class="stat-value">{{ tuya_scene_bridge.homes_count }}</div></article>
   <article class="card stat-card"><div class="muted">Tap-to-Run</div><div class="stat-value">{{ tuya_scene_bridge.scenes_count }}</div></article>
   <article class="card stat-card"><div class="muted">Automation Tuya</div><div class="stat-value">{{ tuya_scene_bridge.automations_count }}</div></article>
+</section>
+
+<section class="card scenario-command-card">
+  <div class="section-header">
+    <div>
+      <h2>
+        {% if scenario_tab == 'local' %}Фильтры локальных сценариев{% elif scenario_tab == 'tuya' %}Фильтры Tuya-моста{% else %}Фильтры журнала{% endif %}
+      </h2>
+      <div class="muted tiny">
+        {% if scenario_tab == 'local' %}
+          Ищи по названию, цели или заметке и сразу видно, почему кнопки живут только у локальных правил.
+        {% elif scenario_tab == 'tuya' %}
+          Здесь можно быстро сузить выдачу по дому, названию сцены, типу элемента и статусу, не перерывая весь мост вручную.
+        {% else %}
+          Журнал можно быстро сузить по тексту, сценарию и статусу, чтобы не копаться в контейнерных логах как в археологии.
+        {% endif %}
+      </div>
+    </div>
+    <div class="scenario-toolbar compact">
+      <a class="tab-link" href="/scenarios?scenario_tab={{ scenario_tab }}&scenario_search={{ scenario_search|urlq }}&scenario_state={{ scenario_state|urlq }}&scenario_kind={{ scenario_kind|urlq }}&tuya_kind={{ tuya_kind|urlq }}&tuya_status={{ tuya_status|urlq }}&log_status={{ log_status|urlq }}">Обновить список</a>
+    </div>
+  </div>
+  <form class="scenario-filter-bar" method="get" action="/scenarios">
+    <input type="hidden" name="scenario_tab" value="{{ scenario_tab }}">
+    <label class="scenario-filter-field">Поиск
+      <input class="input" type="search" name="scenario_search" value="{{ scenario_search }}" placeholder="{% if scenario_tab == 'local' %}Название, цель, заметка{% elif scenario_tab == 'tuya' %}Дом, scene_id, automation_id, название{% else %}Сценарий, устройство, текст ошибки{% endif %}">
+    </label>
+
+    {% if scenario_tab == 'local' %}
+      <label class="scenario-filter-field">Состояние
+        <select class="input" name="scenario_state">
+          {% for item in scenario_filters.state_choices %}
+            <option value="{{ item.value }}" {% if item.value == scenario_state %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="scenario-filter-field">Тип цели
+        <select class="input" name="scenario_kind">
+          {% for item in scenario_filters.kind_choices %}
+            <option value="{{ item.value }}" {% if item.value == scenario_kind %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% elif scenario_tab == 'tuya' %}
+      <label class="scenario-filter-field">Тип элемента
+        <select class="input" name="tuya_kind">
+          {% for item in scenario_filters.tuya_kind_choices %}
+            <option value="{{ item.value }}" {% if item.value == tuya_kind %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="scenario-filter-field">Статус
+        <select class="input" name="tuya_status">
+          {% for item in scenario_filters.tuya_status_choices %}
+            <option value="{{ item.value }}" {% if item.value == tuya_status %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% else %}
+      <label class="scenario-filter-field">Статус
+        <select class="input" name="log_status">
+          {% for item in scenario_filters.log_status_choices %}
+            <option value="{{ item.value }}" {% if item.value == log_status %}selected{% endif %}>{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    {% endif %}
+
+    <div class="scenario-filter-actions">
+      <button type="submit">Применить</button>
+      <a class="tab-link" href="/scenarios?scenario_tab={{ scenario_tab }}">Сбросить</a>
+    </div>
+  </form>
 </section>
 
 {% if scenario_tab == 'local' %}
@@ -84,8 +156,8 @@
         <div class="status-row"><span class="muted">Tap-to-Run</span><span>хорошо подходят как готовые сцены, которые SmartLife просто запускает.</span></div>
         <div class="status-row"><span class="muted">Tuya Automation</span><span>можно включать и выключать вручную или по нашему расписанию.</span></div>
         <div class="status-row"><span class="muted">Локальные сценарии</span><span>лучше использовать там, где важно единое расписание по тарифу, комнате или объекту.</span></div>
-        <div class="status-row"><span class="muted">Текущий мост</span><span>домов: {{ tuya_scene_bridge.homes_count }}, сцен: {{ tuya_scene_bridge.scenes_count }}, автоматизаций: {{ tuya_scene_bridge.automations_count }}.</span></div>
-        <div class="status-row"><span class="muted">Последнее чтение Tuya</span><span>{{ tuya_scene_bridge.fetched_at|localdt if tuya_scene_bridge.fetched_at else '—' }}</span></div>
+        <div class="status-row"><span class="muted">Текущий мост</span><span>домов: {{ tuya_scene_bridge_raw.homes_count }}, сцен: {{ tuya_scene_bridge_raw.scenes_count }}, автоматизаций: {{ tuya_scene_bridge_raw.automations_count }}.</span></div>
+        <div class="status-row"><span class="muted">Последнее чтение Tuya</span><span>{{ tuya_scene_bridge_raw.fetched_at|localdt if tuya_scene_bridge_raw.fetched_at else '—' }}</span></div>
       </div>
     </article>
   </section>
@@ -94,34 +166,10 @@
     <div class="section-header">
       <div>
         <h2>Активные правила</h2>
-        <div class="muted tiny">Поиск, фильтры, быстрый запуск, дублирование и пауза — всё в одном месте, без космодрома и шаманства.</div>
+        <div class="muted tiny">Быстрый запуск, дублирование и пауза теперь относятся именно к локальным сценариям, поэтому кнопки не притворяются универсальными для всего мира Tuya.</div>
       </div>
       <div class="muted tiny">Показано {{ automation_rules_filtered }} из {{ automation_rules_total }}</div>
     </div>
-    <form class="scenario-filter-bar" method="get" action="/scenarios">
-      <input type="hidden" name="scenario_tab" value="local">
-      <label class="scenario-filter-field">Поиск
-        <input class="input" type="search" name="scenario_search" value="{{ scenario_search }}" placeholder="Название, цель, заметка">
-      </label>
-      <label class="scenario-filter-field">Состояние
-        <select class="input" name="scenario_state">
-          {% for item in scenario_filters.state_choices %}
-            <option value="{{ item.value }}" {% if item.value == scenario_state %}selected{% endif %}>{{ item.label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="scenario-filter-field">Тип цели
-        <select class="input" name="scenario_kind">
-          {% for item in scenario_filters.kind_choices %}
-            <option value="{{ item.value }}" {% if item.value == scenario_kind %}selected{% endif %}>{{ item.label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <div class="scenario-filter-actions">
-        <button type="submit">Применить</button>
-        <a class="tab-link" href="/scenarios?scenario_tab=local">Сбросить</a>
-      </div>
-    </form>
     <div class="rule-list">
       {% for rule in automation_rules %}
         <article class="rule-card">
@@ -192,7 +240,15 @@
           </form>
         </article>
       {% else %}
-        <div class="muted">По этим фильтрам ничего не нашлось. Дом не обиделся, просто запрос сейчас слишком строгий.</div>
+        <div class="empty-state-card">
+          {% if automation_rules_total == 0 %}
+            <h3>Локальных сценариев пока нет</h3>
+            <div class="muted">Создай первое расписание выше — тогда здесь появятся кнопки запуска, дублирования и паузы.</div>
+          {% else %}
+            <h3>Фильтр слишком строгий</h3>
+            <div class="muted">По текущему поиску и фильтрам локальные сценарии не попали в выборку. Сбрось фильтр и они вернутся.</div>
+          {% endif %}
+        </div>
       {% endfor %}
     </div>
   </section>
@@ -203,20 +259,17 @@
         <h2>Мост к Tuya-сценам</h2>
         <div class="muted tiny">Tap-to-Run и Automation из Smart Life подтягиваются по home_id. Здесь можно их читать, запускать, включать и выключать без похода в соседнее приложение.</div>
       </div>
-      <div class="scenario-toolbar compact">
-        <div class="muted tiny">Последнее обновление: {{ tuya_scene_bridge.fetched_at|localdt if tuya_scene_bridge.fetched_at else '—' }}</div>
-        <a class="tab-link" href="/scenarios?scenario_tab=tuya">Обновить Tuya</a>
-      </div>
+      <div class="muted tiny">Показано домов {{ tuya_scene_bridge.homes_count_filtered }} из {{ tuya_scene_bridge.homes_count }} · сцен {{ tuya_scene_bridge.scenes_count_filtered }} · автоматизаций {{ tuya_scene_bridge.automations_count_filtered }}</div>
     </div>
     {% if tuya_scene_bridge.errors %}
-      <div class="stack-sm">
+      <div class="stack-sm scenario-alert-stack">
         {% for error in tuya_scene_bridge.errors %}
           <div class="alert danger">{{ error }}</div>
         {% endfor %}
       </div>
     {% endif %}
     {% if tuya_scene_bridge.warnings %}
-      <div class="stack-sm">
+      <div class="stack-sm scenario-alert-stack">
         {% for warning in tuya_scene_bridge.warnings %}
           <div class="alert">{{ warning }}</div>
         {% endfor %}
@@ -231,7 +284,7 @@
                 <h3>{{ home.home_name }}</h3>
                 <span class="badge idle">home_id {{ home.home_id }}</span>
               </div>
-              <div class="muted tiny">Tap-to-Run: {{ home.scene_count }} · Automation: {{ home.automation_count }} · последний запрос {{ home.fetched_at|localdt if home.fetched_at else '—' }}</div>
+              <div class="muted tiny">Tap-to-Run: {{ home.scene_count_filtered }} из {{ home.scene_count }} · Automation: {{ home.automation_count_filtered }} из {{ home.automation_count }} · последний запрос {{ home.fetched_at|localdt if home.fetched_at else '—' }}</div>
             </div>
           </div>
           {% if home.error %}
@@ -240,7 +293,7 @@
           <div class="grid-2 tuya-home-grid">
             <div class="stack-sm">
               <div class="section-subtitle">Tap-to-Run сцены</div>
-              {% for scene in home.scenes %}
+              {% for scene in home.scenes_filtered %}
                 <form class="rule-card tuya-item-card" method="post" action="/scenarios/tuya-scenes/run">
                   <input type="hidden" name="home_id" value="{{ home.home_id }}">
                   <input type="hidden" name="scene_id" value="{{ scene.id }}">
@@ -256,12 +309,15 @@
                   </div>
                 </form>
               {% else %}
-                <div class="muted">Tap-to-Run сцен тут пока не видно.</div>
+                <div class="empty-state-card compact">
+                  <h3>Tap-to-Run сцен не видно</h3>
+                  <div class="muted">Либо в этом доме их пока нет, либо текущий фильтр отсеял все подходящие элементы.</div>
+                </div>
               {% endfor %}
             </div>
             <div class="stack-sm">
               <div class="section-subtitle">Automation в Tuya</div>
-              {% for item in home.automations %}
+              {% for item in home.automations_filtered %}
                 <form class="rule-card tuya-item-card" method="post" action="/scenarios/tuya-automations/toggle">
                   <input type="hidden" name="home_id" value="{{ home.home_id }}">
                   <input type="hidden" name="automation_id" value="{{ item.id }}">
@@ -278,13 +334,24 @@
                   </div>
                 </form>
               {% else %}
-                <div class="muted">Автоматизаций тут пока не видно.</div>
+                <div class="empty-state-card compact">
+                  <h3>Automation не видно</h3>
+                  <div class="muted">Для этого дома либо нет автоматизаций, либо фильтр отобрал только другой тип элементов.</div>
+                </div>
               {% endfor %}
             </div>
           </div>
         </article>
       {% else %}
-        <div class="muted">Пока не задан ни один home_id. Добавь их в Настройках, и сюда подтянутся сцены из Smart Life.</div>
+        <div class="empty-state-card">
+          {% if tuya_scene_bridge_raw.configured_home_ids %}
+            <h3>По фильтру ничего не нашлось</h3>
+            <div class="muted">Сами дома и мост есть, просто текущий поиск или статус-фильтр ничего не оставил в выдаче.</div>
+          {% else %}
+            <h3>Пока не задан ни один home_id</h3>
+            <div class="muted">Добавь home_id в Настройках, и сюда подтянутся Tap-to-Run сцены и Tuya Automation из Smart Life.</div>
+          {% endif %}
+        </div>
       {% endfor %}
     </div>
   </section>
@@ -293,27 +360,10 @@
     <div class="section-header">
       <div>
         <h2>Журнал запусков</h2>
-        <div class="muted tiny">Здесь видно, кто отработал, а кто решил покапризничать. Фильтры и поиск помогают быстро выловить проблемную автоматику без ныряния в логи контейнера.</div>
+        <div class="muted tiny">Здесь видно, кто отработал, а кто решил покапризничать. Теперь фильтры сверху общие, поэтому журнал не прыгает отдельной формой внизу.</div>
       </div>
       <div class="muted tiny">Показано {{ automation_runs_filtered }} из {{ automation_runs_total }}</div>
     </div>
-    <form class="scenario-filter-bar" method="get" action="/scenarios">
-      <input type="hidden" name="scenario_tab" value="log">
-      <label class="scenario-filter-field">Поиск
-        <input class="input" type="search" name="scenario_search" value="{{ scenario_search }}" placeholder="Сценарий, устройство, текст ошибки">
-      </label>
-      <label class="scenario-filter-field">Статус
-        <select class="input" name="log_status">
-          {% for item in scenario_filters.log_status_choices %}
-            <option value="{{ item.value }}" {% if item.value == log_status %}selected{% endif %}>{{ item.label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <div class="scenario-filter-actions">
-        <button type="submit">Применить</button>
-        <a class="tab-link" href="/scenarios?scenario_tab=log">Сбросить</a>
-      </div>
-    </form>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Время</th><th>Сценарий</th><th>Запуск</th><th>Статус</th><th>Итог</th></tr></thead>

@@ -371,6 +371,83 @@ def _filter_automation_runs_for_ui(runs: list[dict[str, object]], *, search: str
     return filtered
 
 
+def _filter_tuya_bridge_for_ui(bridge: dict[str, object], *, search: str, kind_filter: str, status_filter: str) -> dict[str, object]:
+    search_lower = (search or "").strip().lower()
+    filtered_homes: list[dict[str, object]] = []
+    scenes_total = 0
+    automations_total = 0
+
+    for home in bridge.get("homes", []):
+        home_name = str(home.get("home_name") or "")
+        home_id = str(home.get("home_id") or "")
+        filtered_scenes: list[dict[str, object]] = []
+        filtered_automations: list[dict[str, object]] = []
+
+        if kind_filter in {"all", "scenes"}:
+            for scene in home.get("scenes", []):
+                haystack = " ".join(
+                    [
+                        home_name,
+                        home_id,
+                        str(scene.get("name") or ""),
+                        str(scene.get("status_label") or ""),
+                        str(scene.get("id") or ""),
+                    ]
+                ).lower()
+                if search_lower and search_lower not in haystack:
+                    continue
+                if status_filter == "enabled" and scene.get("enabled") is False:
+                    continue
+                if status_filter == "disabled" and scene.get("enabled") is not False:
+                    continue
+                filtered_scenes.append(scene)
+
+        if kind_filter in {"all", "automations"}:
+            for automation in home.get("automations", []):
+                haystack = " ".join(
+                    [
+                        home_name,
+                        home_id,
+                        str(automation.get("name") or ""),
+                        str(automation.get("status_label") or ""),
+                        str(automation.get("id") or ""),
+                    ]
+                ).lower()
+                if search_lower and search_lower not in haystack:
+                    continue
+                if status_filter == "enabled" and automation.get("enabled") is not True:
+                    continue
+                if status_filter == "disabled" and automation.get("enabled") is not False:
+                    continue
+                filtered_automations.append(automation)
+
+        home_matches = bool(search_lower) and search_lower in f"{home_name} {home_id}".lower()
+        include_home = bool(filtered_scenes or filtered_automations or home.get("error") or not search_lower or home_matches)
+        if not include_home:
+            continue
+
+        home_copy = dict(home)
+        if home_matches and not search_lower:
+            home_copy["scenes_filtered"] = home.get("scenes", [])
+            home_copy["automations_filtered"] = home.get("automations", [])
+        else:
+            home_copy["scenes_filtered"] = filtered_scenes if search_lower or kind_filter != "all" or status_filter != "all" else home.get("scenes", [])
+            home_copy["automations_filtered"] = filtered_automations if search_lower or kind_filter != "all" or status_filter != "all" else home.get("automations", [])
+        home_copy["scene_count_filtered"] = len(home_copy["scenes_filtered"])
+        home_copy["automation_count_filtered"] = len(home_copy["automations_filtered"])
+        filtered_homes.append(home_copy)
+        scenes_total += home_copy["scene_count_filtered"]
+        automations_total += home_copy["automation_count_filtered"]
+
+    filtered = dict(bridge)
+    filtered["homes"] = filtered_homes
+    filtered["homes_count_filtered"] = len(filtered_homes)
+    filtered["scenes_count_filtered"] = scenes_total
+    filtered["automations_count_filtered"] = automations_total
+    filtered["is_filtered"] = bool(search_lower or kind_filter != "all" or status_filter != "all")
+    return filtered
+
+
 @router.get("/scenarios", response_class=HTMLResponse)
 def scenarios_page(
     request: Request,
@@ -378,6 +455,8 @@ def scenarios_page(
     scenario_search: str = Query(default=""),
     scenario_state: str = Query(default="all"),
     scenario_kind: str = Query(default="all"),
+    tuya_kind: str = Query(default="all"),
+    tuya_status: str = Query(default="all"),
     log_status: str = Query(default="all"),
     db: Session = Depends(get_db),
 ):
@@ -395,10 +474,15 @@ def scenarios_page(
         scenario_state = "all"
     if scenario_kind not in {"all", "device_switch", "tuya_scene", "tuya_automation"}:
         scenario_kind = "all"
+    if tuya_kind not in {"all", "scenes", "automations"}:
+        tuya_kind = "all"
+    if tuya_status not in {"all", "enabled", "disabled"}:
+        tuya_status = "all"
     if log_status not in {"all", "success", "error", "skipped"}:
         log_status = "all"
 
     filtered_rules = _filter_automation_rules_for_ui(rules, search=scenario_search, state_filter=scenario_state, kind_filter=scenario_kind)
+    filtered_tuya_bridge = _filter_tuya_bridge_for_ui(tuya_scene_bridge, search=scenario_search, kind_filter=tuya_kind, status_filter=tuya_status)
     formatted_runs = format_automation_runs(list_recent_automation_runs(db, limit=40))
     filtered_runs = _filter_automation_runs_for_ui(formatted_runs, search=scenario_search, status_filter=log_status)
 
@@ -414,11 +498,14 @@ def scenarios_page(
             "automation_runs_total": len(formatted_runs),
             "automation_runs_filtered": len(filtered_runs),
             "weekday_choices": WEEKDAY_CHOICES,
-            "tuya_scene_bridge": tuya_scene_bridge,
+            "tuya_scene_bridge": filtered_tuya_bridge,
+            "tuya_scene_bridge_raw": tuya_scene_bridge,
             "scenario_tab": scenario_tab,
             "scenario_search": scenario_search,
             "scenario_state": scenario_state,
             "scenario_kind": scenario_kind,
+            "tuya_kind": tuya_kind,
+            "tuya_status": tuya_status,
             "log_status": log_status,
             "scenario_filters": {
                 "state_choices": [
@@ -431,6 +518,16 @@ def scenarios_page(
                     {"value": "device_switch", "label": "Локальные устройства"},
                     {"value": "tuya_scene", "label": "Tuya Tap-to-Run"},
                     {"value": "tuya_automation", "label": "Tuya Automation"},
+                ],
+                "tuya_kind_choices": [
+                    {"value": "all", "label": "Все элементы Tuya"},
+                    {"value": "scenes", "label": "Только Tap-to-Run"},
+                    {"value": "automations", "label": "Только Automation"},
+                ],
+                "tuya_status_choices": [
+                    {"value": "all", "label": "Любой статус"},
+                    {"value": "enabled", "label": "Только активные"},
+                    {"value": "disabled", "label": "Только выключенные"},
                 ],
                 "log_status_choices": [
                     {"value": "all", "label": "Любой статус"},
