@@ -103,6 +103,8 @@ class Device(Base):
     control_codes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     available_modes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     channel_aliases_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    channel_roles_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    channel_icons_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     tariff_profile_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     target_temperature_min_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     target_temperature_max_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
@@ -148,6 +150,16 @@ class Device(Base):
     @property
     def channel_aliases(self) -> dict[str, str]:
         raw = _parse_json_dict(self.channel_aliases_json)
+        return {str(key): str(value).strip() for key, value in raw.items() if str(key).strip() and str(value).strip()}
+
+    @property
+    def channel_roles(self) -> dict[str, str]:
+        raw = _parse_json_dict(self.channel_roles_json)
+        return {str(key): str(value).strip() for key, value in raw.items() if str(key).strip() and str(value).strip()}
+
+    @property
+    def channel_icons(self) -> dict[str, str]:
+        raw = _parse_json_dict(self.channel_icons_json)
         return {str(key): str(value).strip() for key, value in raw.items() if str(key).strip() and str(value).strip()}
 
 

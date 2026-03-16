@@ -1191,3 +1191,70 @@ button:disabled:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.channel-title-with-icon,
+.icon-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.channel-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: rgba(93, 184, 255, 0.12);
+  border: 1px solid rgba(93, 184, 255, 0.18);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.channel-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.channel-config-stack {
+  gap: 12px;
+}
+
+.channel-config-row {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.channel-config-head {
+  display: grid;
+  gap: 6px;
+}
+
+.channel-config-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr);
+  gap: 12px;
+}
+
+.inline-edit-form {
+  width: 100%;
+}
+
+.inline-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(160px, 1fr) minmax(120px, 160px) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (max-width: 960px) {
+  .channel-config-fields,
+  .inline-edit-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -31,7 +31,8 @@ from app.services.device_control_service import (
     set_device_switch_state,
     set_device_target_temperature,
 )
-from app.services.badge_service import ALLOWED_BADGE_COLORS, assign_badge_to_devices, create_badge, delete_badge, get_badge_choices as get_badge_choices_service, list_badges
+from app.services.badge_service import ALLOWED_BADGE_COLORS, assign_badge_to_devices, create_badge, delete_badge, get_badge_choices as get_badge_choices_service, list_badges, update_badge
+from app.services.channel_style_service import get_channel_icon_choices, get_channel_role_choices, normalize_channel_icon_key, normalize_channel_role_key
 from app.services.device_query_service import get_badge_choices, get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
@@ -237,6 +238,7 @@ def badges_page(request: Request, db: Session = Depends(get_db)):
             "badge_color_choices": [
                 {"value": item, "label": item.capitalize()} for item in sorted(ALLOWED_BADGE_COLORS)
             ],
+            "badge_edit_choices": list_badges(db),
         }
     )
     return templates.TemplateResponse(request, "badges.html", context)
@@ -247,6 +249,16 @@ def create_badge_action(name: str = Form(...), color: str = Form(default="slate"
     try:
         badge = create_badge(db, name=name, color=color)
         flash = f"Плашка «{badge.name}» создана."
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/badges?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/badges/{badge_id}/update")
+def update_badge_action(badge_id: int, name: str = Form(...), color: str = Form(default="slate"), db: Session = Depends(get_db)):
+    try:
+        badge = update_badge(db, badge_id=badge_id, name=name, color=color)
+        flash = f"Плашка «{badge.name}» обновлена."
     except ValueError as exc:
         flash = str(exc)
     return RedirectResponse(url=f"/badges?flash={quote_plus(flash)}", status_code=303)
@@ -550,6 +562,8 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
             "badge_choices": get_badge_choices_service(db),
             "tariff_profile_choices": list_tariff_profiles(db, runtime),
             "system_tariff_profile_key": SYSTEM_TARIFF_PROFILE_KEY,
+            "channel_role_choices": get_channel_role_choices(),
+            "channel_icon_choices": get_channel_icon_choices(),
         }
     )
     return templates.TemplateResponse(request, "device_detail.html", context)
@@ -673,13 +687,32 @@ async def save_device_meta_action(
     if device is not None and not device.is_deleted:
         form = await request.form()
         channel_aliases: dict[str, str] = {}
+        channel_roles: dict[str, str] = {}
+        channel_icons: dict[str, str] = {}
+        has_channel_alias_inputs = False
+        has_channel_role_inputs = False
+        has_channel_icon_inputs = False
         for key, value in form.multi_items():
-            if not key.startswith("channel_alias__"):
+            if key.startswith("channel_alias__"):
+                has_channel_alias_inputs = True
+                code = key.removeprefix("channel_alias__").strip()
+                alias = str(value or "").strip()
+                if code and alias:
+                    channel_aliases[code] = alias
                 continue
-            code = key.removeprefix("channel_alias__").strip()
-            alias = str(value or "").strip()
-            if code and alias:
-                channel_aliases[code] = alias
+            if key.startswith("channel_role__"):
+                has_channel_role_inputs = True
+                code = key.removeprefix("channel_role__").strip()
+                role_key = normalize_channel_role_key(str(value or "").strip())
+                if code and role_key:
+                    channel_roles[code] = role_key
+                continue
+            if key.startswith("channel_icon__"):
+                has_channel_icon_inputs = True
+                code = key.removeprefix("channel_icon__").strip()
+                icon_key = normalize_channel_icon_key(str(value or "").strip())
+                if code and icon_key != "auto":
+                    channel_icons[code] = icon_key
         device.custom_name = custom_name.strip() or None
         device.custom_room_name = custom_room_name.strip() or None
         device.notes = notes.strip() or None
@@ -687,7 +720,12 @@ async def save_device_meta_action(
         selected_profile_key = (tariff_profile_key or "").strip()
         valid_profile_keys = {item["key"] for item in list_tariff_profiles(db, get_runtime_config(db)) if not item.get("is_system")}
         device.tariff_profile_key = selected_profile_key if selected_profile_key in valid_profile_keys else None
-        device.channel_aliases_json = json.dumps(channel_aliases, ensure_ascii=False, sort_keys=True) if channel_aliases else None
+        if has_channel_alias_inputs:
+            device.channel_aliases_json = json.dumps(channel_aliases, ensure_ascii=False, sort_keys=True) if channel_aliases else None
+        if has_channel_role_inputs:
+            device.channel_roles_json = json.dumps(channel_roles, ensure_ascii=False, sort_keys=True) if channel_roles else None
+        if has_channel_icon_inputs:
+            device.channel_icons_json = json.dumps(channel_icons, ensure_ascii=False, sort_keys=True) if channel_icons else None
         db.commit()
         flash = f"Карточка устройства «{device.display_name}» обновлена."
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)

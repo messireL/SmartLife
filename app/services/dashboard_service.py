@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.timeutils import format_local_date, format_local_datetime, local_today
 from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, SyncRun, SyncRunStatus
+from app.services.channel_style_service import get_channel_role_label, resolve_channel_icon
 from app.services.chart_service import build_bar_chart, build_line_chart
 from app.services.runtime_config_service import get_runtime_config
 from app.services.sync_runner import is_sync_running
@@ -537,6 +538,8 @@ def _build_switch_channels(device: Device) -> list[dict]:
     control_codes = set(device.control_codes) | raw_control_codes
     candidate_codes = {code for code in control_codes | set(status_map) if _is_switch_like_code(code)}
     aliases = device.channel_aliases
+    roles = device.channel_roles
+    icons = device.channel_icons
     channels: list[dict] = []
     usb_count = len([code for code in candidate_codes if code.startswith("switch_usb")])
     for code in sorted(candidate_codes, key=_switch_code_sort_key):
@@ -557,15 +560,27 @@ def _build_switch_channels(device: Device) -> list[dict]:
             label = "USB блок" if usb_count == 1 else f"USB {idx}"
             group = "usb"
         alias = aliases.get(code)
+        role_key = roles.get(code)
+        role_label = get_channel_role_label(role_key)
+        explicit_icon_key = icons.get(code)
+        resolved_icon_key, icon_symbol, icon_is_auto = resolve_channel_icon(group, role_key, explicit_icon_key)
+        display_label = alias or label
         channels.append({
             "code": code,
             "label": label,
-            "display_label": alias or label,
+            "display_label": display_label,
             "alias": alias,
             "group": group,
             "is_on": value if isinstance(value, bool) else None,
             "status_text": "включён" if value is True else ("выключен" if value is False else "нет свежего статуса"),
             "supports_control": code in control_codes,
+            "role_key": role_key,
+            "role_label": role_label,
+            "icon_key": explicit_icon_key or "auto",
+            "resolved_icon_key": resolved_icon_key,
+            "icon_symbol": icon_symbol,
+            "icon_is_auto": icon_is_auto,
+            "title_with_role": f"{display_label} · {role_label}" if role_label else display_label,
         })
     energy_caps = _build_energy_capabilities(payload, channels, status_map)
     for item in channels:

@@ -44,10 +44,10 @@
       {% for channel in device_view.channels.all %}
         <div class="channel-card">
           <div class="channel-card-top">
-            <span>{{ channel.display_label }}</span>
+            <div class="channel-title-with-icon"><span class="channel-icon">{{ channel.icon_symbol }}</span><span>{{ channel.display_label }}</span></div>
             {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">?</span>{% endif %}
           </div>
-          {% if channel.alias %}<div class="muted tiny">База: {{ channel.label }} · {{ channel.code }}</div>{% else %}<div class="muted tiny">{{ channel.code }}</div>{% endif %}{% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
+          <div class="channel-meta-line">{% if channel.role_label %}<span class="badge soft-badge">{{ channel.role_label }}</span>{% endif %}{% if channel.alias %}<span class="muted tiny">База: {{ channel.label }}</span>{% endif %}<span class="muted tiny">{{ channel.code }}</span></div>{% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
         </div>
       {% endfor %}
     </div>
@@ -233,19 +233,37 @@
         <input type="hidden" name="notes" value="{{ device.notes or '' }}">
         <input type="hidden" name="badge_id" value="{{ device.badge_id or '' }}">
         <input type="hidden" name="tariff_profile_key" value="{% if device_view.tariff_profile.is_system %}{% else %}{{ device_view.tariff_profile.key }}{% endif %}">
-        <div class="channel-alias-stack">
+        <div class="channel-alias-stack channel-config-stack">
           {% for channel in device_view.channels.all %}
-            <div class="channel-alias-row">
-              <div>
-                <div class="channel-alias-title">{{ channel.display_label }}</div>
-                <div class="muted tiny">{{ channel.code }}{% if channel.alias %} · база {{ channel.label }}{% endif %} · {% if channel.is_on is sameas true %}включён{% elif channel.is_on is sameas false %}выключен{% else %}статус ?{% endif %}</div>
+            <div class="channel-alias-row channel-config-row">
+              <div class="channel-config-head">
+                <div class="channel-alias-title icon-title"><span class="channel-icon">{{ channel.icon_symbol }}</span><span>{{ channel.display_label }}</span></div>
+                <div class="channel-meta-line">{% if channel.role_label %}<span class="badge soft-badge">{{ channel.role_label }}</span>{% endif %}<span class="muted tiny">{{ channel.code }}</span><span class="muted tiny">{% if channel.is_on is sameas true %}включён{% elif channel.is_on is sameas false %}выключен{% else %}статус ?{% endif %}</span></div>
               </div>
-              <input class="input" type="text" name="channel_alias__{{ channel.code }}" value="{{ channel.alias or '' }}" placeholder="Например: {{ channel.label }}">
+              <div class="channel-config-fields">
+                <label>Локальное имя
+                  <input class="input" type="text" name="channel_alias__{{ channel.code }}" value="{{ channel.alias or '' }}" placeholder="Например: {{ channel.label }}">
+                </label>
+                <label>Роль
+                  <select class="input" name="channel_role__{{ channel.code }}">
+                    {% for item in channel_role_choices %}
+                      <option value="{{ item.key }}" {% if (channel.role_key or '') == item.key %}selected{% endif %}>{{ item.label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>Иконка
+                  <select class="input" name="channel_icon__{{ channel.code }}">
+                    {% for item in channel_icon_choices %}
+                      <option value="{{ item.key }}" {% if (channel.icon_key or 'auto') == item.key %}selected{% endif %}>{{ item.symbol }} {{ item.label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+              </div>
             </div>
           {% endfor %}
         </div>
-        <div class="muted tiny">Названия каналов видны только в SmartLife. Тариф у самого канала пока общий с устройством.</div>
-        <button type="submit">Сохранить названия каналов</button>
+        <div class="muted tiny">Названия, роли и иконки каналов живут только в SmartLife. Тариф у самого канала пока общий с устройством.</div>
+        <button type="submit">Сохранить каналы</button>
       </form>
       {% else %}
       <div class="empty-state">У этого устройства нет отдельных каналов управления, поэтому вкладка локальных каналов тут будет скромной и воспитанной.</div>
@@ -337,10 +355,10 @@
             <div class="channel-control-row">
               <div class="channel-control-meta">
                 <div class="channel-control-title-row">
-                  <div class="channel-control-title">{{ channel.display_label }}</div>
+                  <div class="channel-control-title icon-title"><span class="channel-icon">{{ channel.icon_symbol }}</span><span>{{ channel.display_label }}</span></div>
                   {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">статус ?</span>{% endif %}
                 </div>
-                {% if channel.alias %}<div class="muted tiny">База: {{ channel.label }} · {{ channel.code }}</div>{% else %}<div class="muted tiny">{{ channel.code }}</div>{% endif %}{% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}</div>{% endif %}
+                <div class="channel-meta-line">{% if channel.role_label %}<span class="badge soft-badge">{{ channel.role_label }}</span>{% endif %}{% if channel.alias %}<span class="muted tiny">База: {{ channel.label }}</span>{% endif %}<span class="muted tiny">{{ channel.code }}</span></div>{% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
                 <div class="muted tiny channel-control-state">Текущее состояние: {% if channel.is_on is sameas true %}включён{% elif channel.is_on is sameas false %}выключен{% else %}нет свежего статуса{% endif %}</div>
               </div>
               <div class="channel-control-actions">

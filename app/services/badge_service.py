@@ -82,3 +82,17 @@ def assign_badge_to_devices(db: Session, devices: Iterable[Device], badge_id: in
         updated += 1
     db.commit()
     return updated
+
+
+def update_badge(db: Session, *, badge_id: int, name: str, color: str) -> DeviceBadge:
+    badge = db.get(DeviceBadge, badge_id)
+    if badge is None:
+        raise ValueError("Плашка не найдена.")
+    cleaned_name = (name or "").strip()
+    if not cleaned_name:
+        raise ValueError("Название плашки не должно быть пустым.")
+    badge.name = cleaned_name[:64]
+    badge.color = _normalize_color(color)
+    db.commit()
+    db.refresh(badge)
+    return badge
