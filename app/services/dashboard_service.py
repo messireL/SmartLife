@@ -23,14 +23,41 @@ def _quantize(value: Decimal | None, places: str = "0.00") -> Decimal:
     return value.quantize(Decimal(places))
 
 
+
 def _money(value: Decimal | None) -> Decimal:
     return _quantize(value, "0.00")
+
 
 
 def _visible_device_ids(db: Session) -> list[int]:
     return list(
         db.scalars(select(Device.id).where(Device.is_hidden.is_(False), Device.is_deleted.is_(False))).all()
     )
+
+
+
+def _label_mode(value: str | None) -> str | None:
+    if not value:
+        return None
+    mapping = {
+        'turbo': 'Turbo',
+        'eco': 'Eco',
+        'auto': 'Auto',
+        'smart': 'Smart',
+        'manual': 'Ручной',
+        'heat': 'Heat',
+    }
+    return mapping.get(value, value)
+
+
+
+def _profile_label(value: str | None) -> str | None:
+    if value == 'boiler':
+        return 'Бойлер'
+    if value == 'temperature':
+        return 'Температурное устройство'
+    return None
+
 
 
 def get_dashboard_summary(db: Session) -> dict:
@@ -97,6 +124,7 @@ def get_dashboard_summary(db: Session) -> dict:
     }
 
 
+
 def get_sync_overview(db: Session) -> dict:
     settings = get_settings()
     last_run = db.execute(select(SyncRun).order_by(SyncRun.started_at.desc(), SyncRun.id.desc()).limit(1)).scalar_one_or_none()
@@ -111,6 +139,7 @@ def get_sync_overview(db: Session) -> dict:
         "success_total": success_total,
         "error_total": error_total,
     }
+
 
 
 def get_dashboard_panels(db: Session) -> dict:
@@ -178,7 +207,7 @@ def get_dashboard_panels(db: Session) -> dict:
         .limit(8)
     ).all()
 
-    cost_data = calculate_tariff_costs(db, runtime, device_ids=_visible_device_ids(db))["per_device"]
+    cost_data = calculate_tariff_costs(db, runtime, device_ids=_visible_device_ids(db))
 
     current_power_chart = build_bar_chart(
         [
@@ -238,6 +267,7 @@ def get_dashboard_panels(db: Session) -> dict:
     }
 
 
+
 def get_device_dashboard(db: Session, device: Device) -> dict:
     today = local_today()
     runtime = get_runtime_config(db)
@@ -274,6 +304,7 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
 
     power_values = [row.power_w for row in snapshot_rows if row.power_w is not None]
     voltage_values = [row.voltage_v for row in snapshot_rows if row.voltage_v is not None]
+    temp_values = [row.current_temperature_c for row in snapshot_rows if row.current_temperature_c is not None]
 
     power_chart = build_line_chart(
         [
@@ -316,6 +347,11 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
 
     cost_data = calculate_tariff_costs(db, runtime, device_ids=[device.id])["per_device"].get(device.id, {})
 
+    control_codes = set(device.control_codes)
+    target_min = _quantize(device.target_temperature_min_c) if device.target_temperature_min_c is not None else None
+    target_max = _quantize(device.target_temperature_max_c) if device.target_temperature_max_c is not None else None
+    target_step = _quantize(device.target_temperature_step_c) if device.target_temperature_step_c is not None else None
+
     return {
         "daily": daily_rows,
         "monthly": monthly_rows,
@@ -337,6 +373,34 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "latest_voltage_v": _quantize(device.current_voltage_v),
             "peak_power_w": _quantize(max(power_values) if power_values else Decimal("0.00")),
             "max_voltage_v": _quantize(max(voltage_values) if voltage_values else Decimal("0.00")),
+            "latest_temperature_c": _quantize(device.current_temperature_c) if device.current_temperature_c is not None else None,
+            "target_temperature_c": _quantize(device.target_temperature_c) if device.target_temperature_c is not None else None,
+            "peak_temperature_c": _quantize(max(temp_values) if temp_values else device.current_temperature_c) if (temp_values or device.current_temperature_c is not None) else None,
             "snapshots_total": len(snapshot_rows),
+        },
+        "profile": {
+            "key": device.device_profile,
+            "label": _profile_label(device.device_profile),
+            "is_boiler": device.device_profile == 'boiler',
+            "is_temperature": device.current_temperature_c is not None or device.target_temperature_c is not None,
+        },
+        "boiler": {
+            "has_temperature": device.current_temperature_c is not None or device.target_temperature_c is not None,
+            "current_temperature_c": _quantize(device.current_temperature_c) if device.current_temperature_c is not None else None,
+            "target_temperature_c": _quantize(device.target_temperature_c) if device.target_temperature_c is not None else None,
+            "operation_mode": device.operation_mode,
+            "operation_mode_label": _label_mode(device.operation_mode),
+            "fault_code": device.fault_code,
+            "temp_range_label": f"{target_min}…{target_max} °C · шаг {target_step} °C" if target_min is not None and target_max is not None and target_step is not None else None,
+        },
+        "controls": {
+            "codes": sorted(control_codes),
+            "supports_switch": 'switch' in control_codes or 'switch_1' in control_codes,
+            "supports_mode": 'mode' in control_codes,
+            "supports_target_temperature": 'temp_set' in control_codes,
+            "available_modes": list(device.available_modes),
+            "target_temperature_min_c": target_min,
+            "target_temperature_max_c": target_max,
+            "target_temperature_step_c": target_step,
         },
     }

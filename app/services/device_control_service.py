@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy import select
@@ -28,27 +29,149 @@ def get_recent_command_logs(db: Session, device_id: int, limit: int = 10) -> lis
 
 
 def set_device_switch_state(db: Session, device_id: int, desired_state: bool, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
+    device = _get_active_device(db, device_id)
+    provider = _get_matching_provider(db, device)
+    switch_code = _resolve_switch_code(device)
+    if switch_code is None:
+        raise DeviceControlError('устройство не поддерживает cloud-команду включения/выключения')
+    result = _execute_device_command(
+        db,
+        device=device,
+        provider=provider,
+        command_code=switch_code,
+        command_value=bool(desired_state),
+        trigger=trigger,
+        success_updates={
+            'switch_on': desired_state,
+            'last_status_at': utc_now_naive(),
+        },
+    )
+    result['switch_on'] = desired_state
+    return result
+
+
+
+def set_device_mode(db: Session, device_id: int, desired_mode: str, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
+    device = _get_active_device(db, device_id)
+    provider = _get_matching_provider(db, device)
+    mode = (desired_mode or '').strip()
+    if not mode:
+        raise DeviceControlError('режим не должен быть пустым')
+    available_modes = device.available_modes
+    if available_modes and mode not in available_modes:
+        raise DeviceControlError(f'режим {mode!r} не поддерживается устройством')
+    result = _execute_device_command(
+        db,
+        device=device,
+        provider=provider,
+        command_code='mode',
+        command_value=mode,
+        trigger=trigger,
+        success_updates={
+            'operation_mode': mode,
+            'last_status_at': utc_now_naive(),
+        },
+    )
+    result['operation_mode'] = mode
+    return result
+
+
+
+def set_device_target_temperature(db: Session, device_id: int, desired_value: str, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
+    device = _get_active_device(db, device_id)
+    provider = _get_matching_provider(db, device)
+    raw = (desired_value or '').strip().replace(',', '.')
+    if not raw:
+        raise DeviceControlError('температура не должна быть пустой')
+    try:
+        desired_decimal = Decimal(raw)
+    except InvalidOperation as exc:
+        raise DeviceControlError('температура должна быть числом') from exc
+
+    if device.target_temperature_min_c is not None and desired_decimal < Decimal(device.target_temperature_min_c):
+        raise DeviceControlError(f'температура ниже допустимого минимума {device.target_temperature_min_c}')
+    if device.target_temperature_max_c is not None and desired_decimal > Decimal(device.target_temperature_max_c):
+        raise DeviceControlError(f'температура выше допустимого максимума {device.target_temperature_max_c}')
+
+    step = Decimal(device.target_temperature_step_c) if device.target_temperature_step_c is not None else None
+    minimum = Decimal(device.target_temperature_min_c) if device.target_temperature_min_c is not None else None
+    if step and step > 0:
+        base = minimum if minimum is not None else Decimal('0')
+        remainder = (desired_decimal - base) % step
+        if remainder != 0:
+            raise DeviceControlError(f'температура должна идти с шагом {step}')
+
+    int_value = int(desired_decimal)
+    if desired_decimal != Decimal(int_value):
+        raise DeviceControlError('сейчас поддерживаются только целые значения температуры')
+
+    result = _execute_device_command(
+        db,
+        device=device,
+        provider=provider,
+        command_code='temp_set',
+        command_value=int_value,
+        trigger=trigger,
+        success_updates={
+            'target_temperature_c': desired_decimal.quantize(Decimal('0.01')),
+            'last_status_at': utc_now_naive(),
+        },
+    )
+    result['target_temperature_c'] = float(desired_decimal)
+    return result
+
+
+
+def _get_active_device(db: Session, device_id: int) -> Device:
     device = db.get(Device, device_id)
     if device is None or device.is_deleted:
         raise DeviceControlError('device not found')
+    return device
 
+
+
+def _get_matching_provider(db: Session, device: Device):
     provider = get_provider(db)
     if getattr(provider, 'provider_name', None) != device.provider:
         raise DeviceControlError('active provider does not match selected device provider')
+    if not hasattr(provider, 'send_device_command'):
+        raise DeviceControlError(f'provider {device.provider.value} does not support device commands yet')
+    return provider
+
+
+
+def _resolve_switch_code(device: Device) -> str | None:
+    codes = set(device.control_codes)
+    for code in ('switch', 'switch_1'):
+        if code in codes:
+            return code
+    return None
+
+
+
+def _execute_device_command(
+    db: Session,
+    *,
+    device: Device,
+    provider,
+    command_code: str,
+    command_value: Any,
+    trigger: str,
+    success_updates: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if command_code not in set(device.control_codes):
+        raise DeviceControlError(f'устройство не поддерживает команду {command_code}')
 
     requested_at = utc_now_naive()
-
     try:
-        if not hasattr(provider, 'send_switch_command'):
-            raise DeviceControlError(f'provider {device.provider.value} does not support switch commands yet')
-        result = provider.send_switch_command(device.external_id, desired_state)
-        device.switch_on = desired_state
-        device.last_status_at = utc_now_naive()
+        result = provider.send_device_command(device.external_id, command_code, command_value)
+        for field_name, value in (success_updates or {}).items():
+            setattr(device, field_name, value)
         db.add(
             DeviceCommandLog(
                 device_id=device.id,
-                command_code='switch_1',
-                command_value='true' if desired_state else 'false',
+                command_code=command_code,
+                command_value=str(command_value),
                 status=DeviceCommandStatus.SUCCESS,
                 provider=device.provider.value,
                 requested_at=requested_at,
@@ -60,8 +183,8 @@ def set_device_switch_state(db: Session, device_id: int, desired_state: bool, *,
         return {
             'status': 'success',
             'device_id': device.id,
-            'switch_on': desired_state,
             'provider': device.provider.value,
+            'command_code': command_code,
             'result': result,
         }
     except Exception as exc:  # noqa: BLE001
@@ -69,8 +192,8 @@ def set_device_switch_state(db: Session, device_id: int, desired_state: bool, *,
         db.add(
             DeviceCommandLog(
                 device_id=device.id,
-                command_code='switch_1',
-                command_value='true' if desired_state else 'false',
+                command_code=command_code,
+                command_value=str(command_value),
                 status=DeviceCommandStatus.ERROR,
                 provider=device.provider.value,
                 requested_at=requested_at,

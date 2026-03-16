@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -81,6 +82,15 @@ class Device(Base):
     current_a: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     energy_total_kwh: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     fault_code: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    device_profile: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    current_temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    target_temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    operation_mode: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    control_codes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    available_modes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_temperature_min_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    target_temperature_max_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    target_temperature_step_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     last_status_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     last_status_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -109,6 +119,14 @@ class Device(Base):
     def display_room_name(self) -> str | None:
         value = (self.custom_room_name or "").strip()
         return value or self.room_name
+
+    @property
+    def control_codes(self) -> list[str]:
+        return _parse_json_list(self.control_codes_json)
+
+    @property
+    def available_modes(self) -> list[str]:
+        return _parse_json_list(self.available_modes_json)
 
 
 class AppSetting(Base):
@@ -153,6 +171,9 @@ class DeviceStatusSnapshot(Base):
     current_a: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     energy_total_kwh: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     fault_code: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    current_temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    target_temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    operation_mode: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
@@ -191,3 +212,15 @@ class DeviceCommandLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
     device: Mapped[Device] = relationship(back_populates="command_logs")
+
+
+def _parse_json_list(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed if str(item).strip()]

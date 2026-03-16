@@ -55,7 +55,7 @@
             <th>Устройство</th>
             <th>Провайдер</th>
             <th>Комната</th>
-            <th>Сейчас, W</th>
+            <th>Сейчас</th>
             <th>Энергия, kWh</th>
             <th>Статус</th>
             <th>Действия</th>
@@ -68,16 +68,26 @@
               <td>
                 <a href="/devices/{{ device.id }}">{{ device.display_name }}</a>
                 <div class="tiny muted">{{ device.model or device.product_name or '—' }}</div>
+                {% if device.device_profile == 'boiler' %}<div class="tiny"><span class="badge control">бойлер</span></div>{% elif device.device_profile == 'temperature' %}<div class="tiny"><span class="badge warning">temp</span></div>{% endif %}
                 {% if device.custom_name %}<div class="tiny muted">Локальное имя</div>{% endif %}
               </td>
               <td>{{ device.provider.value }}</td>
               <td>{{ device.display_room_name or '—' }}</td>
-              <td>{{ device.current_power_w or '—' }}</td>
+              <td>
+                {% if device.current_temperature_c is not none %}
+                  <div>{{ device.current_temperature_c }} °C</div>
+                  <div class="tiny muted">цель {{ device.target_temperature_c or '—' }} °C</div>
+                {% else %}
+                  {{ device.current_power_w or '—' }} W
+                {% endif %}
+              </td>
               <td>{{ device.energy_total_kwh or '—' }}</td>
               <td>
                 {% if device.is_hidden %}<span class="badge warning">hidden</span>{% endif %}
                 {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}
                 {% if device.switch_on is sameas true %}<span class="badge on">on</span>{% elif device.switch_on is sameas false %}<span class="badge off">off</span>{% endif %}
+                {% if device.operation_mode %}<span class="badge control">{{ device.operation_mode }}</span>{% endif %}
+                {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
               </td>
               <td>
                 {% if device.is_hidden %}

@@ -675,3 +675,126 @@ label {
     grid-template-columns: 1fr;
   }
 }
+
+
+.badge.control {
+  background: rgba(59, 130, 246, 0.16);
+  color: #93c5fd;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.status-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.form-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.filters, .bulk-controls, .control-actions, .inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.bulk-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.input, textarea.input, select.input {
+  width: 100%;
+  max-width: 100%;
+  background: rgba(15, 23, 42, 0.8);
+  color: var(--text);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.input-small {
+  max-width: 140px;
+}
+
+.button-secondary {
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.tab-link {
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: var(--text);
+}
+
+.tab-link.active {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.42);
+}
+
+.control-group {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.climate-card {
+  border-color: rgba(56, 189, 248, 0.22);
+}
+
+.climate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.climate-metric {
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  display: grid;
+  gap: 8px;
+}
+
+.climate-metric strong {
+  font-size: 24px;
+}
+
+@media (max-width: 760px) {
+  .status-row, .bulk-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .filters, .bulk-controls, .control-actions, .inline-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

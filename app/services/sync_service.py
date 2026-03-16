@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Sequence
 from datetime import date
 from decimal import Decimal
@@ -160,6 +161,9 @@ def _store_status_snapshots(
             current_a=item.current_a,
             energy_total_kwh=item.energy_total_kwh,
             fault_code=item.fault_code,
+            current_temperature_c=item.current_temperature_c,
+            target_temperature_c=item.target_temperature_c,
+            operation_mode=item.operation_mode,
             source_note=item.source_note,
             raw_payload=item.raw_payload,
         )
@@ -171,6 +175,15 @@ def _store_status_snapshots(
         device.current_a = item.current_a
         device.energy_total_kwh = item.energy_total_kwh
         device.fault_code = item.fault_code
+        device.device_profile = item.device_profile
+        device.current_temperature_c = item.current_temperature_c
+        device.target_temperature_c = item.target_temperature_c
+        device.operation_mode = item.operation_mode
+        device.control_codes_json = json.dumps(list(item.control_codes), ensure_ascii=False) if item.control_codes else None
+        device.available_modes_json = json.dumps(list(item.available_modes), ensure_ascii=False) if item.available_modes else None
+        device.target_temperature_min_c = item.target_temperature_min_c
+        device.target_temperature_max_c = item.target_temperature_max_c
+        device.target_temperature_step_c = item.target_temperature_step_c
         device.last_status_at = item.recorded_at
         device.last_status_payload = item.raw_payload
         if item.recorded_at:

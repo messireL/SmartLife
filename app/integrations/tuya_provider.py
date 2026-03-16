@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Sequence
@@ -23,6 +23,8 @@ _SCALE_FALLBACKS = {
     "cur_power": {"scale": 1, "unit": "W"},
     "cur_voltage": {"scale": 1, "unit": "V"},
     "cur_current": {"scale": 0, "unit": "mA"},
+    "temp_current": {"scale": 0, "unit": "°C"},
+    "temp_set": {"scale": 0, "unit": "°C"},
 }
 
 
@@ -31,10 +33,32 @@ class TuyaApiError(RuntimeError):
 
 
 @dataclass(slots=True)
-class TuyaStatusDefinition:
+class TuyaCodeDefinition:
     code: str
+    value_type: str | None = None
     scale: int = 0
     unit: str | None = None
+    min_value: Decimal | None = None
+    max_value: Decimal | None = None
+    step: Decimal | None = None
+    enum_range: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(slots=True)
+class TuyaDeviceSpec:
+    status_map: dict[str, TuyaCodeDefinition]
+    function_map: dict[str, TuyaCodeDefinition]
+
+    @property
+    def all_codes(self) -> set[str]:
+        return set(self.status_map) | set(self.function_map)
+
+    @property
+    def function_codes(self) -> set[str]:
+        return set(self.function_map)
+
+    def definition(self, code: str) -> TuyaCodeDefinition | None:
+        return self.status_map.get(code) or self.function_map.get(code)
 
 
 class TuyaCloudProvider(DeviceProvider):
@@ -55,7 +79,7 @@ class TuyaCloudProvider(DeviceProvider):
             access_secret=access_secret,
         )
         self._device_cache: list[dict[str, Any]] | None = None
-        self._spec_cache: dict[str, dict[str, TuyaStatusDefinition]] = {}
+        self._spec_cache: dict[str, TuyaDeviceSpec] = {}
 
     def get_devices(self) -> list[ProviderDevice]:
         devices = self.client.list_project_devices()
@@ -92,64 +116,95 @@ class TuyaCloudProvider(DeviceProvider):
     def get_status_snapshots(self, devices: Sequence[ProviderDevice]) -> list[ProviderStatusSnapshot]:
         snapshots: list[ProviderStatusSnapshot] = []
         for device in devices:
-            spec = self._get_spec_map(device.external_id)
+            spec = self._get_spec(device.external_id)
             statuses = self.client.get_device_status(device.external_id)
-            snapshots.append(self._build_snapshot(device.external_id, statuses, spec))
+            snapshots.append(self._build_snapshot(device, statuses, spec))
         return snapshots
 
-    def _get_spec_map(self, device_id: str) -> dict[str, TuyaStatusDefinition]:
+    def _get_spec(self, device_id: str) -> TuyaDeviceSpec:
         cached = self._spec_cache.get(device_id)
         if cached is not None:
             return cached
 
         response = self.client.get_device_specification(device_id)
-        definitions: dict[str, TuyaStatusDefinition] = {}
-        for row in response.get("status", []):
-            code = row.get("code")
-            if not code:
-                continue
-            parsed_values = _parse_json_object(row.get("values"))
-            fallback = _SCALE_FALLBACKS.get(code, {})
-            definitions[code] = TuyaStatusDefinition(
-                code=code,
-                scale=int(parsed_values.get("scale", fallback.get("scale", 0)) or 0),
-                unit=parsed_values.get("unit") or fallback.get("unit"),
-            )
-        self._spec_cache[device_id] = definitions
-        return definitions
+        status_map = _parse_definitions(response.get("status") or [])
+        function_map = _parse_definitions(response.get("functions") or [])
+        bundle = TuyaDeviceSpec(status_map=status_map, function_map=function_map)
+        self._spec_cache[device_id] = bundle
+        return bundle
 
     def send_switch_command(self, device_id: str, switch_on: bool) -> dict[str, Any]:
-        spec = self._get_spec_map(device_id)
-        if "switch_1" not in spec:
-            raise TuyaApiError(f"Device {device_id} does not expose switch_1 control via Tuya Cloud.")
-        return self.client.send_device_commands(device_id, [{"code": "switch_1", "value": bool(switch_on)}])
+        spec = self._get_spec(device_id)
+        for code in ("switch", "switch_1"):
+            if code in spec.function_codes:
+                return self.send_device_command(device_id, code, bool(switch_on))
+        for code in ("switch", "switch_1"):
+            if not spec.function_codes and code in spec.all_codes:
+                return self.send_device_command(device_id, code, bool(switch_on))
+        raise TuyaApiError(f"Device {device_id} does not expose switch/switch_1 control via Tuya Cloud.")
+
+    def send_device_command(self, device_id: str, code: str, value: Any) -> dict[str, Any]:
+        spec = self._get_spec(device_id)
+        if code not in spec.function_codes:
+            if not (not spec.function_codes and code in {"switch", "switch_1"} and code in spec.all_codes):
+                raise TuyaApiError(f"Device {device_id} does not expose command {code!r} via Tuya Cloud.")
+        return self.client.send_device_commands(device_id, [{"code": code, "value": value}])
 
     def _build_snapshot(
         self,
-        device_id: str,
+        device: ProviderDevice,
         statuses: list[dict[str, Any]],
-        spec_map: dict[str, TuyaStatusDefinition],
+        spec: TuyaDeviceSpec,
     ) -> ProviderStatusSnapshot:
         status_map = {item.get("code"): item.get("value") for item in statuses if item.get("code")}
         switch_on = None
-        for code, value in status_map.items():
-            if code.startswith("switch_") and isinstance(value, bool):
+        for code in ("switch", "switch_1"):
+            value = status_map.get(code)
+            if isinstance(value, bool):
                 switch_on = value
                 break
 
-        power_w = _scaled_decimal(status_map.get("cur_power"), spec_map.get("cur_power"))
-        voltage_v = _scaled_decimal(status_map.get("cur_voltage"), spec_map.get("cur_voltage"))
-        energy_total_kwh = _scaled_decimal(status_map.get("add_ele"), spec_map.get("add_ele"))
-        current_raw = _scaled_decimal(status_map.get("cur_current"), spec_map.get("cur_current"))
+        power_w = _scaled_decimal(status_map.get("cur_power"), spec.definition("cur_power"))
+        voltage_v = _scaled_decimal(status_map.get("cur_voltage"), spec.definition("cur_voltage"))
+        energy_total_kwh = _scaled_decimal(status_map.get("add_ele"), spec.definition("add_ele"))
+        current_raw = _scaled_decimal(status_map.get("cur_current"), spec.definition("cur_current"))
         current_a = None
         if current_raw is not None:
             current_a = (current_raw / Decimal("1000")).quantize(Decimal("0.001"))
 
+        current_temperature_c = _scaled_decimal(status_map.get("temp_current"), spec.definition("temp_current"))
+        target_temperature_c = _scaled_decimal(status_map.get("temp_set"), spec.definition("temp_set"))
+        operation_mode = _normalize_mode(status_map.get("mode"))
+
         fault_value = status_map.get("fault")
         fault_code = None if fault_value in (None, "", 0, "0") else str(fault_value)
 
+        mode_definition = spec.definition("mode")
+        temp_definition = spec.definition("temp_set")
+        desired_controls = ("switch", "switch_1", "mode", "temp_set")
+        control_codes = tuple(sorted(code for code in desired_controls if code in spec.function_codes))
+        if not control_codes and not spec.function_codes:
+            control_codes = tuple(sorted(code for code in ("switch", "switch_1") if code in spec.all_codes))
+        available_modes = mode_definition.enum_range if mode_definition else ()
+
+        profile = _detect_device_profile(device, spec, current_temperature_c, target_temperature_c)
+        source_note = "tuya cloud status"
+        if profile == "boiler":
+            source_note = "tuya cloud boiler status"
+
+        raw_payload = json.dumps(
+            {
+                "statuses": statuses,
+                "controls": list(control_codes),
+                "available_modes": list(available_modes),
+                "profile": profile,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
         return ProviderStatusSnapshot(
-            external_id=device_id,
+            external_id=device.external_id,
             recorded_at=datetime.utcnow().replace(microsecond=0),
             switch_on=switch_on,
             power_w=power_w,
@@ -157,8 +212,17 @@ class TuyaCloudProvider(DeviceProvider):
             current_a=current_a,
             energy_total_kwh=energy_total_kwh,
             fault_code=fault_code or "0",
-            source_note="tuya cloud status",
-            raw_payload=json.dumps(statuses, ensure_ascii=False, sort_keys=True),
+            current_temperature_c=current_temperature_c,
+            target_temperature_c=target_temperature_c,
+            operation_mode=operation_mode,
+            device_profile=profile,
+            control_codes=control_codes,
+            available_modes=available_modes,
+            target_temperature_min_c=_scaled_decimal_from_definition(temp_definition.min_value, temp_definition) if temp_definition else None,
+            target_temperature_max_c=_scaled_decimal_from_definition(temp_definition.max_value, temp_definition) if temp_definition else None,
+            target_temperature_step_c=_scaled_decimal_from_definition(temp_definition.step, temp_definition) if temp_definition else None,
+            source_note=source_note,
+            raw_payload=raw_payload,
         )
 
 
@@ -323,7 +387,29 @@ def _parse_json_object(raw: Any) -> dict[str, Any]:
 
 
 
-def _scaled_decimal(value: Any, definition: TuyaStatusDefinition | None) -> Decimal | None:
+def _parse_definitions(rows: list[dict[str, Any]]) -> dict[str, TuyaCodeDefinition]:
+    definitions: dict[str, TuyaCodeDefinition] = {}
+    for row in rows:
+        code = row.get("code")
+        if not code:
+            continue
+        parsed_values = _parse_json_object(row.get("values"))
+        fallback = _SCALE_FALLBACKS.get(code, {})
+        definitions[code] = TuyaCodeDefinition(
+            code=code,
+            value_type=row.get("type") or parsed_values.get("type"),
+            scale=int(parsed_values.get("scale", fallback.get("scale", 0)) or 0),
+            unit=parsed_values.get("unit") or fallback.get("unit"),
+            min_value=_safe_decimal(parsed_values.get("min")),
+            max_value=_safe_decimal(parsed_values.get("max")),
+            step=_safe_decimal(parsed_values.get("step")),
+            enum_range=tuple(str(item) for item in (parsed_values.get("range") or []) if str(item).strip()),
+        )
+    return definitions
+
+
+
+def _scaled_decimal(value: Any, definition: TuyaCodeDefinition | None) -> Decimal | None:
     if value is None or value == "":
         return None
     scale = definition.scale if definition else 0
@@ -333,6 +419,25 @@ def _scaled_decimal(value: Any, definition: TuyaStatusDefinition | None) -> Deci
         return None
     divisor = Decimal(10) ** scale
     return (decimal_value / divisor).quantize(Decimal("0.001")) if scale or decimal_value != decimal_value.to_integral() else decimal_value.quantize(Decimal("0.001"))
+
+
+
+def _scaled_decimal_from_definition(value: Decimal | None, definition: TuyaCodeDefinition | None) -> Decimal | None:
+    if value is None:
+        return None
+    scale = definition.scale if definition else 0
+    divisor = Decimal(10) ** scale
+    return (value / divisor).quantize(Decimal("0.001")) if scale else value.quantize(Decimal("0.001"))
+
+
+
+def _safe_decimal(value: Any) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return None
 
 
 
@@ -354,3 +459,31 @@ def _normalize_icon(value: Any) -> str | None:
     if text.startswith("http://") or text.startswith("https://"):
         return text
     return f"https://images.tuyaeu.com/{text.lstrip('/')}"
+
+
+
+def _normalize_mode(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+
+def _detect_device_profile(
+    device: ProviderDevice,
+    spec: TuyaDeviceSpec,
+    current_temperature_c: Decimal | None,
+    target_temperature_c: Decimal | None,
+) -> str | None:
+    name = f"{device.name} {device.product_name or ''} {device.category or ''}".lower()
+    has_switch = any(code in spec.all_codes for code in ("switch", "switch_1"))
+    has_temperature = current_temperature_c is not None or target_temperature_c is not None or "temp_current" in spec.all_codes or "temp_set" in spec.all_codes
+    has_mode = "mode" in spec.all_codes
+    if any(token in name for token in ("boiler", "бойлер", "heater", "water heater", "водонагрев")):
+        return "boiler"
+    if has_temperature and has_switch and has_mode:
+        return "boiler"
+    if has_temperature:
+        return "temperature"
+    return None

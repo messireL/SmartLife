@@ -19,7 +19,13 @@ from app.services.dashboard_service import (
     get_device_dashboard,
     get_sync_overview,
 )
-from app.services.device_control_service import DeviceControlError, get_recent_command_logs, set_device_switch_state
+from app.services.device_control_service import (
+    DeviceControlError,
+    get_recent_command_logs,
+    set_device_mode,
+    set_device_switch_state,
+    set_device_target_temperature,
+)
 from app.services.device_query_service import get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
@@ -478,6 +484,36 @@ def toggle_device_action(
             f"Команда отправлена: устройство #{result['device_id']} переключено в состояние "
             f"{'вкл' if desired_bool else 'выкл'}."
         )
+    except DeviceControlError as exc:
+        flash = f"Команда не выполнена: {exc}"
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/devices/{device_id}/set-mode")
+def set_device_mode_action(
+    device_id: int,
+    desired_mode: str = Form(...),
+    source_tab: str = Form(default="control"),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = set_device_mode(db, device_id, desired_mode, trigger=SyncRunTrigger.MANUAL.value)
+        flash = f"Режим обновлён: устройство #{result['device_id']} переведено в {result['operation_mode']}."
+    except DeviceControlError as exc:
+        flash = f"Команда не выполнена: {exc}"
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/devices/{device_id}/set-temperature")
+def set_device_temperature_action(
+    device_id: int,
+    desired_temperature: str = Form(...),
+    source_tab: str = Form(default="control"),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = set_device_target_temperature(db, device_id, desired_temperature, trigger=SyncRunTrigger.MANUAL.value)
+        flash = f"Уставка обновлена: устройство #{result['device_id']} теперь держит {result['target_temperature_c']} °C."
     except DeviceControlError as exc:
         flash = f"Команда не выполнена: {exc}"
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)

@@ -5,10 +5,13 @@
     <div>
       <h1>{{ device.display_name }}</h1>
       <div class="muted">{{ device.model or device.product_name or 'Устройство без модели' }} · {{ device.provider.value }}</div>
+      {% if device_view.profile.label %}<div class="tiny muted">Профиль: {{ device_view.profile.label }}</div>{% endif %}
     </div>
     <div class="status-pair">
       {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}
       {% if device.switch_on is sameas true %}<span class="badge on">on</span>{% elif device.switch_on is sameas false %}<span class="badge off">off</span>{% else %}<span class="badge warning">unknown</span>{% endif %}
+      {% if device_view.boiler.operation_mode_label %}<span class="badge control">{{ device_view.boiler.operation_mode_label }}</span>{% endif %}
+      {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
     </div>
   </div>
   <nav class="tabs">
@@ -25,9 +28,39 @@
     <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ device_view.stats.today_kwh }}</div><div class="muted tiny">{{ device_view.stats.today_cost }} {{ device_view.stats.tariff_currency }}</div></article>
     <article class="card stat-card"><div class="muted">Месяц, kWh</div><div class="stat-value">{{ device_view.stats.month_kwh }}</div><div class="muted tiny">{{ device_view.stats.month_cost }} {{ device_view.stats.tariff_currency }}</div></article>
     <article class="card stat-card"><div class="muted">Сейчас, W</div><div class="stat-value">{{ device_view.stats.latest_power_w }}</div></article>
-    <article class="card stat-card"><div class="muted">Напряжение, V</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div><div class="muted tiny">{{ device_view.stats.tariff_display }}</div></article>
+    {% if device_view.boiler.has_temperature %}
+      <article class="card stat-card"><div class="muted">Температура сейчас</div><div class="stat-value">{{ device_view.boiler.current_temperature_c or '—' }}</div><div class="muted tiny">цель {{ device_view.boiler.target_temperature_c or '—' }} °C</div></article>
+    {% else %}
+      <article class="card stat-card"><div class="muted">Напряжение, V</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div><div class="muted tiny">{{ device_view.stats.tariff_display }}</div></article>
+    {% endif %}
   </section>
 
+  {% if device_view.boiler.has_temperature %}
+  <section class="grid-2">
+    <article class="card climate-card">
+      <div class="section-header"><h2>Бойлер / температура</h2></div>
+      <div class="climate-grid">
+        <div class="climate-metric"><span class="muted">Текущая температура</span><strong>{{ device_view.boiler.current_temperature_c or '—' }} °C</strong></div>
+        <div class="climate-metric"><span class="muted">Уставка</span><strong>{{ device_view.boiler.target_temperature_c or '—' }} °C</strong></div>
+        <div class="climate-metric"><span class="muted">Режим</span><strong>{{ device_view.boiler.operation_mode_label or device_view.boiler.operation_mode or '—' }}</strong></div>
+        <div class="climate-metric"><span class="muted">Ошибка</span><strong>{% if device.fault_code and device.fault_code != '0' %}{{ device.fault_code }}{% else %}нет{% endif %}</strong></div>
+      </div>
+      {% if device_view.boiler.temp_range_label %}<div class="muted tiny" style="margin-top:12px;">{{ device_view.boiler.temp_range_label }}</div>{% endif %}
+    </article>
+    <article class="card"><div class="section-header"><h2>Паспорт</h2></div>
+      <div class="status-stack">
+        <div class="status-row"><span class="muted">Локальное имя</span><span>{{ device.custom_name or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Имя провайдера</span><span>{{ device.name }}</span></div>
+        <div class="status-row"><span class="muted">Локальная комната</span><span>{{ device.custom_room_name or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Комната провайдера</span><span>{{ device.room_name or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Категория</span><span>{{ device.category or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
+        <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
+      </div>
+    </article>
+  </section>
+  {% else %}
   <section class="grid-2">
     <article class="card"><div class="section-header"><h2>Паспорт</h2></div>
       <div class="status-stack">
@@ -59,6 +92,28 @@
       </datalist>
     </article>
   </section>
+  {% endif %}
+
+  {% if device_view.boiler.has_temperature %}
+  <section class="card"><div class="section-header"><h2>Локальные настройки</h2></div>
+    <form class="form-stack" method="post" action="/devices/{{ device.id }}/save-meta">
+      <input type="hidden" name="source_tab" value="overview">
+      <label>Локальное имя
+        <input class="input" type="text" name="custom_name" value="{{ device.custom_name or '' }}" placeholder="Например: Бойлер в ванной">
+      </label>
+      <label>Локальная комната
+        <input class="input" list="room-choices" type="text" name="custom_room_name" value="{{ device.custom_room_name or '' }}" placeholder="Например: Ванная">
+      </label>
+      <label>Заметки
+        <textarea class="input" name="notes" rows="4" placeholder="Любые свои пометки">{{ device.notes or '' }}</textarea>
+      </label>
+      <button type="submit">Сохранить</button>
+    </form>
+    <datalist id="room-choices">
+      {% for item in room_choices %}<option value="{{ item }}">{% endfor %}
+    </datalist>
+  </section>
+  {% endif %}
 
   <section class="grid-2">
     <article class="card"><div class="section-header"><h2>Стоимость по зонам сегодня</h2></div>
@@ -84,12 +139,12 @@
   <section class="card"><div class="section-header"><h2>Последние снапшоты</h2><a class="text-link" href="/devices/{{ device.id }}?tab=history&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Полная история</a></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Время</th><th>W</th><th>V</th><th>A</th><th>kWh</th></tr></thead>
+        <thead><tr><th>Время</th><th>W</th><th>V</th><th>A</th><th>kWh</th><th>Temp</th><th>Mode</th></tr></thead>
         <tbody>
           {% for item in snapshots[:8] %}
-            <tr><td>{{ item.recorded_at|localdt }}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td></tr>
+            <tr><td>{{ item.recorded_at|localdt }}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td><td>{{ item.current_temperature_c or '—' }}</td><td>{{ item.operation_mode or '—' }}</td></tr>
           {% else %}
-            <tr><td colspan="5" class="muted">Снапшотов пока нет.</td></tr>
+            <tr><td colspan="7" class="muted">Снапшотов пока нет.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -141,11 +196,11 @@
   <section class="grid-2">
     <article class="card">
       <div class="section-header"><h2>Снапшоты</h2></div>
-      <div class="table-wrap"><table><thead><tr><th>Время</th><th>Switch</th><th>W</th><th>V</th><th>A</th><th>kWh</th><th>Fault</th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>Время</th><th>Switch</th><th>W</th><th>V</th><th>A</th><th>kWh</th><th>Temp</th><th>Target</th><th>Mode</th><th>Fault</th></tr></thead><tbody>
         {% for item in snapshots %}
-          <tr><td>{{ item.recorded_at|localdt }}</td><td>{% if item.switch_on is sameas true %}on{% elif item.switch_on is sameas false %}off{% else %}—{% endif %}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td><td>{{ item.fault_code or '0' }}</td></tr>
+          <tr><td>{{ item.recorded_at|localdt }}</td><td>{% if item.switch_on is sameas true %}on{% elif item.switch_on is sameas false %}off{% else %}—{% endif %}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td><td>{{ item.current_temperature_c or '—' }}</td><td>{{ item.target_temperature_c or '—' }}</td><td>{{ item.operation_mode or '—' }}</td><td>{{ item.fault_code or '0' }}</td></tr>
         {% else %}
-          <tr><td colspan="7" class="muted">Снапшотов ещё нет.</td></tr>
+          <tr><td colspan="10" class="muted">Снапшотов ещё нет.</td></tr>
         {% endfor %}
       </tbody></table></div>
     </article>
@@ -164,19 +219,59 @@
   <section class="grid-2">
     <article class="card">
       <div class="section-header"><h2>Управление</h2></div>
-      <div class="muted">Для Tuya-розеток доступно базовое включение и выключение через cloud commands. До уровня мобильного приложения это ещё не космолёт, но уже не просто «смотрим и грустим».</div>
-      <div class="control-actions">
-        <form method="post" action="/devices/{{ device.id }}/toggle">
-          <input type="hidden" name="desired_state" value="true">
+      <div class="muted">Теперь карточка умеет не только щёлкать розеткой, но и работать с бойлером: включение, режим и уставка температуры, если Tuya реально отдаёт эти команды.</div>
+
+      {% if device_view.controls.supports_switch %}
+      <div class="control-group">
+        <div class="muted tiny">Питание</div>
+        <div class="control-actions">
+          <form method="post" action="/devices/{{ device.id }}/toggle">
+            <input type="hidden" name="desired_state" value="true">
+            <input type="hidden" name="source_tab" value="control">
+            <button type="submit">Включить</button>
+          </form>
+          <form method="post" action="/devices/{{ device.id }}/toggle">
+            <input type="hidden" name="desired_state" value="false">
+            <input type="hidden" name="source_tab" value="control">
+            <button type="submit" class="button-secondary">Выключить</button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if device_view.controls.supports_mode %}
+      <div class="control-group">
+        <div class="muted tiny">Режим работы</div>
+        {% if device_view.controls.available_modes %}
+        <form class="inline-form" method="post" action="/devices/{{ device.id }}/set-mode">
           <input type="hidden" name="source_tab" value="control">
-          <button type="submit">Включить</button>
+          <select class="input" name="desired_mode">
+            {% for item in device_view.controls.available_modes %}
+              <option value="{{ item }}" {% if device.operation_mode == item %}selected{% endif %}>{{ item }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit">Сохранить режим</button>
         </form>
-        <form method="post" action="/devices/{{ device.id }}/toggle">
-          <input type="hidden" name="desired_state" value="false">
+        {% else %}
+        <div class="empty-state">Tuya показала код <code>mode</code>, но не отдала список допустимых режимов. Тут уже не магия, а повод посмотреть specification целиком.</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if device_view.controls.supports_target_temperature %}
+      <div class="control-group">
+        <div class="muted tiny">Уставка температуры{% if device_view.boiler.temp_range_label %} · {{ device_view.boiler.temp_range_label }}{% endif %}</div>
+        <form class="inline-form" method="post" action="/devices/{{ device.id }}/set-temperature">
           <input type="hidden" name="source_tab" value="control">
-          <button type="submit" class="button-secondary">Выключить</button>
+          <input class="input input-small" type="number" name="desired_temperature" value="{{ device.target_temperature_c or '' }}" min="{{ device_view.controls.target_temperature_min_c or '' }}" max="{{ device_view.controls.target_temperature_max_c or '' }}" step="{{ device_view.controls.target_temperature_step_c or 1 }}">
+          <button type="submit">Сохранить температуру</button>
         </form>
       </div>
+      {% endif %}
+
+      {% if not device_view.controls.supports_switch and not device_view.controls.supports_mode and not device_view.controls.supports_target_temperature %}
+      <div class="empty-state">Для этого устройства в Tuya Cloud пока не обнаружены поддерживаемые команды управления.</div>
+      {% endif %}
     </article>
     <article class="card">
       <div class="section-header"><h2>Последние команды</h2></div>

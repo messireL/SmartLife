@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Protocol, Sequence
+from typing import Any, Protocol, Sequence
 
 from app.db.models import ProviderType
 
@@ -46,6 +46,15 @@ class ProviderStatusSnapshot:
     current_a: Decimal | None = None
     energy_total_kwh: Decimal | None = None
     fault_code: str | None = None
+    current_temperature_c: Decimal | None = None
+    target_temperature_c: Decimal | None = None
+    operation_mode: str | None = None
+    device_profile: str | None = None
+    control_codes: tuple[str, ...] = field(default_factory=tuple)
+    available_modes: tuple[str, ...] = field(default_factory=tuple)
+    target_temperature_min_c: Decimal | None = None
+    target_temperature_max_c: Decimal | None = None
+    target_temperature_step_c: Decimal | None = None
     source_note: str | None = None
     raw_payload: str | None = None
 
@@ -62,3 +71,5 @@ class DeviceProvider(Protocol):
     def get_status_snapshots(self, devices: Sequence[ProviderDevice]) -> list[ProviderStatusSnapshot]: ...
 
     def send_switch_command(self, device_id: str, switch_on: bool) -> dict: ...
+
+    def send_device_command(self, device_id: str, code: str, value: Any) -> dict: ...
