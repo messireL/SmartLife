@@ -1059,6 +1059,35 @@ td {
   font-weight: 560;
 }
 
+
+.channel-control-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.channel-control-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.channel-control-state {
+  color: var(--text-soft);
+}
+
+button:disabled {
+  cursor: default;
+  filter: saturate(0.7) brightness(0.92);
+  opacity: 0.72;
+  transform: none;
+  box-shadow: none;
+}
+
+button:disabled:hover {
+  filter: saturate(0.7) brightness(0.92);
+  transform: none;
+}
 .channel-control-list {
   display: grid;
   gap: 12px;

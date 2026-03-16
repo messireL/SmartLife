@@ -265,22 +265,26 @@
         <div class="channel-control-list">
           {% for channel in device_view.controls.switch_channels %}
             <div class="channel-control-row">
-              <div>
-                <div class="channel-control-title">{{ channel.label }}</div>
+              <div class="channel-control-meta">
+                <div class="channel-control-title-row">
+                  <div class="channel-control-title">{{ channel.label }}</div>
+                  {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">статус ?</span>{% endif %}
+                </div>
                 <div class="muted tiny">{{ channel.code }}</div>
+                <div class="muted tiny channel-control-state">Текущее состояние: {% if channel.is_on is sameas true %}включён{% elif channel.is_on is sameas false %}выключен{% else %}нет свежего статуса{% endif %}</div>
               </div>
               <div class="channel-control-actions">
                 <form method="post" action="/devices/{{ device.id }}/toggle-channel">
                   <input type="hidden" name="command_code" value="{{ channel.code }}">
                   <input type="hidden" name="desired_state" value="true">
                   <input type="hidden" name="source_tab" value="control">
-                  <button type="submit">Включить</button>
+                  <button type="submit" {% if channel.is_on is sameas true %}disabled{% endif %}>Включить</button>
                 </form>
                 <form method="post" action="/devices/{{ device.id }}/toggle-channel">
                   <input type="hidden" name="command_code" value="{{ channel.code }}">
                   <input type="hidden" name="desired_state" value="false">
                   <input type="hidden" name="source_tab" value="control">
-                  <button type="submit" class="button-secondary">Выключить</button>
+                  <button type="submit" class="button-secondary" {% if channel.is_on is sameas false %}disabled{% endif %}>Выключить</button>
                 </form>
               </div>
             </div>
