@@ -4,10 +4,10 @@
   <div class="section-header">
     <div>
       <h1>Главная</h1>
-      <div class="muted">Короткая сводка по дому, чтобы с порога видеть, кто сейчас ест электричество, а кто просто делает умное лицо. При включённом автообновлении страница обновляется сама.</div>
+      <div class="muted">Краткая сводка по дому: устройства, текущая нагрузка и расход по активному тарифу.</div>
     </div>
     <form method="post" action="/actions/sync-provider">
-      <button type="submit">Синхронизировать сейчас</button>
+      <button type="submit">Обновить данные</button>
     </form>
   </div>
 </section>
@@ -113,8 +113,8 @@
               <td>{{ device.display_room_name or '—' }}</td>
               <td>{{ device.current_power_w or '—' }}</td>
               <td>
-                {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}
-                {% if device.switch_on is sameas true %}<span class="badge on">on</span>{% elif device.switch_on is sameas false %}<span class="badge off">off</span>{% endif %}
+                {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
+                {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% endif %}
               </td>
             </tr>
           {% else %}
@@ -131,7 +131,7 @@
       <div class="status-row"><span class="muted">Фон</span><span>{% if sync_overview.background_sync_enabled %}включён{% else %}выключен{% endif %}</span></div>
       <div class="status-row"><span class="muted">Интервал</span><span>{{ sync_overview.sync_interval_seconds }} сек</span></div>
       <div class="status-row"><span class="muted">Запуск при старте</span><span>{% if sync_overview.sync_on_startup %}да{% else %}нет{% endif %}</span></div>
-      <div class="status-row"><span class="muted">Сейчас</span><span>{% if sync_overview.is_running_now %}<span class="badge running">running</span>{% else %}<span class="badge idle">idle</span>{% endif %}</span></div>
+      <div class="status-row"><span class="muted">Сейчас</span><span>{% if sync_overview.is_running_now %}<span class="badge running">идёт</span>{% else %}<span class="badge idle">ожидание</span>{% endif %}</span></div>
       <div class="status-row"><span class="muted">Последний старт</span><span>{{ sync_overview.last_run.started_at|localdt if sync_overview.last_run else '—' }}</span></div>
     </div>
   </article>

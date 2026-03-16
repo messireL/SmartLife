@@ -4,12 +4,12 @@
   <div class="section-header">
     <div>
       <h1>{{ device.display_name }}</h1>
-      <div class="muted">{{ device.model or device.product_name or 'Устройство без модели' }} · {{ device.provider.value }}</div>
+      <div class="muted">{{ device.model or device.product_name or 'Устройство без модели' }} · {{ device.provider.value|replace("_", " ") }}</div>
       {% if device_view.profile.label %}<div class="tiny muted">Профиль: {{ device_view.profile.label }}</div>{% endif %}
     </div>
     <div class="status-pair">
-      {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}
-      {% if device.switch_on is sameas true %}<span class="badge on">on</span>{% elif device.switch_on is sameas false %}<span class="badge off">off</span>{% else %}<span class="badge warning">unknown</span>{% endif %}
+      {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
+      {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">статус ?</span>{% endif %}
       {% if device_view.boiler.operation_mode_label %}<span class="badge control">{{ device_view.boiler.operation_mode_label }}</span>{% endif %}
       {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
     </div>
@@ -20,25 +20,25 @@
     <a class="tab-link {% if active_tab == 'history' %}active{% endif %}" href="/devices/{{ device.id }}?tab=history&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">История</a>
     <a class="tab-link {% if active_tab == 'control' %}active{% endif %}" href="/devices/{{ device.id }}?tab=control&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Управление</a>
   </nav>
-<div class="muted tiny">Автообновление {% if auto_refresh %}включено{% else %}выключено{% endif %}. Для живых данных страница может обновляться сама раз в {{ refresh_seconds or settings.smartlife_sync_interval_seconds }} сек.</div>
+<div class="muted tiny">Автообновление: {% if auto_refresh %}включено{% else %}выключено{% endif %} · период {{ refresh_seconds or settings.smartlife_sync_interval_seconds }} сек.</div>
 </section>
 
 {% if active_tab == 'overview' %}
   <section class="summary-grid metrics-grid">
     <article class="card stat-card stat-card-tariff"><div class="stat-label muted">Сегодня</div><div class="stat-value stat-value-kwh">{{ device_view.stats.today_kwh }} <span class="stat-unit">kWh</span></div><div class="stat-subvalue">{{ device_view.stats.today_cost }} {{ device_view.stats.tariff_currency }}</div><div class="muted tiny">{{ device_view.stats.tariff_mode_label }}</div><div class="stat-breakdown">{% for item in device_view.stats.today_breakdown %}<div class="stat-breakdown-row"><div><div>{{ item.label }}</div><div class="muted tiny">{{ item.rate }}</div></div><div class="stat-breakdown-value">{{ item.energy_display }} · {{ item.cost_display }}</div></div>{% else %}<div class="muted tiny">Пока нет разбивки по зонам.</div>{% endfor %}</div></article>
     <article class="card stat-card stat-card-tariff"><div class="stat-label muted">Месяц</div><div class="stat-value stat-value-kwh">{{ device_view.stats.month_kwh }} <span class="stat-unit">kWh</span></div><div class="stat-subvalue">{{ device_view.stats.month_cost }} {{ device_view.stats.tariff_currency }}</div><div class="muted tiny">{{ device_view.stats.tariff_mode_label }}</div><div class="stat-breakdown">{% for item in device_view.stats.month_breakdown %}<div class="stat-breakdown-row"><div><div>{{ item.label }}</div><div class="muted tiny">{{ item.rate }}</div></div><div class="stat-breakdown-value">{{ item.energy_display }} · {{ item.cost_display }}</div></div>{% else %}<div class="muted tiny">Пока нет разбивки по зонам.</div>{% endfor %}</div></article>
-    <article class="card stat-card"><div class="muted">Сейчас, W</div><div class="stat-value">{{ device_view.stats.latest_power_w }}</div></article>
+    <article class="card stat-card"><div class="muted">Мощность сейчас</div><div class="stat-value">{{ device_view.stats.latest_power_w }}</div><div class="muted tiny">W</div></article>
     {% if device_view.boiler.has_temperature %}
-      <article class="card stat-card"><div class="muted">Температура сейчас</div><div class="stat-value">{{ device_view.boiler.current_temperature_c or '—' }}</div><div class="muted tiny">цель {{ device_view.boiler.target_temperature_c or '—' }} °C</div></article>
+      <article class="card stat-card"><div class="muted">Температура</div><div class="stat-value">{{ device_view.boiler.current_temperature_c or '—' }} °C</div><div class="muted tiny">Цель: {{ device_view.boiler.target_temperature_c or '—' }} °C</div></article>
     {% else %}
-      <article class="card stat-card"><div class="muted">Напряжение, V</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div><div class="muted tiny">{{ device_view.stats.tariff_display }}</div></article>
+      <article class="card stat-card"><div class="muted">Напряжение</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div><div class="muted tiny">V</div></article>
     {% endif %}
   </section>
 
   {% if device_view.boiler.has_temperature %}
   <section class="grid-2">
     <article class="card climate-card">
-      <div class="section-header"><h2>Бойлер / температура</h2></div>
+      <div class="section-header"><h2>Температурный профиль</h2></div>
       <div class="climate-grid">
         <div class="climate-metric"><span class="muted">Текущая температура</span><strong>{{ device_view.boiler.current_temperature_c or '—' }} °C</strong></div>
         <div class="climate-metric"><span class="muted">Целевая температура</span><strong>{{ device_view.boiler.target_temperature_c or '—' }} °C</strong></div>
@@ -219,7 +219,7 @@
   <section class="grid-2">
     <article class="card">
       <div class="section-header"><h2>Управление</h2></div>
-      <div class="muted">Теперь карточка умеет не только щёлкать розеткой, но и работать с бойлером: включение, режим и целевая температура, если Tuya реально отдаёт эти команды.</div>
+      <div class="muted">Управление доступно по тем командам, которые Tuya Cloud реально отдаёт для этого устройства: питание, режим и целевая температура.</div>
 
       {% if device_view.controls.supports_switch %}
       <div class="control-group">

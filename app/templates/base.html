@@ -25,7 +25,7 @@
       <div class="topbar-meta">
         <div>{{ settings.bind_ip }}:{{ settings.public_port }}</div>
         <div class="muted tiny">{{ settings.timezone }} · v{{ app_settings.app_version }}</div>
-        {% if auto_refresh %}<div class="muted tiny">Автообновление: {{ refresh_seconds or settings.smartlife_sync_interval_seconds }} сек</div>{% endif %}
+        {% if auto_refresh %}<div class="muted tiny">Автообновление · {{ refresh_seconds or settings.smartlife_sync_interval_seconds }} сек</div>{% endif %}
       </div>
     </header>
 
@@ -37,10 +37,10 @@
           {% endfor %}
         </nav>
         <div class="sidebar-note">
-          <div class="muted tiny">Провайдер</div>
-          <div>{{ runtime.provider if runtime else settings.smartlife_provider }}</div>
-          <div class="muted tiny spaced">LAN URL</div>
-          <div><a href="{{ settings.app_base_url }}">{{ settings.app_base_url }}</a></div>
+          <div class="sidebar-label">Провайдер</div>
+          <div class="sidebar-value">{{ runtime.provider if runtime else settings.smartlife_provider }}</div>
+          <div class="sidebar-label spaced">LAN URL</div>
+          <div><a class="sidebar-url" href="{{ settings.app_base_url }}">{{ settings.app_base_url }}</a></div>
         </div>
       </aside>
 

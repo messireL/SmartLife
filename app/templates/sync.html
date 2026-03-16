@@ -11,7 +11,7 @@
 </section>
 
 <section class="summary-grid sync-grid">
-  <article class="card sync-card"><div class="muted">Сейчас</div><div class="sync-last-status">{% if sync_overview.is_running_now %}<span class="badge running">running</span>{% else %}<span class="badge idle">idle</span>{% endif %}</div></article>
+  <article class="card sync-card"><div class="muted">Сейчас</div><div class="sync-last-status">{% if sync_overview.is_running_now %}<span class="badge running">идёт</span>{% else %}<span class="badge idle">ожидание</span>{% endif %}</div></article>
   <article class="card sync-card"><div class="muted">Успешных циклов</div><div class="stat-value compact">{{ sync_overview.success_total }}</div></article>
   <article class="card sync-card"><div class="muted">Ошибок</div><div class="stat-value compact">{{ sync_overview.error_total }}</div></article>
   <article class="card sync-card"><div class="muted">Последний запуск</div><div class="tiny">{{ sync_overview.last_run.started_at|localdt if sync_overview.last_run else '—' }}</div></article>

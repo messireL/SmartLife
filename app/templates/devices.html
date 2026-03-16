@@ -84,8 +84,8 @@
               <td>{{ device.energy_total_kwh or '—' }}</td>
               <td>
                 {% if device.is_hidden %}<span class="badge warning">hidden</span>{% endif %}
-                {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}
-                {% if device.switch_on is sameas true %}<span class="badge on">on</span>{% elif device.switch_on is sameas false %}<span class="badge off">off</span>{% endif %}
+                {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
+                {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% endif %}
                 {% if device.operation_mode %}<span class="badge control">{{ device.operation_mode }}</span>{% endif %}
                 {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
               </td>

@@ -1,0 +1,3 @@
+app/templates/dashboard.html:116:                {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}
+app/templates/device_detail.html:11:      {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
+app/templates/devices.html:87:                {% if device.is_online %}<span class="badge online">online</span>{% else %}<span class="badge offline">offline</span>{% endif %}
