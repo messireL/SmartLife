@@ -302,26 +302,43 @@ def _safe_tuya_scene_bridge_overview(db: Session) -> dict[str, object]:
             "homes": [],
             "scene_choices": [],
             "scene_index": {},
+            "automation_choices": [],
+            "automation_index": {},
             "warnings": [],
             "errors": [f"Tuya scene bridge временно недоступен: {exc}"],
             "is_configured": False,
+            "fetched_at": None,
+            "homes_count": 0,
+            "scenes_count": 0,
+            "automations_count": 0,
         }
 
 
 @router.get("/scenarios", response_class=HTMLResponse)
-def scenarios_page(request: Request, db: Session = Depends(get_db)):
+def scenarios_page(
+    request: Request,
+    scenario_tab: str = Query(default="local"),
+    db: Session = Depends(get_db),
+):
     runtime = get_runtime_config(db)
     tuya_scene_bridge = _safe_tuya_scene_bridge_overview(db)
-    rules = list_automation_rules(db, scene_choices=tuya_scene_bridge.get("scene_choices", []))
+    rules = list_automation_rules(
+        db,
+        scene_choices=tuya_scene_bridge.get("scene_choices", []),
+        automation_choices=tuya_scene_bridge.get("automation_choices", []),
+    )
+    if scenario_tab not in {"local", "tuya", "log"}:
+        scenario_tab = "local"
     context = _base_context(request=request, active_nav="scenarios", page_title="Сценарии", runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
             "automation_rules": rules,
-            "automation_target_choices": get_automation_target_choices(db),
+            "automation_target_choices": get_automation_target_choices(db, tuya_bridge=tuya_scene_bridge),
             "automation_runs": list_recent_automation_runs(db, limit=24),
             "weekday_choices": WEEKDAY_CHOICES,
             "tuya_scene_bridge": tuya_scene_bridge,
+            "scenario_tab": scenario_tab,
             "automation_summary": {
                 "total": len(rules),
                 "enabled": len([item for item in rules if item["is_enabled"]]),

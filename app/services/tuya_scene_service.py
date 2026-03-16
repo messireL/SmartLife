@@ -5,11 +5,12 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.integrations.tuya_provider import TuyaApiError, TuyaOpenApiClient
+from app.core.timeutils import utc_now_naive
+from app.integrations.tuya_provider import TuyaOpenApiClient
 from app.services.runtime_config_service import (
-    RUNTIME_KEY_TUYA_BASE_URL,
     RUNTIME_KEY_TUYA_ACCESS_ID,
     RUNTIME_KEY_TUYA_ACCESS_SECRET,
+    RUNTIME_KEY_TUYA_BASE_URL,
     get_runtime_config,
     get_setting_value,
     set_setting_value,
@@ -36,6 +37,27 @@ class TuyaSceneChoice:
             "home_name": self.home_name,
             "scene_name": self.scene_name,
             "kind": "scene",
+        }
+
+
+@dataclass(slots=True)
+class TuyaAutomationChoice:
+    value: str
+    label: str
+    home_id: str
+    automation_id: str
+    home_name: str
+    automation_name: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "value": self.value,
+            "label": self.label,
+            "home_id": self.home_id,
+            "automation_id": self.automation_id,
+            "home_name": self.home_name,
+            "automation_name": self.automation_name,
+            "kind": "automation",
         }
 
 
@@ -84,17 +106,6 @@ def _get_client(db: Session) -> TuyaOpenApiClient:
     )
 
 
-def _extract_rows(result: Any) -> list[dict[str, Any]]:
-    if isinstance(result, list):
-        return [item for item in result if isinstance(item, dict)]
-    if isinstance(result, dict):
-        for key in ("list", "result", "records", "data", "scenes", "automations"):
-            value = result.get(key)
-            if isinstance(value, list):
-                return [item for item in value if isinstance(item, dict)]
-    return []
-
-
 def _scene_name(item: dict[str, Any]) -> str:
     return str(
         item.get("name")
@@ -126,17 +137,41 @@ def _is_enabled(item: dict[str, Any]) -> bool | None:
     return None
 
 
+def _automation_status(enabled: bool | None) -> tuple[str, str]:
+    if enabled is True:
+        return "Активна", "online"
+    if enabled is False:
+        return "Отключена", "off"
+    return "Статус неясен", "idle"
+
+
+def _scene_status(item: dict[str, Any]) -> tuple[str, str]:
+    enabled = _is_enabled(item)
+    if enabled is True:
+        return "Готова к запуску", "running"
+    if enabled is False:
+        return "Отключена в Tuya", "off"
+    return "Tap-to-Run", "running"
+
+
 def get_tuya_scene_bridge_overview(db: Session) -> dict[str, Any]:
     home_ids = get_configured_home_ids(db)
+    fetched_at = utc_now_naive()
     overview: dict[str, Any] = {
         "configured_home_ids": home_ids,
         "configured_home_ids_csv": ", ".join(home_ids),
         "homes": [],
         "scene_choices": [],
         "scene_index": {},
+        "automation_choices": [],
+        "automation_index": {},
         "warnings": [],
         "errors": [],
         "is_configured": False,
+        "fetched_at": fetched_at,
+        "homes_count": 0,
+        "scenes_count": 0,
+        "automations_count": 0,
     }
     if not home_ids:
         overview["warnings"].append("Не заданы home_id для Tuya-сцен. Их можно добавить в Настройках.")
@@ -149,12 +184,15 @@ def get_tuya_scene_bridge_overview(db: Session) -> dict[str, Any]:
 
     overview["is_configured"] = True
     for home_id in home_ids:
-        home_entry = {
+        home_entry: dict[str, Any] = {
             "home_id": home_id,
             "home_name": f"Дом {home_id}",
             "scenes": [],
             "automations": [],
             "error": None,
+            "scene_count": 0,
+            "automation_count": 0,
+            "fetched_at": fetched_at,
         }
         try:
             home_info = client.get_home_details(home_id)
@@ -166,6 +204,10 @@ def get_tuya_scene_bridge_overview(db: Session) -> dict[str, Any]:
                     "id": _scene_id(item),
                     "name": _scene_name(item),
                     "enabled": _is_enabled(item),
+                    "status_label": _scene_status(item)[0],
+                    "status_badge": _scene_status(item)[1],
+                    "home_id": home_id,
+                    "home_name": home_entry["home_name"],
                     "raw": item,
                 }
                 for item in scenes
@@ -176,24 +218,35 @@ def get_tuya_scene_bridge_overview(db: Session) -> dict[str, Any]:
                     "id": _scene_id(item),
                     "name": _scene_name(item),
                     "enabled": _is_enabled(item),
+                    "status_label": _automation_status(_is_enabled(item))[0],
+                    "status_badge": _automation_status(_is_enabled(item))[1],
+                    "home_id": home_id,
+                    "home_name": home_entry["home_name"],
                     "raw": item,
                 }
                 for item in automations
                 if _scene_id(item)
             ]
+            home_entry["scene_count"] = len(home_entry["scenes"])
+            home_entry["automation_count"] = len(home_entry["automations"])
+            overview["scenes_count"] += home_entry["scene_count"]
+            overview["automations_count"] += home_entry["automation_count"]
         except Exception as exc:
             message = f"home_id {home_id}: {exc}"
             home_entry["error"] = message
             overview["errors"].append(message)
         overview["homes"].append(home_entry)
 
+    overview["homes_count"] = len(overview["homes"])
     scene_choices: list[TuyaSceneChoice] = []
     scene_index: dict[str, dict[str, str]] = {}
+    automation_choices: list[TuyaAutomationChoice] = []
+    automation_index: dict[str, dict[str, str]] = {}
     for home in overview["homes"]:
         for scene in home["scenes"]:
             scene_choice = TuyaSceneChoice(
                 value=f"scene:{home['home_id']}:{scene['id']}",
-                label=f"Tuya · {home['home_name']} · {scene['name']}",
+                label=f"Tuya сцена · {home['home_name']} · {scene['name']}",
                 home_id=home["home_id"],
                 scene_id=scene["id"],
                 home_name=home["home_name"],
@@ -201,13 +254,30 @@ def get_tuya_scene_bridge_overview(db: Session) -> dict[str, Any]:
             )
             scene_choices.append(scene_choice)
             scene_index[f"{home['home_id']}:{scene['id']}"] = scene_choice.to_dict()
+        for automation in home["automations"]:
+            automation_choice = TuyaAutomationChoice(
+                value=f"automation:{home['home_id']}:{automation['id']}",
+                label=f"Tuya автоматизация · {home['home_name']} · {automation['name']}",
+                home_id=home["home_id"],
+                automation_id=automation["id"],
+                home_name=home["home_name"],
+                automation_name=automation["name"],
+            )
+            automation_choices.append(automation_choice)
+            automation_index[f"{home['home_id']}:{automation['id']}"] = automation_choice.to_dict()
     overview["scene_choices"] = [item.to_dict() for item in scene_choices]
     overview["scene_index"] = scene_index
+    overview["automation_choices"] = [item.to_dict() for item in automation_choices]
+    overview["automation_index"] = automation_index
     return overview
 
 
 def get_tuya_scene_choices(db: Session) -> list[dict[str, str]]:
     return get_tuya_scene_bridge_overview(db).get("scene_choices", [])
+
+
+def get_tuya_automation_choices(db: Session) -> list[dict[str, str]]:
+    return get_tuya_scene_bridge_overview(db).get("automation_choices", [])
 
 
 def trigger_tuya_scene(db: Session, *, home_id: str, scene_id: str) -> dict[str, Any]:

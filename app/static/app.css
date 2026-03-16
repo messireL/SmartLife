@@ -1487,3 +1487,37 @@ button:disabled:hover {
     align-items: stretch;
   }
 }
+
+.scenario-hero-header {
+  align-items: flex-start;
+}
+
+.scenario-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.scenario-toolbar.compact {
+  justify-content: flex-start;
+}
+
+.rule-card-head.compact {
+  margin-bottom: 0;
+}
+
+.tuya-home-grid {
+  align-items: start;
+}
+
+.tuya-item-card {
+  padding: 16px;
+}
+
+@media (max-width: 900px) {
+  .scenario-toolbar {
+    justify-content: flex-start;
+  }
+}
