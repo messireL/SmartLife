@@ -513,7 +513,7 @@ def set_device_temperature_action(
 ):
     try:
         result = set_device_target_temperature(db, device_id, desired_temperature, trigger=SyncRunTrigger.MANUAL.value)
-        flash = f"Уставка обновлена: устройство #{result['device_id']} теперь держит {result['target_temperature_c']} °C."
+        flash = f"Целевая температура обновлена: устройство #{result['device_id']} теперь держит {result['target_temperature_c']} °C."
     except DeviceControlError as exc:
         flash = f"Команда не выполнена: {exc}"
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)

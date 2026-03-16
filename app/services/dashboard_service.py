@@ -59,6 +59,25 @@ def _profile_label(value: str | None) -> str | None:
     return None
 
 
+def _rate_label(value: Decimal | None, currency: str) -> str:
+    rate = _money(value)
+    return f"{rate} {currency}/kWh"
+
+
+def _zone_breakdown(items: list[dict], currency: str) -> list[dict]:
+    breakdown: list[dict] = []
+    for item in items or []:
+        breakdown.append(
+            {
+                "label": str(item.get("label") or "Зона"),
+                "rate": _rate_label(item.get("rate"), currency),
+                "energy_display": f"{item.get('energy_kwh', Decimal('0.000'))} kWh",
+                "cost_display": f"{_money(item.get('cost'))} {currency}",
+            }
+        )
+    return breakdown
+
+
 
 def get_dashboard_summary(db: Session) -> dict:
     today = local_today()
@@ -103,16 +122,23 @@ def get_dashboard_summary(db: Session) -> dict:
 
     tariff_costs = calculate_tariff_costs(db, runtime, device_ids=_visible_device_ids(db))
 
+    day_total_cost = _money(tariff_costs["today_total_cost"])
+    month_total_cost = _money(tariff_costs["month_total_cost"])
+    day_zone_costs = tariff_costs["today_zones"]
+    month_zone_costs = tariff_costs["month_zones"]
+
     return {
         "devices_total": devices_total,
         "online_total": online_total,
         "powered_on_total": powered_on_total,
         "day_total_kwh": _quantize(day_total, "0.000"),
         "month_total_kwh": _quantize(month_total, "0.000"),
-        "day_total_cost": _money(tariff_costs["today_total_cost"]),
-        "month_total_cost": _money(tariff_costs["month_total_cost"]),
-        "day_zone_costs": tariff_costs["today_zones"],
-        "month_zone_costs": tariff_costs["month_zones"],
+        "day_total_cost": day_total_cost,
+        "month_total_cost": month_total_cost,
+        "day_zone_costs": day_zone_costs,
+        "month_zone_costs": month_zone_costs,
+        "day_breakdown": _zone_breakdown(day_zone_costs, runtime.tariff_currency),
+        "month_breakdown": _zone_breakdown(month_zone_costs, runtime.tariff_currency),
         "tariff_price_per_kwh": runtime.tariff_primary_price_decimal,
         "tariff_currency": runtime.tariff_currency,
         "tariff_display": runtime.tariff_display,
@@ -366,6 +392,8 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "month_cost": _money(cost_data.get("month_cost", Decimal("0.00"))),
             "today_zone_costs": cost_data.get("today_zones_list", []),
             "month_zone_costs": cost_data.get("month_zones_list", []),
+            "today_breakdown": _zone_breakdown(cost_data.get("today_zones_list", []), runtime.tariff_currency),
+            "month_breakdown": _zone_breakdown(cost_data.get("month_zones_list", []), runtime.tariff_currency),
             "tariff_display": runtime.tariff_display,
             "tariff_currency": runtime.tariff_currency,
             "tariff_mode_label": runtime.tariff_mode_label,

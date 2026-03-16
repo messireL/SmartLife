@@ -13,13 +13,49 @@
 </section>
 
 <section class="summary-grid">
-  <article class="card stat-card"><div class="muted">Устройств</div><div class="stat-value">{{ summary.devices_total }}</div></article>
-  <article class="card stat-card"><div class="muted">Онлайн</div><div class="stat-value">{{ summary.online_total }}</div></article>
-  <article class="card stat-card"><div class="muted">Включено</div><div class="stat-value">{{ summary.powered_on_total }}</div></article>
-  <article class="card stat-card"><div class="muted">Сейчас тянут нагрузку</div><div class="stat-value">{{ summary.power_now_total }}</div></article>
-  <article class="card stat-card"><div class="muted">Сегодня, kWh</div><div class="stat-value">{{ summary.day_total_kwh }}</div><div class="muted tiny">{{ summary.day_total_cost }} {{ summary.tariff_currency }}</div></article>
-  <article class="card stat-card"><div class="muted">Месяц, {{ summary.tariff_currency }}</div><div class="stat-value">{{ summary.month_total_cost }}</div><div class="muted tiny">{{ summary.month_total_kwh }} kWh · {{ summary.tariff_display }}</div></article>
-  <article class="card stat-card"><div class="muted">Текущая нагрузка, W</div><div class="stat-value">{{ summary.live_power_total_w }}</div></article>
+  <article class="card stat-card"><div class="stat-label muted">Устройств</div><div class="stat-value">{{ summary.devices_total }}</div></article>
+  <article class="card stat-card"><div class="stat-label muted">Онлайн</div><div class="stat-value">{{ summary.online_total }}</div></article>
+  <article class="card stat-card"><div class="stat-label muted">Включено</div><div class="stat-value">{{ summary.powered_on_total }}</div></article>
+  <article class="card stat-card"><div class="stat-label muted">Сейчас тянут нагрузку</div><div class="stat-value">{{ summary.power_now_total }}</div></article>
+  <article class="card stat-card stat-card-tariff">
+    <div class="stat-label muted">Сегодня</div>
+    <div class="stat-value stat-value-kwh">{{ summary.day_total_kwh }} <span class="stat-unit">kWh</span></div>
+    <div class="stat-subvalue">{{ summary.day_total_cost }} {{ summary.tariff_currency }}</div>
+    <div class="muted tiny">{{ summary.tariff_mode_label }}</div>
+    <div class="stat-breakdown">
+      {% for item in summary.day_breakdown %}
+        <div class="stat-breakdown-row">
+          <div>
+            <div>{{ item.label }}</div>
+            <div class="muted tiny">{{ item.rate }}</div>
+          </div>
+          <div class="stat-breakdown-value">{{ item.energy_display }} · {{ item.cost_display }}</div>
+        </div>
+      {% else %}
+        <div class="muted tiny">Пока нет разбивки по зонам.</div>
+      {% endfor %}
+    </div>
+  </article>
+  <article class="card stat-card stat-card-tariff">
+    <div class="stat-label muted">Месяц</div>
+    <div class="stat-value stat-value-kwh">{{ summary.month_total_kwh }} <span class="stat-unit">kWh</span></div>
+    <div class="stat-subvalue">{{ summary.month_total_cost }} {{ summary.tariff_currency }}</div>
+    <div class="muted tiny">{{ summary.tariff_mode_label }}</div>
+    <div class="stat-breakdown">
+      {% for item in summary.month_breakdown %}
+        <div class="stat-breakdown-row">
+          <div>
+            <div>{{ item.label }}</div>
+            <div class="muted tiny">{{ item.rate }}</div>
+          </div>
+          <div class="stat-breakdown-value">{{ item.energy_display }} · {{ item.cost_display }}</div>
+        </div>
+      {% else %}
+        <div class="muted tiny">Пока нет разбивки по зонам.</div>
+      {% endfor %}
+    </div>
+  </article>
+  <article class="card stat-card"><div class="stat-label muted">Текущая нагрузка, W</div><div class="stat-value">{{ summary.live_power_total_w }}</div></article>
 </section>
 
 <section class="chart-grid chart-grid-main">
