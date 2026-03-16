@@ -15,7 +15,7 @@
     </div>
   </div>
   <nav class="tabs">
-    <a class="tab-link {% if active_tab == 'overview' %}active{% endif %}" href="/devices/{{ device.id }}?tab=overview&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Обзор</a>
+    <a class="tab-link {% if active_tab == 'overview' %}active{% endif %}" href="/devices/{{ device.id }}?tab=overview&section={{ active_overview_section or 'summary' }}&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Обзор</a>
     <a class="tab-link {% if active_tab == 'charts' %}active{% endif %}" href="/devices/{{ device.id }}?tab=charts&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Графики</a>
     <a class="tab-link {% if active_tab == 'history' %}active{% endif %}" href="/devices/{{ device.id }}?tab=history&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">История</a>
     <a class="tab-link {% if active_tab == 'control' %}active{% endif %}" href="/devices/{{ device.id }}?tab=control&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Управление</a>
@@ -25,185 +25,224 @@
 </section>
 
 {% if active_tab == 'overview' %}
-  <section class="summary-grid metrics-grid">
-    <article class="card stat-card stat-card-tariff"><div class="stat-label muted">Сегодня</div><div class="stat-value stat-value-kwh">{{ device_view.stats.today_kwh }} <span class="stat-unit">kWh</span></div><div class="stat-subvalue">{{ device_view.stats.today_cost }} {{ device_view.stats.tariff_currency }}</div><div class="muted tiny">{{ device_view.stats.tariff_mode_label }} · {{ device_view.tariff_profile.name }}</div><div class="stat-breakdown">{% for item in device_view.stats.today_breakdown %}<div class="stat-breakdown-row"><div><div>{{ item.label }}</div><div class="muted tiny">{{ item.rate }}</div></div><div class="stat-breakdown-value">{{ item.energy_display }} · {{ item.cost_display }}</div></div>{% else %}<div class="muted tiny">Пока нет разбивки по зонам.</div>{% endfor %}</div></article>
-    <article class="card stat-card stat-card-tariff"><div class="stat-label muted">Месяц</div><div class="stat-value stat-value-kwh">{{ device_view.stats.month_kwh }} <span class="stat-unit">kWh</span></div><div class="stat-subvalue">{{ device_view.stats.month_cost }} {{ device_view.stats.tariff_currency }}</div><div class="muted tiny">{{ device_view.stats.tariff_mode_label }} · {{ device_view.tariff_profile.name }}</div><div class="stat-breakdown">{% for item in device_view.stats.month_breakdown %}<div class="stat-breakdown-row"><div><div>{{ item.label }}</div><div class="muted tiny">{{ item.rate }}</div></div><div class="stat-breakdown-value">{{ item.energy_display }} · {{ item.cost_display }}</div></div>{% else %}<div class="muted tiny">Пока нет разбивки по зонам.</div>{% endfor %}</div></article>
-    <article class="card stat-card"><div class="muted">Мощность сейчас</div><div class="stat-value">{{ device_view.stats.latest_power_w }}</div><div class="muted tiny">W</div></article>
-    <article class="card stat-card"><div class="muted">Ток сейчас</div><div class="stat-value">{{ device_view.stats.latest_current_a }}</div><div class="muted tiny">A</div></article>
-    {% if device_view.boiler.has_temperature %}
-      <article class="card stat-card"><div class="muted">Температура</div><div class="stat-value">{{ device_view.boiler.current_temperature_c or '—' }} °C</div><div class="muted tiny">Цель: {{ device_view.boiler.target_temperature_c or '—' }} °C</div></article>
-    {% else %}
-      <article class="card stat-card"><div class="muted">Напряжение</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div><div class="muted tiny">V</div></article>
-    {% endif %}
-  </section>
-
-  {% if device_view.channels.has_power_strip_layout %}
-  <section class="card">
-    <div class="section-header"><h2>Каналы питания</h2><div class="muted tiny">Отдельные линии управления по данным Tuya Cloud, сгруппированные по ролям и типам.</div></div>
-    <div class="channel-group-grid">
-      {% for group in device_view.channels.groups %}
-        <div class="channel-group-card">
-          <div class="channel-group-head">
-            <div>
-              <div class="channel-group-title">{{ group.label }}</div>
-              <div class="muted tiny">{{ group.count }} канал(ов) · {{ group.summary }}</div>
-            </div>
-            <div class="channel-group-badges">
-              {% if group.kind == 'role' %}<span class="badge soft-badge">роль</span>{% endif %}
-              {% if group.kind == 'usb' %}<span class="badge soft-badge">USB</span>{% endif %}
-            </div>
-          </div>
-          <div class="channel-group-list">
-            {% for channel in group.channels %}
-              <div class="channel-group-row">
-                <div>
-                  <div class="channel-title-with-icon"><span class="channel-icon">{{ channel.icon_symbol }}</span><span>{{ channel.display_label }}</span></div>
-                  <div class="channel-meta-line">{% if channel.role_label %}<span class="badge soft-badge">{{ channel.role_label }}</span>{% endif %}{% if channel.alias %}<span class="muted tiny">База: {{ channel.label }}</span>{% endif %}<span class="muted tiny">{{ channel.code }}</span></div>
-                  {% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
-                </div>
-                {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">?</span>{% endif %}
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  </section>
-  {% endif %}
-
-  
-{% if device_view.channels.has_power_strip_layout %}
-  <section class="grid-2">
-    <article class="card">
-      <div class="section-header"><h2>Энергия устройства</h2><div class="muted tiny">Суммарно по удлинителю / сетевому фильтру.</div></div>
-      <div class="status-stack">
-        <div class="status-row"><span class="muted">Мощность сейчас</span><span>{{ device_view.stats.latest_power_w }} W</span></div>
-        <div class="status-row"><span class="muted">Напряжение сейчас</span><span>{{ device_view.stats.latest_voltage_v }} V</span></div>
-        <div class="status-row"><span class="muted">Ток сейчас</span><span>{{ device_view.stats.latest_current_a }} A</span></div>
-        <div class="status-row"><span class="muted">Сегодня</span><span>{{ device_view.stats.today_kwh }} kWh · {{ device_view.stats.today_cost }} {{ device_view.stats.tariff_currency }}</span></div>
-        <div class="status-row"><span class="muted">Месяц</span><span>{{ device_view.stats.month_kwh }} kWh · {{ device_view.stats.month_cost }} {{ device_view.stats.tariff_currency }}</span></div>
-        <div class="status-row"><span class="muted">Тариф</span><span>{{ device_view.stats.tariff_mode_label }}</span></div>
+  <section class="card nested-card overview-switcher">
+    <div class="section-header">
+      <div>
+        <h2>Обзор устройства</h2>
+        <div class="muted tiny">Разнесли длинный обзор по вкладкам, чтобы карточка не превращалась в свиток древнего мудреца.</div>
       </div>
-    </article>
-    <article class="card">
-      <div class="section-header"><h2>Диагностика каналов</h2><div class="muted tiny">Что реально отдаёт Tuya по метрикам.</div></div>
-      <div class="muted">{{ device_view.energy_capabilities.message }}</div>
-      <div class="muted tiny" style="margin-top:8px;">Общие коды: {% if device_view.energy_capabilities.aggregate_codes %}{{ device_view.energy_capabilities.aggregate_codes|join(', ') }}{% else %}нет{% endif %}</div>
-      <div class="muted tiny">Поканальные коды: {% if device_view.energy_capabilities.channel_metric_codes %}{{ device_view.energy_capabilities.channel_metric_codes|join(', ') }}{% else %}не обнаружены{% endif %}</div>
-      {% if device_view.energy_capabilities.supports_channel_metrics %}
-      <div class="table-wrap" style="margin-top:12px;">
+    </div>
+    <nav class="tabs tabs-secondary">
+      <a class="tab-link {% if active_overview_section == 'summary' %}active{% endif %}" href="/devices/{{ device.id }}?tab=overview&section=summary&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Сводка</a>
+      {% if device_view.channels.has_channels %}<a class="tab-link {% if active_overview_section == 'channels' %}active{% endif %}" href="/devices/{{ device.id }}?tab=overview&section=channels&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Каналы</a>{% endif %}
+      <a class="tab-link {% if active_overview_section == 'energy' %}active{% endif %}" href="/devices/{{ device.id }}?tab=overview&section=energy&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Энергия</a>
+      <a class="tab-link {% if active_overview_section == 'passport' %}active{% endif %}" href="/devices/{{ device.id }}?tab=overview&section=passport&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Паспорт</a>
+      <a class="tab-link {% if active_overview_section == 'snapshots' %}active{% endif %}" href="/devices/{{ device.id }}?tab=overview&section=snapshots&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Снапшоты</a>
+    </nav>
+  </section>
+
+  {% if active_overview_section == 'summary' %}
+    <section class="summary-grid metrics-grid">
+      <article class="card stat-card stat-card-tariff"><div class="stat-label muted">Сегодня</div><div class="stat-value stat-value-kwh">{{ device_view.stats.today_kwh }} <span class="stat-unit">kWh</span></div><div class="stat-subvalue">{{ device_view.stats.today_cost }} {{ device_view.stats.tariff_currency }}</div><div class="muted tiny">{{ device_view.stats.tariff_mode_label }} · {{ device_view.tariff_profile.name }}</div><div class="stat-breakdown">{% for item in device_view.stats.today_breakdown %}<div class="stat-breakdown-row"><div><div>{{ item.label }}</div><div class="muted tiny">{{ item.rate }}</div></div><div class="stat-breakdown-value">{{ item.energy_display }} · {{ item.cost_display }}</div></div>{% else %}<div class="muted tiny">Пока нет разбивки по зонам.</div>{% endfor %}</div></article>
+      <article class="card stat-card stat-card-tariff"><div class="stat-label muted">Месяц</div><div class="stat-value stat-value-kwh">{{ device_view.stats.month_kwh }} <span class="stat-unit">kWh</span></div><div class="stat-subvalue">{{ device_view.stats.month_cost }} {{ device_view.stats.tariff_currency }}</div><div class="muted tiny">{{ device_view.stats.tariff_mode_label }} · {{ device_view.tariff_profile.name }}</div><div class="stat-breakdown">{% for item in device_view.stats.month_breakdown %}<div class="stat-breakdown-row"><div><div>{{ item.label }}</div><div class="muted tiny">{{ item.rate }}</div></div><div class="stat-breakdown-value">{{ item.energy_display }} · {{ item.cost_display }}</div></div>{% else %}<div class="muted tiny">Пока нет разбивки по зонам.</div>{% endfor %}</div></article>
+      <article class="card stat-card"><div class="muted">Мощность сейчас</div><div class="stat-value">{{ device_view.stats.latest_power_w }}</div><div class="muted tiny">W</div></article>
+      <article class="card stat-card"><div class="muted">Ток сейчас</div><div class="stat-value">{{ device_view.stats.latest_current_a }}</div><div class="muted tiny">A</div></article>
+      {% if device_view.boiler.has_temperature %}
+        <article class="card stat-card"><div class="muted">Температура</div><div class="stat-value">{{ device_view.boiler.current_temperature_c or '—' }} °C</div><div class="muted tiny">Цель: {{ device_view.boiler.target_temperature_c or '—' }} °C</div></article>
+      {% else %}
+        <article class="card stat-card"><div class="muted">Напряжение</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div><div class="muted tiny">V</div></article>
+      {% endif %}
+    </section>
+
+    <section class="grid-2">
+      {% if device_view.boiler.has_temperature %}
+      <article class="card climate-card">
+        <div class="section-header"><h2>Температурный профиль</h2><a class="text-link" href="/devices/{{ device.id }}?tab=control&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Перейти к управлению</a></div>
+        <div class="climate-grid">
+          <div class="climate-metric"><span class="muted">Текущая температура</span><strong>{{ device_view.boiler.current_temperature_c or '—' }} °C</strong></div>
+          <div class="climate-metric"><span class="muted">Целевая температура</span><strong>{{ device_view.boiler.target_temperature_c or '—' }} °C</strong></div>
+          <div class="climate-metric"><span class="muted">Режим</span><strong>{{ device_view.boiler.operation_mode_label or device_view.boiler.operation_mode or '—' }}</strong></div>
+          <div class="climate-metric"><span class="muted">Ошибка</span><strong>{% if device.fault_code and device.fault_code != '0' %}{{ device.fault_code }}{% else %}нет{% endif %}</strong></div>
+        </div>
+        {% if device_view.boiler.temp_range_label %}<div class="muted tiny" style="margin-top:12px;">{{ device_view.boiler.temp_range_label }}</div>{% endif %}
+      </article>
+      {% endif %}
+
+      {% if device_view.channels.has_power_strip_layout %}
+      <article class="card">
+        <div class="section-header"><h2>Каналы коротко</h2><a class="text-link" href="/devices/{{ device.id }}?tab=overview&section=channels&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Открыть вкладку каналов</a></div>
+        <div class="status-stack compact-stack">
+          {% for group in device_view.channels.groups %}
+          <div class="status-row">
+            <span class="muted">{{ group.label }}</span>
+            <span>{{ group.summary }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </article>
+      {% else %}
+      <article class="card">
+        <div class="section-header"><h2>Паспорт кратко</h2><a class="text-link" href="/devices/{{ device.id }}?tab=overview&section=passport&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Открыть паспорт</a></div>
+        <div class="status-stack compact-stack">
+          <div class="status-row"><span class="muted">Локальное имя</span><span>{{ device.custom_name or '—' }}</span></div>
+          <div class="status-row"><span class="muted">Комната</span><span>{{ device.custom_room_name or device.room_name or '—' }}</span></div>
+          <div class="status-row"><span class="muted">Профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
+          <div class="status-row"><span class="muted">Тариф</span><span>{{ device_view.tariff_profile.name }}</span></div>
+        </div>
+      </article>
+      {% endif %}
+    </section>
+
+  {% elif active_overview_section == 'channels' %}
+    {% if device_view.channels.has_channels %}
+    <section class="card">
+      <div class="section-header"><h2>Каналы питания</h2><div class="muted tiny">Отдельные линии управления по данным Tuya Cloud, сгруппированные по ролям и типам.</div></div>
+      <div class="channel-group-grid">
+        {% for group in device_view.channels.groups %}
+          <div class="channel-group-card">
+            <div class="channel-group-head">
+              <div>
+                <div class="channel-group-title">{{ group.label }}</div>
+                <div class="muted tiny">{{ group.count }} канал(ов) · {{ group.summary }}</div>
+              </div>
+              <div class="channel-group-badges">
+                {% if group.kind == 'role' %}<span class="badge soft-badge">роль</span>{% endif %}
+                {% if group.kind == 'usb' %}<span class="badge soft-badge">USB</span>{% endif %}
+              </div>
+            </div>
+            <div class="channel-group-list">
+              {% for channel in group.channels %}
+                <div class="channel-group-row">
+                  <div>
+                    <div class="channel-title-with-icon"><span class="channel-icon">{{ channel.icon_symbol }}</span><span>{{ channel.display_label }}</span></div>
+                    <div class="channel-meta-line">{% if channel.role_label %}<span class="badge soft-badge">{{ channel.role_label }}</span>{% endif %}{% if channel.alias %}<span class="muted tiny">База: {{ channel.label }}</span>{% endif %}<span class="muted tiny">{{ channel.code }}</span></div>
+                    {% if channel.metrics.power_w_display or channel.metrics.energy_kwh_display or channel.metrics.voltage_v_display or channel.metrics.current_ma_display %}<div class="muted tiny">{% if channel.metrics.power_w_display %}{{ channel.metrics.power_w_display }}{% endif %}{% if channel.metrics.energy_kwh_display %}{% if channel.metrics.power_w_display %} · {% endif %}{{ channel.metrics.energy_kwh_display }}{% endif %}{% if channel.metrics.voltage_v_display %} · {{ channel.metrics.voltage_v_display }}{% endif %}{% if channel.metrics.current_ma_display %} · {{ channel.metrics.current_ma_display }}{% endif %}</div>{% endif %}
+                  </div>
+                  {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">?</span>{% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% else %}
+    <section class="card empty-state">У этого устройства нет отдельных каналов, которые стоило бы раскладывать по вкладке.</section>
+    {% endif %}
+
+  {% elif active_overview_section == 'energy' %}
+    <section class="grid-2">
+      <article class="card">
+        <div class="section-header"><h2>Энергия устройства</h2><div class="muted tiny">Суммарные показатели по устройству и его тарифному профилю.</div></div>
+        <div class="status-stack">
+          <div class="status-row"><span class="muted">Мощность сейчас</span><span>{{ device_view.stats.latest_power_w }} W</span></div>
+          <div class="status-row"><span class="muted">Напряжение сейчас</span><span>{{ device_view.stats.latest_voltage_v }} V</span></div>
+          <div class="status-row"><span class="muted">Ток сейчас</span><span>{{ device_view.stats.latest_current_a }} A</span></div>
+          <div class="status-row"><span class="muted">Сегодня</span><span>{{ device_view.stats.today_kwh }} kWh · {{ device_view.stats.today_cost }} {{ device_view.stats.tariff_currency }}</span></div>
+          <div class="status-row"><span class="muted">Месяц</span><span>{{ device_view.stats.month_kwh }} kWh · {{ device_view.stats.month_cost }} {{ device_view.stats.tariff_currency }}</span></div>
+          <div class="status-row"><span class="muted">Тариф</span><span>{{ device_view.stats.tariff_mode_label }} · {{ device_view.tariff_profile.name }}</span></div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="section-header"><h2>Диагностика телеметрии</h2><div class="muted tiny">Что реально отдаёт Tuya по энергии и каналам.</div></div>
+        <div class="muted">{{ device_view.energy_capabilities.message }}</div>
+        <div class="muted tiny" style="margin-top:8px;">Общие коды: {% if device_view.energy_capabilities.aggregate_codes %}{{ device_view.energy_capabilities.aggregate_codes|join(', ') }}{% else %}нет{% endif %}</div>
+        <div class="muted tiny">Поканальные коды: {% if device_view.energy_capabilities.channel_metric_codes %}{{ device_view.energy_capabilities.channel_metric_codes|join(', ') }}{% else %}не обнаружены{% endif %}</div>
+        {% if device_view.energy_capabilities.supports_channel_metrics %}
+        <div class="table-wrap" style="margin-top:12px;">
+          <table>
+            <thead><tr><th>Канал</th><th>W</th><th>V</th><th>mA</th><th>kWh</th></tr></thead>
+            <tbody>
+              {% for channel in device_view.channels.all %}
+                <tr>
+                  <td>{{ channel.display_label }}</td>
+                  <td>{{ channel.metrics.power_w_display or '—' }}</td>
+                  <td>{{ channel.metrics.voltage_v_display or '—' }}</td>
+                  <td>{{ channel.metrics.current_ma_display or '—' }}</td>
+                  <td>{{ channel.metrics.energy_kwh_display or '—' }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="margin-top:12px;">Сейчас можно честно показывать только суммарную энергию по устройству. Для поканального тарифа нужны отдельные DP-коды на каждый канал.</div>
+        {% endif %}
+      </article>
+    </section>
+
+    <section class="grid-2">
+      <article class="card"><div class="section-header"><h2>Стоимость по зонам сегодня</h2></div>
+        <div class="table-wrap"><table><thead><tr><th>Зона</th><th>Тариф</th><th>kWh</th><th>{{ device_view.stats.tariff_currency }}</th></tr></thead><tbody>
+          {% for item in device_view.stats.today_zone_costs %}
+            <tr><td>{{ item.label }}</td><td>{{ item.rate }}</td><td>{{ item.energy_kwh }}</td><td>{{ item.cost }}</td></tr>
+          {% else %}
+            <tr><td colspan="4" class="muted">За сегодня по зонам пока пусто.</td></tr>
+          {% endfor %}
+        </tbody></table></div>
+      </article>
+      <article class="card"><div class="section-header"><h2>Стоимость по зонам за месяц</h2></div>
+        <div class="table-wrap"><table><thead><tr><th>Зона</th><th>Тариф</th><th>kWh</th><th>{{ device_view.stats.tariff_currency }}</th></tr></thead><tbody>
+          {% for item in device_view.stats.month_zone_costs %}
+            <tr><td>{{ item.label }}</td><td>{{ item.rate }}</td><td>{{ item.energy_kwh }}</td><td>{{ item.cost }}</td></tr>
+          {% else %}
+            <tr><td colspan="4" class="muted">За месяц по зонам пока пусто.</td></tr>
+          {% endfor %}
+        </tbody></table></div>
+      </article>
+    </section>
+
+  {% elif active_overview_section == 'passport' %}
+    <section class="grid-2">
+      {% if device_view.boiler.has_temperature %}
+      <article class="card climate-card">
+        <div class="section-header"><h2>Температурный профиль</h2></div>
+        <div class="climate-grid">
+          <div class="climate-metric"><span class="muted">Текущая температура</span><strong>{{ device_view.boiler.current_temperature_c or '—' }} °C</strong></div>
+          <div class="climate-metric"><span class="muted">Целевая температура</span><strong>{{ device_view.boiler.target_temperature_c or '—' }} °C</strong></div>
+          <div class="climate-metric"><span class="muted">Режим</span><strong>{{ device_view.boiler.operation_mode_label or device_view.boiler.operation_mode or '—' }}</strong></div>
+          <div class="climate-metric"><span class="muted">Ошибка</span><strong>{% if device.fault_code and device.fault_code != '0' %}{{ device.fault_code }}{% else %}нет{% endif %}</strong></div>
+        </div>
+        {% if device_view.boiler.temp_range_label %}<div class="muted tiny" style="margin-top:12px;">{{ device_view.boiler.temp_range_label }}</div>{% endif %}
+      </article>
+      {% endif %}
+
+      <article class="card"><div class="section-header"><h2>Паспорт</h2></div>
+        <div class="status-stack">
+          <div class="status-row"><span class="muted">Локальное имя</span><span>{{ device.custom_name or '—' }}</span></div>
+          <div class="status-row"><span class="muted">Имя провайдера</span><span>{{ device.name }}</span></div>
+          <div class="status-row"><span class="muted">Локальная комната</span><span>{{ device.custom_room_name or '—' }}</span></div>
+          <div class="status-row"><span class="muted">Комната провайдера</span><span>{{ device.room_name or '—' }}</span></div>
+          <div class="status-row"><span class="muted">Категория</span><span>{{ device.category or '—' }}</span></div>
+          <div class="status-row"><span class="muted">Плашка пользователя</span><span>{% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% else %}—{% endif %}</span></div>
+          <div class="status-row"><span class="muted">Технический профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
+          <div class="status-row"><span class="muted">Тарифный профиль</span><span>{{ device_view.tariff_profile.name }}</span></div>
+          {% if device_view.controls.supports_relay_status %}<div class="status-row"><span class="muted">Подача питания</span><span>{{ device_view.controls.advanced.relay_status.current_label }}</span></div>{% endif %}
+          {% if device_view.controls.supports_light_mode %}<div class="status-row"><span class="muted">Индикатор</span><span>{{ device_view.controls.advanced.light_mode.current_label }}</span></div>{% endif %}
+          {% if device_view.controls.supports_child_lock %}<div class="status-row"><span class="muted">Детский замок</span><span>{{ device_view.controls.advanced.child_lock.current_label }}</span></div>{% endif %}
+          {% if device_view.channels.has_power_strip_layout %}<div class="status-row"><span class="muted">Каналы</span><span>{{ device_view.channels.socket_count }} розеток{% if device_view.channels.usb_count %} · USB {{ "блок" if device_view.channels.usb_count == 1 else device_view.channels.usb_count }}{% endif %}</span></div>{% endif %}
+          <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
+          <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
+        </div>
+      </article>
+    </section>
+
+  {% elif active_overview_section == 'snapshots' %}
+    <section class="card"><div class="section-header"><h2>Последние снапшоты</h2><a class="text-link" href="/devices/{{ device.id }}?tab=history&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Полная история</a></div>
+      <div class="table-wrap">
         <table>
-          <thead><tr><th>Канал</th><th>W</th><th>V</th><th>mA</th><th>kWh</th></tr></thead>
+          <thead><tr><th>Время</th><th>W</th><th>V</th><th>A</th><th>kWh</th><th>Temp</th><th>Mode</th></tr></thead>
           <tbody>
-            {% for channel in device_view.channels.all %}
-              <tr>
-                <td>{{ channel.display_label }}</td>
-                <td>{{ channel.metrics.power_w_display or '—' }}</td>
-                <td>{{ channel.metrics.voltage_v_display or '—' }}</td>
-                <td>{{ channel.metrics.current_ma_display or '—' }}</td>
-                <td>{{ channel.metrics.energy_kwh_display or '—' }}</td>
-              </tr>
+            {% for item in snapshots[:12] %}
+              <tr><td>{{ item.recorded_at|localdt }}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td><td>{{ item.current_temperature_c or '—' }}</td><td>{{ item.operation_mode or '—' }}</td></tr>
+            {% else %}
+              <tr><td colspan="7" class="muted">Снапшотов пока нет.</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-      {% else %}
-      <div class="empty-state" style="margin-top:12px;">Сейчас можно честно показывать только суммарную энергию по устройству. Для поканального тарифа нужны отдельные DP-коды на каждый канал.</div>
-      {% endif %}
-    </article>
-  </section>
+    </section>
   {% endif %}
-
-  {% if device_view.boiler.has_temperature %}
-  <section class="grid-2">
-    <article class="card climate-card">
-      <div class="section-header"><h2>Температурный профиль</h2></div>
-      <div class="climate-grid">
-        <div class="climate-metric"><span class="muted">Текущая температура</span><strong>{{ device_view.boiler.current_temperature_c or '—' }} °C</strong></div>
-        <div class="climate-metric"><span class="muted">Целевая температура</span><strong>{{ device_view.boiler.target_temperature_c or '—' }} °C</strong></div>
-        <div class="climate-metric"><span class="muted">Режим</span><strong>{{ device_view.boiler.operation_mode_label or device_view.boiler.operation_mode or '—' }}</strong></div>
-        <div class="climate-metric"><span class="muted">Ошибка</span><strong>{% if device.fault_code and device.fault_code != '0' %}{{ device.fault_code }}{% else %}нет{% endif %}</strong></div>
-      </div>
-      {% if device_view.boiler.temp_range_label %}<div class="muted tiny" style="margin-top:12px;">{{ device_view.boiler.temp_range_label }}</div>{% endif %}
-    </article>
-    <article class="card"><div class="section-header"><h2>Паспорт</h2></div>
-      <div class="status-stack">
-        <div class="status-row"><span class="muted">Локальное имя</span><span>{{ device.custom_name or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Имя провайдера</span><span>{{ device.name }}</span></div>
-        <div class="status-row"><span class="muted">Локальная комната</span><span>{{ device.custom_room_name or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Комната провайдера</span><span>{{ device.room_name or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Категория</span><span>{{ device.category or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Плашка пользователя</span><span>{% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% else %}—{% endif %}</span></div>
-        <div class="status-row"><span class="muted">Технический профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Тарифный профиль</span><span>{{ device_view.tariff_profile.name }}</span></div>
-        {% if device_view.controls.supports_relay_status %}<div class="status-row"><span class="muted">Подача питания</span><span>{{ device_view.controls.advanced.relay_status.current_label }}</span></div>{% endif %}
-        {% if device_view.controls.supports_light_mode %}<div class="status-row"><span class="muted">Индикатор</span><span>{{ device_view.controls.advanced.light_mode.current_label }}</span></div>{% endif %}
-        {% if device_view.controls.supports_child_lock %}<div class="status-row"><span class="muted">Детский замок</span><span>{{ device_view.controls.advanced.child_lock.current_label }}</span></div>{% endif %}
-        {% if device_view.channels.has_power_strip_layout %}<div class="status-row"><span class="muted">Каналы</span><span>{{ device_view.channels.socket_count }} розеток{% if device_view.channels.usb_count %} · USB {{ "блок" if device_view.channels.usb_count == 1 else device_view.channels.usb_count }}{% endif %}</span></div>{% endif %}
-        <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
-        <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
-      </div>
-    </article>
-  </section>
-  {% else %}
-  <section class="grid-2">
-    <article class="card"><div class="section-header"><h2>Паспорт</h2></div>
-      <div class="status-stack">
-        <div class="status-row"><span class="muted">Локальное имя</span><span>{{ device.custom_name or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Имя провайдера</span><span>{{ device.name }}</span></div>
-        <div class="status-row"><span class="muted">Локальная комната</span><span>{{ device.custom_room_name or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Комната провайдера</span><span>{{ device.room_name or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Категория</span><span>{{ device.category or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Плашка пользователя</span><span>{% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% else %}—{% endif %}</span></div>
-        <div class="status-row"><span class="muted">Технический профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Тарифный профиль</span><span>{{ device_view.tariff_profile.name }}</span></div>
-        {% if device_view.controls.supports_relay_status %}<div class="status-row"><span class="muted">Подача питания</span><span>{{ device_view.controls.advanced.relay_status.current_label }}</span></div>{% endif %}
-        {% if device_view.controls.supports_light_mode %}<div class="status-row"><span class="muted">Индикатор</span><span>{{ device_view.controls.advanced.light_mode.current_label }}</span></div>{% endif %}
-        {% if device_view.controls.supports_child_lock %}<div class="status-row"><span class="muted">Детский замок</span><span>{{ device_view.controls.advanced.child_lock.current_label }}</span></div>{% endif %}
-        {% if device_view.channels.has_power_strip_layout %}<div class="status-row"><span class="muted">Каналы</span><span>{{ device_view.channels.socket_count }} розеток{% if device_view.channels.usb_count %} · USB {{ "блок" if device_view.channels.usb_count == 1 else device_view.channels.usb_count }}{% endif %}</span></div>{% endif %}
-        <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
-        <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
-      </div>
-    </article>
-  </section>
-  {% endif %}
-
-
-  <section class="grid-2">
-    <article class="card"><div class="section-header"><h2>Стоимость по зонам сегодня</h2></div>
-      <div class="table-wrap"><table><thead><tr><th>Зона</th><th>Тариф</th><th>kWh</th><th>{{ device_view.stats.tariff_currency }}</th></tr></thead><tbody>
-        {% for item in device_view.stats.today_zone_costs %}
-          <tr><td>{{ item.label }}</td><td>{{ item.rate }}</td><td>{{ item.energy_kwh }}</td><td>{{ item.cost }}</td></tr>
-        {% else %}
-          <tr><td colspan="4" class="muted">За сегодня по зонам пока пусто.</td></tr>
-        {% endfor %}
-      </tbody></table></div>
-    </article>
-    <article class="card"><div class="section-header"><h2>Стоимость по зонам за месяц</h2></div>
-      <div class="table-wrap"><table><thead><tr><th>Зона</th><th>Тариф</th><th>kWh</th><th>{{ device_view.stats.tariff_currency }}</th></tr></thead><tbody>
-        {% for item in device_view.stats.month_zone_costs %}
-          <tr><td>{{ item.label }}</td><td>{{ item.rate }}</td><td>{{ item.energy_kwh }}</td><td>{{ item.cost }}</td></tr>
-        {% else %}
-          <tr><td colspan="4" class="muted">За месяц по зонам пока пусто.</td></tr>
-        {% endfor %}
-      </tbody></table></div>
-    </article>
-  </section>
-
-  <section class="card"><div class="section-header"><h2>Последние снапшоты</h2><a class="text-link" href="/devices/{{ device.id }}?tab=history&auto_refresh={% if auto_refresh %}1{% else %}0{% endif %}">Полная история</a></div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Время</th><th>W</th><th>V</th><th>A</th><th>kWh</th><th>Temp</th><th>Mode</th></tr></thead>
-        <tbody>
-          {% for item in snapshots[:8] %}
-            <tr><td>{{ item.recorded_at|localdt }}</td><td>{{ item.power_w or '—' }}</td><td>{{ item.voltage_v or '—' }}</td><td>{{ item.current_a or '—' }}</td><td>{{ item.energy_total_kwh or '—' }}</td><td>{{ item.current_temperature_c or '—' }}</td><td>{{ item.operation_mode or '—' }}</td></tr>
-          {% else %}
-            <tr><td colspan="7" class="muted">Снапшотов пока нет.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
 {% elif active_tab == 'local' %}
   <section class="grid-2">
     <article class="card">

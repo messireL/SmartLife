@@ -679,6 +679,25 @@ td {
   color: var(--text-strong);
 }
 
+.tabs-secondary {
+  margin-top: 12px;
+  gap: 8px;
+}
+
+.tabs-secondary .tab-link {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.overview-switcher {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.compact-stack .status-row {
+  padding: 10px 0;
+}
+
 .text-link {
   color: var(--accent);
   font-size: 14px;

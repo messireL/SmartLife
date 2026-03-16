@@ -536,7 +536,7 @@ def backups_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/devices/{device_id}", response_class=HTMLResponse)
-def device_detail(device_id: int, request: Request, tab: str = Query(default="overview"), auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
+def device_detail(device_id: int, request: Request, tab: str = Query(default="overview"), section: str = Query(default="summary"), auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     device = db.get(Device, device_id)
     if device is None or device.is_deleted:
         runtime = get_runtime_config(db)
@@ -544,6 +544,8 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
 
     if tab not in {"overview", "charts", "history", "control", "local"}:
         tab = "overview"
+    if section not in {"summary", "channels", "energy", "passport", "snapshots"}:
+        section = "summary"
 
     view_model = get_device_dashboard(db, device)
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
@@ -557,6 +559,7 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
             "snapshots": view_model["snapshots"],
             "device_view": view_model,
             "active_tab": tab,
+            "active_overview_section": section,
             "command_logs": get_recent_command_logs(db, device.id, limit=12),
             "auto_refresh": auto_refresh,
             "room_choices": get_room_choices(db),
