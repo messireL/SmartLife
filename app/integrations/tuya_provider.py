@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -181,10 +182,10 @@ class TuyaCloudProvider(DeviceProvider):
 
         mode_definition = spec.definition("mode")
         temp_definition = spec.definition("temp_set")
-        desired_controls = ("switch", "switch_1", "mode", "temp_set")
-        control_codes = tuple(sorted(code for code in desired_controls if code in spec.function_codes))
+        desired_controls = tuple(sorted(code for code in spec.function_codes if _is_supported_control_code(code)))
+        control_codes = desired_controls
         if not control_codes and not spec.function_codes:
-            control_codes = tuple(sorted(code for code in ("switch", "switch_1") if code in spec.all_codes))
+            control_codes = tuple(sorted(code for code in spec.all_codes if _is_supported_switch_code(code)))
         available_modes = mode_definition.enum_range if mode_definition else ()
 
         profile = _detect_device_profile(device, spec, current_temperature_c, target_temperature_c)
@@ -478,8 +479,20 @@ def _detect_device_profile(
 ) -> str | None:
     name = f"{device.name} {device.product_name or ''} {device.category or ''}".lower()
     has_temperature = current_temperature_c is not None or target_temperature_c is not None or "temp_current" in spec.all_codes or "temp_set" in spec.all_codes
+    switch_channel_codes = [code for code in spec.all_codes if _is_supported_switch_code(code)]
+    has_power_strip_channels = len([code for code in switch_channel_codes if code.startswith("switch_") or code.startswith("switch_usb")]) >= 2
     if any(token in name for token in ("boiler", "бойлер", "heater", "water heater", "водонагрев", "hot water")):
         return "boiler"
+    if device.category == "pc" or has_power_strip_channels:
+        return "power_strip"
     if has_temperature:
         return "temperature"
     return None
+
+
+def _is_supported_switch_code(code: str) -> bool:
+    return bool(code == "switch" or re.fullmatch(r"switch_[1-9]\d*", code) or re.fullmatch(r"switch_usb[1-9]\d*", code) or code == "switch_usb")
+
+
+def _is_supported_control_code(code: str) -> bool:
+    return _is_supported_switch_code(code) or code in {"mode", "temp_set"}

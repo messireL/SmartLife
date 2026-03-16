@@ -5,7 +5,7 @@
     <div>
       <h1>{{ device.display_name }}</h1>
       <div class="muted">{{ device.model or device.product_name or 'Устройство без модели' }} · {{ device.provider.value|replace("_", " ") }}</div>
-      {% if device.badge %}<div class="device-tags" style="margin-top:10px;"><span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span></div>{% endif %}{% if device_view.profile.label %}<div class="tiny muted">Технический профиль: {{ device_view.profile.label }}</div>{% endif %}
+      {% if device.badge or device_view.profile.label or device_view.channels.has_power_strip_layout %}<div class="device-tags" style="margin-top:10px;">{% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% endif %}{% if device_view.profile.label %}<span class="badge soft-badge">{{ device_view.profile.label }}</span>{% endif %}{% if device_view.channels.socket_count %}<span class="badge soft-badge">розеток {{ device_view.channels.socket_count }}</span>{% endif %}{% if device_view.channels.usb_count %}<span class="badge soft-badge">USB {{ "блок" if device_view.channels.usb_count == 1 else device_view.channels.usb_count }}</span>{% endif %}</div>{% endif %}
     </div>
     <div class="status-pair">
       {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
@@ -35,6 +35,23 @@
     {% endif %}
   </section>
 
+  {% if device_view.channels.has_power_strip_layout %}
+  <section class="card">
+    <div class="section-header"><h2>Каналы питания</h2><div class="muted tiny">Отдельные линии управления по данным Tuya Cloud.</div></div>
+    <div class="channel-grid">
+      {% for channel in device_view.channels.all %}
+        <div class="channel-card">
+          <div class="channel-card-top">
+            <span>{{ channel.label }}</span>
+            {% if channel.is_on is sameas true %}<span class="badge on">вкл</span>{% elif channel.is_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">?</span>{% endif %}
+          </div>
+          <div class="muted tiny">{{ channel.code }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   {% if device_view.boiler.has_temperature %}
   <section class="grid-2">
     <article class="card climate-card">
@@ -56,6 +73,7 @@
         <div class="status-row"><span class="muted">Категория</span><span>{{ device.category or '—' }}</span></div>
         <div class="status-row"><span class="muted">Плашка пользователя</span><span>{% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% else %}—{% endif %}</span></div>
         <div class="status-row"><span class="muted">Технический профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
+        {% if device_view.channels.has_power_strip_layout %}<div class="status-row"><span class="muted">Каналы</span><span>{{ device_view.channels.socket_count }} розеток{% if device_view.channels.usb_count %} · USB {{ "блок" if device_view.channels.usb_count == 1 else device_view.channels.usb_count }}{% endif %}</span></div>{% endif %}
         <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
         <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
       </div>
@@ -72,6 +90,7 @@
         <div class="status-row"><span class="muted">Категория</span><span>{{ device.category or '—' }}</span></div>
         <div class="status-row"><span class="muted">Плашка пользователя</span><span>{% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% else %}—{% endif %}</span></div>
         <div class="status-row"><span class="muted">Технический профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
+        {% if device_view.channels.has_power_strip_layout %}<div class="status-row"><span class="muted">Каналы</span><span>{{ device_view.channels.socket_count }} розеток{% if device_view.channels.usb_count %} · USB {{ "блок" if device_view.channels.usb_count == 1 else device_view.channels.usb_count }}{% endif %}</span></div>{% endif %}
         <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
         <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
       </div>
@@ -238,7 +257,37 @@
   <section class="grid-2">
     <article class="card">
       <div class="section-header"><h2>Управление</h2></div>
-      <div class="muted">Управление доступно по тем командам, которые Tuya Cloud реально отдаёт для этого устройства: питание, режим и целевая температура.</div>
+      <div class="muted">Управление доступно по тем командам, которые Tuya Cloud реально отдаёт для этого устройства: питание, отдельные каналы, режим и целевая температура.</div>
+
+      {% if device_view.controls.supports_multi_switch %}
+      <div class="control-group">
+        <div class="muted tiny">Отдельные каналы</div>
+        <div class="channel-control-list">
+          {% for channel in device_view.controls.switch_channels %}
+            <div class="channel-control-row">
+              <div>
+                <div class="channel-control-title">{{ channel.label }}</div>
+                <div class="muted tiny">{{ channel.code }}</div>
+              </div>
+              <div class="channel-control-actions">
+                <form method="post" action="/devices/{{ device.id }}/toggle-channel">
+                  <input type="hidden" name="command_code" value="{{ channel.code }}">
+                  <input type="hidden" name="desired_state" value="true">
+                  <input type="hidden" name="source_tab" value="control">
+                  <button type="submit">Включить</button>
+                </form>
+                <form method="post" action="/devices/{{ device.id }}/toggle-channel">
+                  <input type="hidden" name="command_code" value="{{ channel.code }}">
+                  <input type="hidden" name="desired_state" value="false">
+                  <input type="hidden" name="source_tab" value="control">
+                  <button type="submit" class="button-secondary">Выключить</button>
+                </form>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
 
       {% if device_view.controls.supports_switch %}
       <div class="control-group">
@@ -288,7 +337,7 @@
       </div>
       {% endif %}
 
-      {% if not device_view.controls.supports_switch and not device_view.controls.supports_mode and not device_view.controls.supports_target_temperature %}
+      {% if not device_view.controls.supports_switch and not device_view.controls.supports_mode and not device_view.controls.supports_target_temperature and not device_view.controls.supports_multi_switch %}
       <div class="empty-state">Для этого устройства в Tuya Cloud пока не обнаружены поддерживаемые команды управления.</div>
       {% endif %}
     </article>

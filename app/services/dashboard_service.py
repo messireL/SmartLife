@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import json
+import re
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -56,6 +58,8 @@ def _profile_label(value: str | None) -> str | None:
         return 'Бойлер'
     if value == 'temperature':
         return 'Температурное устройство'
+    if value == 'power_strip':
+        return 'Сетевой фильтр / удлинитель'
     return None
 
 
@@ -294,6 +298,99 @@ def get_dashboard_panels(db: Session) -> dict:
 
 
 
+
+
+def _switch_code_sort_key(code: str) -> tuple[int, int, str]:
+    if code == "switch":
+        return (0, 0, code)
+    socket_match = re.fullmatch(r"switch_(\d+)", code or "")
+    if socket_match:
+        return (1, int(socket_match.group(1)), code)
+    if code == "switch_usb":
+        return (2, 0, code)
+    usb_match = re.fullmatch(r"switch_usb(\d+)", code or "")
+    if usb_match:
+        return (2, int(usb_match.group(1)), code)
+    return (9, 0, code or "")
+
+
+def _parse_status_payload(raw_payload: str | None) -> tuple[dict[str, object], set[str]]:
+    if not raw_payload:
+        return {}, set()
+    try:
+        payload = json.loads(raw_payload)
+    except Exception:
+        return {}, set()
+    if not isinstance(payload, dict):
+        return {}, set()
+    statuses = payload.get("statuses") or []
+    status_map: dict[str, object] = {}
+    if isinstance(statuses, list):
+        for item in statuses:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("code") or "").strip()
+            if code:
+                status_map[code] = item.get("value")
+    controls = payload.get("controls") or []
+    control_codes = {str(item).strip() for item in controls if str(item).strip()}
+    return status_map, control_codes
+
+
+def _build_switch_channels(device: Device) -> list[dict]:
+    status_map, raw_control_codes = _parse_status_payload(device.last_status_payload)
+    control_codes = set(device.control_codes) | raw_control_codes
+    candidate_codes = {code for code in control_codes | set(status_map) if _is_switch_like_code(code)}
+    channels: list[dict] = []
+    usb_count = len([code for code in candidate_codes if code.startswith("switch_usb")])
+    for code in sorted(candidate_codes, key=_switch_code_sort_key):
+        value = status_map.get(code)
+        if code == "switch":
+            label = "Главное питание"
+            group = "main"
+        elif code == "switch_usb":
+            label = "USB блок"
+            group = "usb"
+        elif re.fullmatch(r"switch_(\d+)", code):
+            idx = re.fullmatch(r"switch_(\d+)", code).group(1)
+            label = f"Розетка {idx}"
+            group = "socket"
+        else:
+            match = re.fullmatch(r"switch_usb(\d+)", code)
+            idx = match.group(1) if match else "?"
+            label = "USB блок" if usb_count == 1 else f"USB {idx}"
+            group = "usb"
+        channels.append({
+            "code": code,
+            "label": label,
+            "group": group,
+            "is_on": value if isinstance(value, bool) else None,
+            "supports_control": code in control_codes,
+        })
+    return channels
+
+
+def _is_switch_like_code(code: str | None) -> bool:
+    if not code:
+        return False
+    return bool(code == "switch" or re.fullmatch(r"switch_[1-9]\d*", code) or re.fullmatch(r"switch_usb[1-9]\d*", code) or code == "switch_usb")
+
+
+def _build_channel_summary(channels: list[dict]) -> dict:
+    sockets = [item for item in channels if item["group"] == "socket"]
+    usb = [item for item in channels if item["group"] == "usb"]
+    mains = [item for item in channels if item["group"] == "main"]
+    return {
+        "all": channels,
+        "sockets": sockets,
+        "usb": usb,
+        "mains": mains,
+        "has_channels": bool(channels),
+        "has_power_strip_layout": bool(sockets or usb),
+        "socket_count": len(sockets),
+        "usb_count": len(usb),
+    }
+
 def get_device_dashboard(db: Session, device: Device) -> dict:
     today = local_today()
     runtime = get_runtime_config(db)
@@ -377,6 +474,8 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
     target_min = _quantize(device.target_temperature_min_c) if device.target_temperature_min_c is not None else None
     target_max = _quantize(device.target_temperature_max_c) if device.target_temperature_max_c is not None else None
     target_step = _quantize(device.target_temperature_step_c) if device.target_temperature_step_c is not None else None
+    channels = _build_switch_channels(device)
+    channel_summary = _build_channel_summary(channels)
 
     return {
         "daily": daily_rows,
@@ -423,14 +522,17 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "fault_code": device.fault_code,
             "temp_range_label": f"{target_min}…{target_max} °C · шаг {target_step} °C" if target_min is not None and target_max is not None and target_step is not None else None,
         },
+        "channels": channel_summary,
         "controls": {
             "codes": sorted(control_codes),
-            "supports_switch": 'switch' in control_codes or 'switch_1' in control_codes,
+            "supports_switch": ('switch' in control_codes) or (len([code for code in control_codes if _is_switch_like_code(code)]) == 1),
             "supports_mode": 'mode' in control_codes,
             "supports_target_temperature": 'temp_set' in control_codes,
             "available_modes": list(device.available_modes),
             "target_temperature_min_c": target_min,
             "target_temperature_max_c": target_max,
             "target_temperature_step_c": target_step,
+            "switch_channels": channels,
+            "supports_multi_switch": len([code for code in control_codes if _is_switch_like_code(code)]) > 1,
         },
     }

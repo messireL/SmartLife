@@ -23,6 +23,7 @@ from app.services.device_control_service import (
     DeviceControlError,
     get_recent_command_logs,
     set_device_mode,
+    set_device_switch_code_state,
     set_device_switch_state,
     set_device_target_temperature,
 )
@@ -550,6 +551,24 @@ def toggle_device_action(
         flash = f"Команда не выполнена: {exc}"
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
+
+
+
+@router.post("/devices/{device_id}/toggle-channel")
+def toggle_device_channel_action(
+    device_id: int,
+    command_code: str = Form(...),
+    desired_state: str = Form(...),
+    source_tab: str = Form(default="control"),
+    db: Session = Depends(get_db),
+):
+    try:
+        desired_bool = desired_state.lower() in {"1", "true", "yes", "on"}
+        result = set_device_switch_code_state(db, device_id, command_code, desired_bool, trigger=SyncRunTrigger.MANUAL.value)
+        flash = f"Канал {result['command_code']} переведён в состояние {'вкл' if desired_bool else 'выкл'}."
+    except DeviceControlError as exc:
+        flash = f"Команда не выполнена: {exc}"
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 @router.post("/devices/{device_id}/set-mode")
 def set_device_mode_action(
