@@ -244,9 +244,22 @@
     </section>
   {% endif %}
 {% elif active_tab == 'local' %}
-  <section class="grid-2">
-    <article class="card">
-      <div class="section-header"><h2>Локальные настройки</h2><div class="muted tiny">То, что живёт только в SmartLife и не меняет облачные имена в Tuya.</div></div>
+  <section class="card nested-card local-switcher">
+    <div class="section-header">
+      <div>
+        <h2>Локальные настройки</h2>
+        <div class="muted tiny">Разнесли общие настройки и каналы по отдельным якорным вкладкам, чтобы шаблон больше не устраивал самопересечение.</div>
+      </div>
+    </div>
+    <nav class="tabs tabs-secondary">
+      <a class="tab-link" href="#local-main">Устройство</a>
+      {% if device_view.channels.has_channels %}<a class="tab-link" href="#local-channels">Каналы</a>{% endif %}
+    </nav>
+  </section>
+
+  <section class="local-stack">
+    <article class="card local-section-anchor" id="local-main">
+      <div class="section-header"><h2>Устройство</h2><div class="muted tiny">То, что живёт только в SmartLife и не меняет облачные имена в Tuya.</div></div>
       <form class="form-stack" method="post" action="/devices/{{ device.id }}/save-meta">
         <input type="hidden" name="source_tab" value="local">
         <label>Локальное имя
@@ -280,8 +293,9 @@
         {% for item in room_choices %}<option value="{{ item }}">{% endfor %}
       </datalist>
     </article>
-    <article class="card">
-      <div class="section-header"><h2>Каналы устройства</h2><div class="muted tiny">Локальные названия и текущий профиль тарифа.</div></div>
+
+    <article class="card local-section-anchor" id="local-channels">
+      <div class="section-header"><h2>Каналы устройства</h2><div class="muted tiny">Локальные названия, роли и иконки каналов — спокойным столбиком, без драки за ширину.</div></div>
       {% if device_view.channels.has_channels %}
       <form class="form-stack" method="post" action="/devices/{{ device.id }}/save-meta">
         <input type="hidden" name="source_tab" value="local">

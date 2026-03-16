@@ -1256,8 +1256,23 @@ button:disabled:hover {
 
 .channel-config-fields {
   display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 0.8fr) minmax(180px, 0.8fr);
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
+}
+
+.local-stack {
+  display: grid;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.local-switcher {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+.local-section-anchor {
+  scroll-margin-top: 110px;
 }
 
 .inline-edit-form {
