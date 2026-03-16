@@ -4,7 +4,7 @@
   <div class="section-header">
     <div>
       <h1>Устройства</h1>
-      <div class="muted">Список устройств, фильтры, массовые действия и локальные комнаты. Теперь можно навести порядок без молитв облаку и ручной археологии по каждому девайсу.</div>
+      <div class="muted">Список устройств, комнаты, плашки и массовые действия. Теперь интерфейс поспокойнее, а облако больше не раздаёт звания бойлера всем подряд.</div>
     </div>
     <form method="post" action="/actions/sync-provider"><button type="submit">Синхронизировать сейчас</button></form>
   </div>
@@ -20,6 +20,13 @@
       <option value="">Все комнаты</option>
       {% for item in room_choices %}
         <option value="{{ item }}" {% if filters.room_filter == item %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+    <select class="input" name="badge_filter">
+      <option value="">Все плашки</option>
+      <option value="__none__" {% if filters.badge_filter == '__none__' %}selected{% endif %}>Без плашки</option>
+      {% for badge in badge_choices %}
+        <option value="{{ badge.key }}" {% if filters.badge_filter == badge.key %}selected{% endif %}>{{ badge.name }}</option>
       {% endfor %}
     </select>
     <label><input type="checkbox" name="only_online" value="1" {% if filters.only_online %}checked{% endif %}> Только онлайн</label>
@@ -42,21 +49,28 @@
           <option value="unhide">Показать</option>
           <option value="set_room">Назначить комнату</option>
           <option value="clear_room">Очистить локальную комнату</option>
+          <option value="set_badge">Назначить плашку</option>
+          <option value="clear_badge">Снять плашку</option>
         </select>
         <input class="input" type="text" name="room_value" placeholder="Комната для массового назначения">
+        <select class="input" name="badge_id">
+          <option value="">Плашка для назначения</option>
+          {% for badge in badge_choices %}
+            <option value="{{ badge.id }}">{{ badge.name }}</option>
+          {% endfor %}
+        </select>
         <button type="submit">Применить</button>
       </div>
     </div>
     <div class="table-wrap">
-      <table>
+      <table class="devices-table">
         <thead>
           <tr>
             <th><input type="checkbox" onclick="document.querySelectorAll('.bulk-device').forEach(cb => cb.checked = this.checked)"></th>
             <th>Устройство</th>
-            <th>Провайдер</th>
             <th>Комната</th>
             <th>Сейчас</th>
-            <th>Энергия, kWh</th>
+            <th>Энергия</th>
             <th>Статус</th>
             <th>Действия</th>
           </tr>
@@ -66,28 +80,38 @@
             <tr>
               <td><input class="bulk-device" type="checkbox" name="device_ids" value="{{ device.id }}"></td>
               <td>
-                <a href="/devices/{{ device.id }}">{{ device.display_name }}</a>
-                <div class="tiny muted">{{ device.model or device.product_name or '—' }}</div>
-                {% if device.device_profile == 'boiler' %}<div class="tiny"><span class="badge control">бойлер</span></div>{% elif device.device_profile == 'temperature' %}<div class="tiny"><span class="badge warning">temp</span></div>{% endif %}
-                {% if device.custom_name %}<div class="tiny muted">Локальное имя</div>{% endif %}
+                <div class="device-title-cell">
+                  <a class="device-link" href="/devices/{{ device.id }}">{{ device.display_name }}</a>
+                  <div class="tiny muted">{{ device.model or device.product_name or 'Устройство без модели' }}</div>
+                  <div class="device-tags">
+                    {% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% endif %}
+                    {% if device.current_temperature_c is not none or device.target_temperature_c is not none %}<span class="badge soft-badge">термоданные</span>{% endif %}
+                    {% if device.custom_name %}<span class="badge soft-badge">локальное имя</span>{% endif %}
+                  </div>
+                </div>
               </td>
-              <td>{{ device.provider.value }}</td>
               <td>{{ device.display_room_name or '—' }}</td>
               <td>
                 {% if device.current_temperature_c is not none %}
-                  <div>{{ device.current_temperature_c }} °C</div>
+                  <div class="metric-main">{{ device.current_temperature_c }} °C</div>
                   <div class="tiny muted">цель {{ device.target_temperature_c or '—' }} °C</div>
+                {% elif device.current_power_w is not none %}
+                  <div class="metric-main">{{ device.current_power_w }} W</div>
+                  <div class="tiny muted">{{ device.provider.value }}</div>
                 {% else %}
-                  {{ device.current_power_w or '—' }} W
+                  <div class="metric-main">—</div>
+                  <div class="tiny muted">{{ device.provider.value }}</div>
                 {% endif %}
               </td>
-              <td>{{ device.energy_total_kwh or '—' }}</td>
+              <td><div class="metric-main">{{ device.energy_total_kwh or '—' }} kWh</div></td>
               <td>
-                {% if device.is_hidden %}<span class="badge warning">hidden</span>{% endif %}
-                {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
-                {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% endif %}
-                {% if device.operation_mode %}<span class="badge control">{{ device.operation_mode }}</span>{% endif %}
-                {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
+                <div class="device-tags">
+                  {% if device.is_hidden %}<span class="badge warning">скрыто</span>{% endif %}
+                  {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
+                  {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% endif %}
+                  {% if device.operation_mode %}<span class="badge soft-badge">{{ device.operation_mode }}</span>{% endif %}
+                  {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
+                </div>
               </td>
               <td>
                 {% if device.is_hidden %}
@@ -100,7 +124,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="8" class="muted">Под фильтры ничего не нашлось.</td></tr>
+            <tr><td colspan="7" class="muted">Под фильтры ничего не нашлось.</td></tr>
           {% endfor %}
         </tbody>
       </table>

@@ -411,6 +411,8 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "label": _profile_label(device.device_profile),
             "is_boiler": device.device_profile == 'boiler',
             "is_temperature": device.current_temperature_c is not None or device.target_temperature_c is not None,
+            "badge_name": device.badge.name if device.badge is not None else None,
+            "badge_color": device.badge.color if device.badge is not None else None,
         },
         "boiler": {
             "has_temperature": device.current_temperature_c is not None or device.target_temperature_c is not None,

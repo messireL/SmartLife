@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card page-hero">
+  <div class="section-header">
+    <div>
+      <h1>Плашки</h1>
+      <div class="muted">Пользовательские плашки для устройств. Тут ты сам решаешь, кто бойлер, кто чайник, а кто просто розетка с амбициями.</div>
+    </div>
+  </div>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <div class="section-header"><h2>Новая плашка</h2></div>
+    <form class="form-stack" method="post" action="/badges/create">
+      <label>Название
+        <input class="input" type="text" name="name" placeholder="Например: Бойлер" maxlength="64" required>
+      </label>
+      <label>Цвет
+        <select class="input" name="color">
+          {% for item in badge_color_choices %}
+            <option value="{{ item.value }}">{{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Создать плашку</button>
+    </form>
+  </article>
+
+  <article class="card">
+    <div class="section-header"><h2>Как использовать</h2></div>
+    <ul class="compact-list">
+      <li>Создай свои типы: бойлер, чайник, освещение, серверная, детская и любые другие.</li>
+      <li>Назначай плашки из карточки устройства или массово на странице устройств.</li>
+      <li>Если хочешь, можешь вообще не использовать технические автопрофили и жить спокойно.</li>
+    </ul>
+  </article>
+</section>
+
+<section class="card">
+  <div class="section-header">
+    <h2>Список плашек</h2>
+    <div class="muted tiny">Всего: {{ badges|length }}</div>
+  </div>
+  <div class="table-wrap">
+    <table class="devices-table">
+      <thead>
+        <tr>
+          <th>Плашка</th>
+          <th>Ключ</th>
+          <th>Назначено</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for badge in badges %}
+          <tr>
+            <td><span class="badge custom-badge badge-{{ badge.color }}">{{ badge.name }}</span></td>
+            <td><span class="muted">{{ badge.key }}</span></td>
+            <td>{{ badge.assigned_total }}</td>
+            <td>
+              <form method="post" action="/badges/{{ badge.id }}/delete" onsubmit="return confirm('Удалить плашку «{{ badge.name }}»? Она снимется с устройств, но сами устройства останутся.');">
+                <button type="submit" class="button-secondary">Удалить</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="muted">Плашек пока нет.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

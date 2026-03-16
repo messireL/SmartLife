@@ -12,14 +12,25 @@ def init_db() -> None:
         _apply_postgres_migrations()
 
 
-
 def _apply_postgres_migrations() -> None:
     statements = [
+        "CREATE TABLE IF NOT EXISTS device_badges ("
+        "id SERIAL PRIMARY KEY, "
+        "key VARCHAR(64) NOT NULL UNIQUE, "
+        "name VARCHAR(64) NOT NULL, "
+        "color VARCHAR(32) NOT NULL DEFAULT 'slate', "
+        "created_at TIMESTAMP DEFAULT NOW(), "
+        "updated_at TIMESTAMP DEFAULT NOW()"
+        ")",
+        "CREATE INDEX IF NOT EXISTS ix_device_badges_key ON device_badges(key)",
+        "CREATE INDEX IF NOT EXISTS ix_device_badges_name ON device_badges(name)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS custom_name VARCHAR(255)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS product_id VARCHAR(128)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS product_name VARCHAR(255)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS icon_url VARCHAR(512)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS custom_room_name VARCHAR(128)",
+        "ALTER TABLE devices ADD COLUMN IF NOT EXISTS badge_id INTEGER",
+        "CREATE INDEX IF NOT EXISTS ix_devices_badge_id ON devices(badge_id)",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS notes TEXT",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS switch_on BOOLEAN",
         "ALTER TABLE devices ADD COLUMN IF NOT EXISTS current_power_w NUMERIC(12,2)",

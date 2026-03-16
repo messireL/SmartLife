@@ -5,12 +5,12 @@
     <div>
       <h1>{{ device.display_name }}</h1>
       <div class="muted">{{ device.model or device.product_name or 'Устройство без модели' }} · {{ device.provider.value|replace("_", " ") }}</div>
-      {% if device_view.profile.label %}<div class="tiny muted">Профиль: {{ device_view.profile.label }}</div>{% endif %}
+      {% if device.badge %}<div class="device-tags" style="margin-top:10px;"><span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span></div>{% endif %}{% if device_view.profile.label %}<div class="tiny muted">Технический профиль: {{ device_view.profile.label }}</div>{% endif %}
     </div>
     <div class="status-pair">
       {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
       {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">статус ?</span>{% endif %}
-      {% if device_view.boiler.operation_mode_label %}<span class="badge control">{{ device_view.boiler.operation_mode_label }}</span>{% endif %}
+      {% if device_view.boiler.operation_mode_label %}<span class="badge soft-badge">{{ device_view.boiler.operation_mode_label }}</span>{% endif %}
       {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
     </div>
   </div>
@@ -54,7 +54,8 @@
         <div class="status-row"><span class="muted">Локальная комната</span><span>{{ device.custom_room_name or '—' }}</span></div>
         <div class="status-row"><span class="muted">Комната провайдера</span><span>{{ device.room_name or '—' }}</span></div>
         <div class="status-row"><span class="muted">Категория</span><span>{{ device.category or '—' }}</span></div>
-        <div class="status-row"><span class="muted">Профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Плашка пользователя</span><span>{% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% else %}—{% endif %}</span></div>
+        <div class="status-row"><span class="muted">Технический профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
         <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
         <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
       </div>
@@ -103,6 +104,14 @@
       </label>
       <label>Локальная комната
         <input class="input" list="room-choices" type="text" name="custom_room_name" value="{{ device.custom_room_name or '' }}" placeholder="Например: Ванная">
+      </label>
+      <label>Плашка пользователя
+        <select class="input" name="badge_id">
+          <option value="">Без плашки</option>
+          {% for badge in badge_choices %}
+            <option value="{{ badge.id }}" {% if device.badge_id == badge.id %}selected{% endif %}>{{ badge.name }}</option>
+          {% endfor %}
+        </select>
       </label>
       <label>Заметки
         <textarea class="input" name="notes" rows="4" placeholder="Любые свои пометки">{{ device.notes or '' }}</textarea>

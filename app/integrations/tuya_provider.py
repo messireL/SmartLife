@@ -477,12 +477,8 @@ def _detect_device_profile(
     target_temperature_c: Decimal | None,
 ) -> str | None:
     name = f"{device.name} {device.product_name or ''} {device.category or ''}".lower()
-    has_switch = any(code in spec.all_codes for code in ("switch", "switch_1"))
     has_temperature = current_temperature_c is not None or target_temperature_c is not None or "temp_current" in spec.all_codes or "temp_set" in spec.all_codes
-    has_mode = "mode" in spec.all_codes
-    if any(token in name for token in ("boiler", "бойлер", "heater", "water heater", "водонагрев")):
-        return "boiler"
-    if has_temperature and has_switch and has_mode:
+    if any(token in name for token in ("boiler", "бойлер", "heater", "water heater", "водонагрев", "hot water")):
         return "boiler"
     if has_temperature:
         return "temperature"

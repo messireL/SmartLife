@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.timeutils import format_local_date, format_local_datetime
-from app.db.models import Device, SyncRun, SyncRunTrigger
+from app.db.models import Device, DeviceBadge, SyncRun, SyncRunTrigger
 from app.db.session import get_db
 from app.services.backup_service import list_backups
 from app.services.dashboard_service import (
@@ -26,7 +26,8 @@ from app.services.device_control_service import (
     set_device_switch_state,
     set_device_target_temperature,
 )
-from app.services.device_query_service import get_devices_for_ui, get_provider_choices, get_room_choices
+from app.services.badge_service import ALLOWED_BADGE_COLORS, assign_badge_to_devices, create_badge, delete_badge, get_badge_choices as get_badge_choices_service, list_badges
+from app.services.device_query_service import get_badge_choices, get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
 from app.services.runtime_config_service import (
@@ -53,6 +54,7 @@ NAV_ITEMS = [
     {"key": "overview", "href": "/", "label": "Главная"},
     {"key": "devices", "href": "/devices", "label": "Устройства"},
     {"key": "rooms", "href": "/rooms", "label": "Комнаты"},
+    {"key": "badges", "href": "/badges", "label": "Плашки"},
     {"key": "consumption", "href": "/consumption", "label": "Потребление"},
     {"key": "sync", "href": "/sync", "label": "Синхронизация"},
     {"key": "settings", "href": "/settings", "label": "Настройки"},
@@ -102,6 +104,7 @@ def devices_page(
     show_temp: bool = Query(default=False),
     provider_filter: str = Query(default=""),
     room_filter: str = Query(default=""),
+    badge_filter: str = Query(default=""),
     auto_refresh: bool = Query(default=True),
     db: Session = Depends(get_db),
 ):
@@ -114,6 +117,7 @@ def devices_page(
         hide_temp=not show_temp,
         provider_filter=provider_filter,
         room_filter=room_filter,
+        badge_filter=badge_filter,
     )
     hidden_total = db.execute(select(Device).where(Device.is_hidden.is_(True), Device.is_deleted.is_(False))).scalars().all()
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
@@ -131,14 +135,52 @@ def devices_page(
                 "auto_refresh": auto_refresh,
                 "provider_filter": provider_filter,
                 "room_filter": room_filter,
+                "badge_filter": badge_filter,
             },
             "provider_choices": get_provider_choices(db),
             "room_choices": get_room_choices(db),
+            "badge_choices": get_badge_choices(db),
             "hidden_total": len(hidden_total),
             "summary": get_dashboard_summary(db),
         }
     )
     return templates.TemplateResponse(request, "devices.html", context)
+
+
+@router.get("/badges", response_class=HTMLResponse)
+def badges_page(request: Request, db: Session = Depends(get_db)):
+    runtime = get_runtime_config(db)
+    context = _base_context(request=request, active_nav="badges", page_title="Плашки", runtime=runtime)
+    context.update(
+        {
+            "summary": get_dashboard_summary(db),
+            "badges": list_badges(db),
+            "badge_color_choices": [
+                {"value": item, "label": item.capitalize()} for item in sorted(ALLOWED_BADGE_COLORS)
+            ],
+        }
+    )
+    return templates.TemplateResponse(request, "badges.html", context)
+
+
+@router.post("/badges/create")
+def create_badge_action(name: str = Form(...), color: str = Form(default="slate"), db: Session = Depends(get_db)):
+    try:
+        badge = create_badge(db, name=name, color=color)
+        flash = f"Плашка «{badge.name}» создана."
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/badges?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/badges/{badge_id}/delete")
+def delete_badge_action(badge_id: int, db: Session = Depends(get_db)):
+    badge, affected = delete_badge(db, badge_id)
+    if badge is None:
+        flash = "Плашка не найдена."
+    else:
+        flash = f"Плашка «{badge.name}» удалена. С устройств снято назначений: {affected}."
+    return RedirectResponse(url=f"/badges?flash={quote_plus(flash)}", status_code=303)
 
 
 @router.get("/rooms", response_class=HTMLResponse)
@@ -361,6 +403,7 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
             "command_logs": get_recent_command_logs(db, device.id, limit=12),
             "auto_refresh": auto_refresh,
             "room_choices": get_room_choices(db),
+            "badge_choices": get_badge_choices_service(db),
         }
     )
     return templates.TemplateResponse(request, "device_detail.html", context)
@@ -413,22 +456,25 @@ def bulk_update_devices_action(
     device_ids: list[int] = Form(default=[]),
     bulk_action: str = Form(...),
     room_value: str = Form(default=""),
+    badge_id: str = Form(default=""),
     db: Session = Depends(get_db),
 ):
     selected = [db.get(Device, device_id) for device_id in device_ids]
     devices = [device for device in selected if device is not None and not device.is_deleted]
     if not devices:
-        return RedirectResponse(url=f"/devices?flash={quote_plus('Ничего не выбрано для массового действия.')}" , status_code=303)
+        return RedirectResponse(url=f"/devices?flash={quote_plus('Ничего не выбрано для массового действия.')}", status_code=303)
 
     if bulk_action == "hide":
         for device in devices:
             device.is_hidden = True
             device.hidden_reason = "hidden by user"
+        db.commit()
         flash = f"Скрыто устройств: {len(devices)}."
     elif bulk_action == "unhide":
         for device in devices:
             device.is_hidden = False
             device.hidden_reason = "shown by user"
+        db.commit()
         flash = f"Показано устройств: {len(devices)}."
     elif bulk_action == "set_room":
         room_name = room_value.strip()
@@ -437,16 +483,30 @@ def bulk_update_devices_action(
             return RedirectResponse(url=f"/devices?include_hidden=1&flash={quote_plus(flash)}", status_code=303)
         for device in devices:
             device.custom_room_name = room_name
+        db.commit()
         flash = f"Комната «{room_name}» назначена для {len(devices)} устройств."
     elif bulk_action == "clear_room":
         for device in devices:
             device.custom_room_name = None
+        db.commit()
         flash = f"Локальная комната очищена у {len(devices)} устройств."
+    elif bulk_action == "set_badge":
+        if not badge_id.isdigit():
+            flash = "Для массового назначения выбери плашку."
+            return RedirectResponse(url=f"/devices?include_hidden=1&flash={quote_plus(flash)}", status_code=303)
+        badge = db.get(DeviceBadge, int(badge_id))
+        if badge is None:
+            flash = "Выбранная плашка не найдена."
+            return RedirectResponse(url=f"/devices?include_hidden=1&flash={quote_plus(flash)}", status_code=303)
+        assign_badge_to_devices(db, devices, badge.id)
+        flash = f"Плашка «{badge.name}» назначена для {len(devices)} устройств."
+    elif bulk_action == "clear_badge":
+        assign_badge_to_devices(db, devices, None)
+        flash = f"Плашки сняты у {len(devices)} устройств."
     else:
         flash = "Неизвестное массовое действие."
         return RedirectResponse(url=f"/devices?flash={quote_plus(flash)}", status_code=303)
 
-    db.commit()
     return RedirectResponse(url=f"/devices?include_hidden=1&flash={quote_plus(flash)}", status_code=303)
 
 
@@ -456,6 +516,7 @@ def save_device_meta_action(
     custom_name: str = Form(default=""),
     custom_room_name: str = Form(default=""),
     notes: str = Form(default=""),
+    badge_id: str = Form(default=""),
     source_tab: str = Form(default="overview"),
     db: Session = Depends(get_db),
 ):
@@ -465,6 +526,7 @@ def save_device_meta_action(
         device.custom_name = custom_name.strip() or None
         device.custom_room_name = custom_room_name.strip() or None
         device.notes = notes.strip() or None
+        device.badge_id = int(badge_id) if badge_id.isdigit() else None
         db.commit()
         flash = f"Карточка устройства «{device.display_name}» обновлена."
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)

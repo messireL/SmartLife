@@ -1,2 +1,4 @@
-APP_VERSION = "0.9.7"
+from __future__ import annotations
+
+APP_VERSION = "0.10.0"
 __version__ = APP_VERSION

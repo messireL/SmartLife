@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from app.db.models import Device
+from app.db.models import Device, DeviceBadge
 
 
 TEMP_NAME_PREFIXES = ("temp", "tmp", "temporary")
@@ -34,8 +34,9 @@ def get_devices_for_ui(
     hide_temp: bool = True,
     provider_filter: str = "",
     room_filter: str = "",
+    badge_filter: str = "",
 ):
-    stmt = select(Device)
+    stmt = select(Device).options(selectinload(Device.badge))
     stmt = stmt.where(Device.is_deleted.is_(False))
     if not include_hidden:
         stmt = stmt.where(Device.is_hidden.is_(False))
@@ -46,8 +47,13 @@ def get_devices_for_ui(
     if provider_filter.strip():
         stmt = stmt.where(Device.provider == provider_filter.strip())
     if room_filter.strip():
-        room_like = room_filter.strip()
-        stmt = stmt.where(_display_room_expr() == room_like)
+        stmt = stmt.where(_display_room_expr() == room_filter.strip())
+    if badge_filter.strip():
+        value = badge_filter.strip()
+        if value == "__none__":
+            stmt = stmt.where(Device.badge_id.is_(None))
+        else:
+            stmt = stmt.join(DeviceBadge, Device.badge_id == DeviceBadge.id).where(DeviceBadge.key == value)
     if query.strip():
         like = f"%{query.strip()}%"
         stmt = stmt.where(
@@ -86,4 +92,8 @@ def get_provider_choices(db: Session) -> list[str]:
     rows = db.execute(
         select(Device.provider).where(Device.is_deleted.is_(False)).distinct().order_by(Device.provider.asc())
     ).all()
-    return [row[0].value if hasattr(row[0], 'value') else str(row[0]) for row in rows if row[0]]
+    return [row[0].value if hasattr(row[0], "value") else str(row[0]) for row in rows if row[0]]
+
+
+def get_badge_choices(db: Session) -> list[DeviceBadge]:
+    return db.execute(select(DeviceBadge).order_by(DeviceBadge.name.asc(), DeviceBadge.id.asc())).scalars().all()

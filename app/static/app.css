@@ -524,6 +524,80 @@ td {
   color: #ffd793;
 }
 
+
+
+.badge.custom-badge {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+  padding: 5px 10px;
+}
+
+.badge.soft-badge {
+  background: rgba(148, 163, 184, 0.1);
+  color: #d2dded;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 560;
+}
+
+.badge-blue { background: rgba(93, 184, 255, 0.16); color: #a9dcff; }
+.badge-green { background: rgba(70, 214, 179, 0.16); color: #98f0d5; }
+.badge-purple { background: rgba(155, 140, 255, 0.16); color: #d8d0ff; }
+.badge-amber { background: rgba(255, 189, 89, 0.16); color: #ffe0a3; }
+.badge-rose { background: rgba(255, 143, 112, 0.16); color: #ffd0c2; }
+.badge-slate { background: rgba(148, 163, 184, 0.14); color: #d7e0ee; }
+
+.devices-table th,
+.devices-table td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.device-link {
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 560;
+}
+
+.device-link:hover {
+  color: #bfe4ff;
+}
+
+.device-title-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.device-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.metric-main {
+  font-size: 17px;
+  font-weight: 540;
+  color: var(--text-strong);
+}
+
+.filters select.input,
+.filters input.input,
+.bulk-controls select.input,
+.bulk-controls input.input {
+  min-width: 180px;
+}
+
+.sidebar-link {
+  min-height: 44px;
+  font-weight: 500;
+}
+
+.stat-subvalue {
+  font-weight: 540;
+}
+
 .status-pair {
   display: flex;
   align-items: center;

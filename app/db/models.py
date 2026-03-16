@@ -54,6 +54,19 @@ class DeviceCommandStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+class DeviceBadge(Base):
+    __tablename__ = "device_badges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    color: Mapped[str] = mapped_column(String(32), default="slate")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now())
+
+    devices: Mapped[list["Device"]] = relationship(back_populates="badge")
+
+
 class Device(Base):
     __tablename__ = "devices"
 
@@ -70,6 +83,7 @@ class Device(Base):
     custom_room_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     location_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     icon_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    badge_id: Mapped[int | None] = mapped_column(ForeignKey("device_badges.id", ondelete="SET NULL"), nullable=True, index=True)
     is_online: Mapped[bool] = mapped_column(Boolean, default=False)
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     hidden_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -107,6 +121,7 @@ class Device(Base):
     command_logs: Mapped[list["DeviceCommandLog"]] = relationship(
         back_populates="device", cascade="all, delete-orphan", order_by="desc(DeviceCommandLog.requested_at)"
     )
+    badge: Mapped[DeviceBadge | None] = relationship(back_populates="devices")
 
     __table_args__ = (UniqueConstraint("provider", "external_id", name="uq_devices_provider_external_id"),)
 
@@ -212,6 +227,7 @@ class DeviceCommandLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
     device: Mapped[Device] = relationship(back_populates="command_logs")
+
 
 
 def _parse_json_list(raw: str | None) -> list[str]:
