@@ -338,9 +338,21 @@ class TuyaOpenApiClient:
         access_token = self._get_access_token() if include_token else None
         headers = self._build_headers(method, path, params=params, body=body, access_token=access_token)
         url = f"{self.base_url}{path}"
-        response = httpx.request(method, url, params=params, json=body or None, headers=headers, timeout=self.timeout)
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            response = httpx.request(method, url, params=params, json=body or None, headers=headers, timeout=self.timeout)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            details = exc.response.text.strip()[:500] if exc.response is not None else ""
+            suffix = f"; body={details}" if details else ""
+            raise TuyaApiError(f"Tuya HTTP error {exc.response.status_code if exc.response is not None else 'n/a'} on {path}{suffix}") from exc
+        except httpx.HTTPError as exc:
+            raise TuyaApiError(f"Tuya transport error on {path}: {exc}") from exc
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            snippet = response.text.strip()[:500]
+            suffix = f": {snippet}" if snippet else ""
+            raise TuyaApiError(f"Tuya returned invalid JSON for {path}{suffix}") from exc
         if payload.get("success") is True:
             return payload
 

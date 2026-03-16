@@ -181,7 +181,7 @@ def get_tuya_scene_bridge_overview(db: Session) -> dict[str, Any]:
                 for item in automations
                 if _scene_id(item)
             ]
-        except (TuyaApiError, TuyaSceneBridgeError) as exc:
+        except Exception as exc:
             message = f"home_id {home_id}: {exc}"
             home_entry["error"] = message
             overview["errors"].append(message)
