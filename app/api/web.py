@@ -292,10 +292,26 @@ def delete_badge_action(badge_id: int, db: Session = Depends(get_db)):
     return RedirectResponse(url=f"/badges?flash={quote_plus(flash)}", status_code=303)
 
 
+def _safe_tuya_scene_bridge_overview(db: Session) -> dict[str, object]:
+    try:
+        return get_tuya_scene_bridge_overview(db)
+    except Exception as exc:
+        return {
+            "configured_home_ids": [],
+            "configured_home_ids_csv": "",
+            "homes": [],
+            "scene_choices": [],
+            "scene_index": {},
+            "warnings": [],
+            "errors": [f"Tuya scene bridge временно недоступен: {exc}"],
+            "is_configured": False,
+        }
+
+
 @router.get("/scenarios", response_class=HTMLResponse)
 def scenarios_page(request: Request, db: Session = Depends(get_db)):
     runtime = get_runtime_config(db)
-    tuya_scene_bridge = get_tuya_scene_bridge_overview(db)
+    tuya_scene_bridge = _safe_tuya_scene_bridge_overview(db)
     rules = list_automation_rules(db, scene_choices=tuya_scene_bridge.get("scene_choices", []))
     context = _base_context(request=request, active_nav="scenarios", page_title="Сценарии", runtime=runtime)
     context.update(
@@ -314,6 +330,8 @@ def scenarios_page(request: Request, db: Session = Depends(get_db)):
         }
     )
     return templates.TemplateResponse(request, "scenarios.html", context)
+
+
 
 
 @router.post("/scenarios/tuya-scenes/run")
@@ -475,6 +493,7 @@ def settings_page(request: Request, profile_key: str = Query(default=""), db: Se
     tariff_editor_plan = get_tariff_editor_plan(db)
     next_tariff_plan = get_next_scheduled_tariff_plan(db)
     change_target_month = get_tariff_change_target_month()
+    diagnostics = get_runtime_diagnostics(db)
     context = _base_context(request=request, active_nav="settings", page_title="Настройки", runtime=runtime)
     tariff_profiles = list_tariff_profiles(db, runtime)
     tariff_profile_edit = get_tariff_profile(db, profile_key, runtime)
@@ -482,12 +501,13 @@ def settings_page(request: Request, profile_key: str = Query(default=""), db: Se
         {
             "summary": get_dashboard_summary(db),
             "sync_overview": get_sync_overview(db),
+            "diagnostics": diagnostics,
             "tariff_editor_plan": tariff_editor_plan,
             "next_tariff_plan": next_tariff_plan,
             "tariff_change_target_month": change_target_month,
             "tariff_profiles": tariff_profiles,
             "tariff_profile_edit": tariff_profile_edit,
-            "tuya_scene_bridge": get_tuya_scene_bridge_overview(db),
+            "tuya_scene_bridge": _safe_tuya_scene_bridge_overview(db),
         }
     )
     return templates.TemplateResponse(request, "settings.html", context)
