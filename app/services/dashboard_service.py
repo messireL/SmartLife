@@ -369,6 +369,159 @@ def _parse_status_payload(raw_payload: str | None) -> tuple[dict[str, object], s
     return status_map, control_codes, payload
 
 
+def _parse_definition_bundle(payload: dict[str, object], key: str) -> dict[str, dict]:
+    raw = payload.get(key) or {}
+    if not isinstance(raw, dict):
+        return {}
+    result: dict[str, dict] = {}
+    for code, value in raw.items():
+        code_text = str(code or '').strip()
+        if not code_text or not isinstance(value, dict):
+            continue
+        result[code_text] = value
+    return result
+
+
+def _definition_decimal(definition: dict | None, key: str) -> Decimal | None:
+    if not definition:
+        return None
+    value = definition.get(key)
+    if value in (None, ''):
+        return None
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return None
+
+
+def _enum_option_label(code: str, value: str) -> str:
+    mappings = {
+        'relay_status': {
+            'power_off': 'После питания: выкл',
+            'power_on': 'После питания: вкл',
+            'last': 'После питания: как было',
+        },
+        'light_mode': {
+            'relay': 'Индикатор по реле',
+            'pos': 'Индикатор по положению',
+            'none': 'Индикатор выключен',
+        },
+        'mode': {
+            'turbo': 'Turbo',
+            'eco': 'Eco',
+            'auto': 'Auto',
+            'smart': 'Smart',
+            'manual': 'Ручной',
+            'heat': 'Heat',
+        },
+    }
+    value_text = str(value or '').strip()
+    if not value_text:
+        return '—'
+    return mappings.get(code, {}).get(value_text, value_text)
+
+
+def _bool_state_label(value: object) -> str:
+    if value is True:
+        return 'включён'
+    if value is False:
+        return 'выключен'
+    return 'нет свежего статуса'
+
+
+def _countdown_channel_code(code: str) -> str | None:
+    match = re.fullmatch(r'countdown_(\d+)', code or '')
+    if match:
+        return f"switch_{match.group(1)}"
+    return None
+
+
+def _format_countdown_seconds(value: object) -> str:
+    try:
+        seconds = int(str(value))
+    except Exception:
+        return 'нет свежего статуса'
+    if seconds <= 0:
+        return 'не запущен'
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f'{hours:02d}:{minutes:02d}:{secs:02d}'
+    return f'{minutes:02d}:{secs:02d}'
+
+
+def _build_advanced_controls(device: Device, channels: list[dict], status_map: dict[str, object], payload: dict[str, object], control_codes: set[str]) -> dict:
+    function_defs = _parse_definition_bundle(payload, 'function_definitions')
+    channel_map = {item['code']: item for item in channels}
+
+    def _enum_control(code: str, title: str) -> dict:
+        definition = function_defs.get(code, {})
+        options = []
+        for item in definition.get('enum_range') or []:
+            value = str(item).strip()
+            if value:
+                options.append({'value': value, 'label': _enum_option_label(code, value)})
+        current_value = status_map.get(code)
+        if current_value in (None, ''):
+            current_value = None
+        else:
+            current_value = str(current_value)
+        return {
+            'supported': code in control_codes,
+            'code': code,
+            'title': title,
+            'current_value': current_value,
+            'current_label': _enum_option_label(code, current_value) if current_value else 'нет свежего статуса',
+            'options': options,
+        }
+
+    relay_status = _enum_control('relay_status', 'Поведение после подачи питания')
+    light_mode = _enum_control('light_mode', 'Режим индикатора')
+
+    child_lock_supported = 'child_lock' in control_codes
+    child_lock_value = status_map.get('child_lock')
+    child_lock = {
+        'supported': child_lock_supported,
+        'code': 'child_lock',
+        'current_value': child_lock_value if isinstance(child_lock_value, bool) else None,
+        'current_label': _bool_state_label(child_lock_value),
+    }
+
+    countdown_items: list[dict] = []
+    for code in sorted((item for item in control_codes if re.fullmatch(r'countdown_[1-9]\d*', item)), key=lambda value: int(value.split('_')[1])):
+        definition = function_defs.get(code, {})
+        channel_code = _countdown_channel_code(code)
+        channel = channel_map.get(channel_code or '')
+        current_value = status_map.get(code)
+        min_value = _definition_decimal(definition, 'min_value')
+        max_value = _definition_decimal(definition, 'max_value')
+        step_value = _definition_decimal(definition, 'step')
+        countdown_items.append({
+            'supported': True,
+            'code': code,
+            'channel_code': channel_code,
+            'channel_label': channel['display_label'] if channel else code,
+            'channel_state_label': channel.get('status_text') if channel else 'нет статуса',
+            'current_seconds': int(current_value) if str(current_value).isdigit() else 0,
+            'current_label': _format_countdown_seconds(current_value),
+            'min_value': int(min_value) if min_value is not None else 0,
+            'max_value': int(max_value) if max_value is not None else 86400,
+            'step_value': int(step_value) if step_value is not None else 1,
+            'unit': definition.get('unit') or 's',
+        })
+
+    return {
+        'relay_status': relay_status,
+        'light_mode': light_mode,
+        'child_lock': child_lock,
+        'countdowns': countdown_items,
+        'supports_relay_status': relay_status['supported'],
+        'supports_light_mode': light_mode['supported'],
+        'supports_child_lock': child_lock_supported,
+        'supports_countdowns': bool(countdown_items),
+    }
+
+
 def _build_switch_channels(device: Device) -> list[dict]:
     status_map, raw_control_codes, payload = _parse_status_payload(device.last_status_payload)
     control_codes = set(device.control_codes) | raw_control_codes
@@ -612,6 +765,7 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
     channel_summary = _build_channel_summary(channels)
     status_map, _, payload = _parse_status_payload(device.last_status_payload)
     energy_capabilities = _build_energy_capabilities(payload, channels, status_map)
+    advanced_controls = _build_advanced_controls(device, channels, status_map, payload, control_codes)
 
     return {
         "daily": daily_rows,
@@ -679,5 +833,10 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "target_temperature_step_c": target_step,
             "switch_channels": channels,
             "supports_multi_switch": len([code for code in control_codes if _is_switch_like_code(code)]) > 1,
+            "advanced": advanced_controls,
+            "supports_relay_status": advanced_controls["supports_relay_status"],
+            "supports_light_mode": advanced_controls["supports_light_mode"],
+            "supports_child_lock": advanced_controls["supports_child_lock"],
+            "supports_countdowns": advanced_controls["supports_countdowns"],
         },
     }

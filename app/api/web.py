@@ -23,6 +23,9 @@ from app.services.dashboard_service import (
 from app.services.device_control_service import (
     DeviceControlError,
     get_recent_command_logs,
+    set_device_boolean_code_state,
+    set_device_enum_code_value,
+    set_device_integer_code_value,
     set_device_mode,
     set_device_switch_code_state,
     set_device_switch_state,
@@ -723,6 +726,72 @@ def toggle_device_channel_action(
         desired_bool = desired_state.lower() in {"1", "true", "yes", "on"}
         result = set_device_switch_code_state(db, device_id, command_code, desired_bool, trigger=SyncRunTrigger.MANUAL.value)
         flash = f"Канал {result['command_code']} переведён в состояние {'вкл' if desired_bool else 'выкл'}."
+    except DeviceControlError as exc:
+        flash = f"Команда не выполнена: {exc}"
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/devices/{device_id}/set-boolean-code")
+def set_device_boolean_code_action(
+    device_id: int,
+    command_code: str = Form(...),
+    desired_state: str = Form(...),
+    source_tab: str = Form(default="control"),
+    db: Session = Depends(get_db),
+):
+    try:
+        desired_bool = desired_state.lower() in {"1", "true", "yes", "on"}
+        result = set_device_boolean_code_state(db, device_id, command_code, desired_bool, trigger=SyncRunTrigger.MANUAL.value)
+        flash = f"Параметр {result['command_code']} обновлён: {'вкл' if desired_bool else 'выкл'}."
+    except DeviceControlError as exc:
+        flash = f"Команда не выполнена: {exc}"
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/devices/{device_id}/set-enum-code")
+def set_device_enum_code_action(
+    device_id: int,
+    command_code: str = Form(...),
+    desired_value: str = Form(...),
+    allowed_values: str = Form(default=""),
+    source_tab: str = Form(default="control"),
+    db: Session = Depends(get_db),
+):
+    try:
+        allowed = [item.strip() for item in (allowed_values or '').split(',') if item.strip()]
+        result = set_device_enum_code_value(db, device_id, command_code, desired_value, allowed_values=allowed, trigger=SyncRunTrigger.MANUAL.value)
+        flash = f"Параметр {result['command_code']} обновлён: {result['value']}."
+    except DeviceControlError as exc:
+        flash = f"Команда не выполнена: {exc}"
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/devices/{device_id}/set-integer-code")
+def set_device_integer_code_action(
+    device_id: int,
+    command_code: str = Form(...),
+    desired_value: str = Form(...),
+    minimum: str = Form(default=""),
+    maximum: str = Form(default=""),
+    step: str = Form(default=""),
+    source_tab: str = Form(default="control"),
+    db: Session = Depends(get_db),
+):
+    try:
+        def _maybe_int(value: str) -> int | None:
+            value = (value or '').strip()
+            return int(value) if value else None
+        result = set_device_integer_code_value(
+            db,
+            device_id,
+            command_code,
+            desired_value,
+            minimum=_maybe_int(minimum),
+            maximum=_maybe_int(maximum),
+            step=_maybe_int(step),
+            trigger=SyncRunTrigger.MANUAL.value,
+        )
+        flash = f"Параметр {result['command_code']} обновлён: {result['value']}."
     except DeviceControlError as exc:
         flash = f"Команда не выполнена: {exc}"
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)

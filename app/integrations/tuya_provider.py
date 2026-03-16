@@ -201,6 +201,8 @@ class TuyaCloudProvider(DeviceProvider):
                 "profile": profile,
                 "status_codes": sorted(spec.status_map),
                 "function_codes": sorted(spec.function_map),
+                "status_definitions": {code: _serialize_definition(definition) for code, definition in spec.status_map.items()},
+                "function_definitions": {code: _serialize_definition(definition) for code, definition in spec.function_map.items()},
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -497,4 +499,22 @@ def _is_supported_switch_code(code: str) -> bool:
 
 
 def _is_supported_control_code(code: str) -> bool:
-    return _is_supported_switch_code(code) or code in {"mode", "temp_set"}
+    if _is_supported_switch_code(code) or code in {"mode", "temp_set", "relay_status", "light_mode", "child_lock"}:
+        return True
+    return bool(re.fullmatch(r"countdown_[1-9]\d*", code))
+
+
+def _serialize_definition(definition: TuyaCodeDefinition) -> dict[str, Any]:
+    def _dec(value: Decimal | None) -> str | None:
+        return None if value is None else format(value, "f")
+
+    return {
+        "code": definition.code,
+        "value_type": definition.value_type,
+        "scale": definition.scale,
+        "unit": definition.unit,
+        "min_value": _dec(definition.min_value),
+        "max_value": _dec(definition.max_value),
+        "step": _dec(definition.step),
+        "enum_range": list(definition.enum_range),
+    }

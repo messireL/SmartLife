@@ -116,6 +116,9 @@
         <div class="status-row"><span class="muted">Плашка пользователя</span><span>{% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% else %}—{% endif %}</span></div>
         <div class="status-row"><span class="muted">Технический профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
         <div class="status-row"><span class="muted">Тарифный профиль</span><span>{{ device_view.tariff_profile.name }}</span></div>
+        {% if device_view.controls.supports_relay_status %}<div class="status-row"><span class="muted">Подача питания</span><span>{{ device_view.controls.advanced.relay_status.current_label }}</span></div>{% endif %}
+        {% if device_view.controls.supports_light_mode %}<div class="status-row"><span class="muted">Индикатор</span><span>{{ device_view.controls.advanced.light_mode.current_label }}</span></div>{% endif %}
+        {% if device_view.controls.supports_child_lock %}<div class="status-row"><span class="muted">Детский замок</span><span>{{ device_view.controls.advanced.child_lock.current_label }}</span></div>{% endif %}
         {% if device_view.channels.has_power_strip_layout %}<div class="status-row"><span class="muted">Каналы</span><span>{{ device_view.channels.socket_count }} розеток{% if device_view.channels.usb_count %} · USB {{ "блок" if device_view.channels.usb_count == 1 else device_view.channels.usb_count }}{% endif %}</span></div>{% endif %}
         <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
         <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
@@ -134,6 +137,9 @@
         <div class="status-row"><span class="muted">Плашка пользователя</span><span>{% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% else %}—{% endif %}</span></div>
         <div class="status-row"><span class="muted">Технический профиль</span><span>{{ device_view.profile.label or '—' }}</span></div>
         <div class="status-row"><span class="muted">Тарифный профиль</span><span>{{ device_view.tariff_profile.name }}</span></div>
+        {% if device_view.controls.supports_relay_status %}<div class="status-row"><span class="muted">Подача питания</span><span>{{ device_view.controls.advanced.relay_status.current_label }}</span></div>{% endif %}
+        {% if device_view.controls.supports_light_mode %}<div class="status-row"><span class="muted">Индикатор</span><span>{{ device_view.controls.advanced.light_mode.current_label }}</span></div>{% endif %}
+        {% if device_view.controls.supports_child_lock %}<div class="status-row"><span class="muted">Детский замок</span><span>{{ device_view.controls.advanced.child_lock.current_label }}</span></div>{% endif %}
         {% if device_view.channels.has_power_strip_layout %}<div class="status-row"><span class="muted">Каналы</span><span>{{ device_view.channels.socket_count }} розеток{% if device_view.channels.usb_count %} · USB {{ "блок" if device_view.channels.usb_count == 1 else device_view.channels.usb_count }}{% endif %}</span></div>{% endif %}
         <div class="status-row"><span class="muted">Последний статус</span><span>{{ device.last_status_at|localdt if device.last_status_at else '—' }}</span></div>
         <div class="status-row"><span class="muted">Последний seen</span><span>{{ device.last_seen_at|localdt if device.last_seen_at else '—' }}</span></div>
@@ -355,6 +361,99 @@
       </div>
       {% endif %}
 
+      {% if device_view.controls.supports_relay_status %}
+      <div class="control-group">
+        <div class="muted tiny">{{ device_view.controls.advanced.relay_status.title }}</div>
+        <div class="muted tiny">Сейчас: {{ device_view.controls.advanced.relay_status.current_label }}</div>
+        {% if device_view.controls.advanced.relay_status.options %}
+        <form class="inline-form" method="post" action="/devices/{{ device.id }}/set-enum-code">
+          <input type="hidden" name="source_tab" value="control">
+          <input type="hidden" name="command_code" value="{{ device_view.controls.advanced.relay_status.code }}">
+          <input type="hidden" name="allowed_values" value="{{ device_view.controls.advanced.relay_status.options | map(attribute='value') | join(',') }}">
+          <select class="input" name="desired_value">
+            {% for item in device_view.controls.advanced.relay_status.options %}
+              <option value="{{ item.value }}" {% if device_view.controls.advanced.relay_status.current_value == item.value %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit">Сохранить режим питания</button>
+        </form>
+        {% else %}
+        <div class="empty-state">Tuya подтвердила команду relay_status, но не отдала допустимые варианты. После sync это обычно проясняется.</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if device_view.controls.supports_light_mode %}
+      <div class="control-group">
+        <div class="muted tiny">{{ device_view.controls.advanced.light_mode.title }}</div>
+        <div class="muted tiny">Сейчас: {{ device_view.controls.advanced.light_mode.current_label }}</div>
+        {% if device_view.controls.advanced.light_mode.options %}
+        <form class="inline-form" method="post" action="/devices/{{ device.id }}/set-enum-code">
+          <input type="hidden" name="source_tab" value="control">
+          <input type="hidden" name="command_code" value="{{ device_view.controls.advanced.light_mode.code }}">
+          <input type="hidden" name="allowed_values" value="{{ device_view.controls.advanced.light_mode.options | map(attribute='value') | join(',') }}">
+          <select class="input" name="desired_value">
+            {% for item in device_view.controls.advanced.light_mode.options %}
+              <option value="{{ item.value }}" {% if device_view.controls.advanced.light_mode.current_value == item.value %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit">Сохранить индикатор</button>
+        </form>
+        {% else %}
+        <div class="empty-state">Tuya подтвердила команду light_mode, но пока не прислала список допустимых вариантов.</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if device_view.controls.supports_child_lock %}
+      <div class="control-group">
+        <div class="muted tiny">Детский замок</div>
+        <div class="muted tiny">Сейчас: {{ device_view.controls.advanced.child_lock.current_label }}</div>
+        <div class="control-actions">
+          <form method="post" action="/devices/{{ device.id }}/set-boolean-code">
+            <input type="hidden" name="command_code" value="{{ device_view.controls.advanced.child_lock.code }}">
+            <input type="hidden" name="desired_state" value="true">
+            <input type="hidden" name="source_tab" value="control">
+            <button type="submit" {% if device_view.controls.advanced.child_lock.current_value is sameas true %}disabled{% endif %}>Включить замок</button>
+          </form>
+          <form method="post" action="/devices/{{ device.id }}/set-boolean-code">
+            <input type="hidden" name="command_code" value="{{ device_view.controls.advanced.child_lock.code }}">
+            <input type="hidden" name="desired_state" value="false">
+            <input type="hidden" name="source_tab" value="control">
+            <button type="submit" class="button-secondary" {% if device_view.controls.advanced.child_lock.current_value is sameas false %}disabled{% endif %}>Выключить замок</button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if device_view.controls.supports_countdowns %}
+      <div class="control-group">
+        <div class="muted tiny">Таймеры каналов</div>
+        <div class="channel-control-list">
+          {% for timer in device_view.controls.advanced.countdowns %}
+            <div class="channel-control-row">
+              <div class="channel-control-meta">
+                <div class="channel-control-title-row">
+                  <div class="channel-control-title">{{ timer.channel_label }}</div>
+                  <span class="badge soft-badge">{{ timer.current_label }}</span>
+                </div>
+                <div class="muted tiny">{{ timer.code }} · канал сейчас {{ timer.channel_state_label }}</div>
+              </div>
+              <form class="inline-form" method="post" action="/devices/{{ device.id }}/set-integer-code">
+                <input type="hidden" name="source_tab" value="control">
+                <input type="hidden" name="command_code" value="{{ timer.code }}">
+                <input type="hidden" name="minimum" value="{{ timer.min_value }}">
+                <input type="hidden" name="maximum" value="{{ timer.max_value }}">
+                <input type="hidden" name="step" value="{{ timer.step_value }}">
+                <input class="input input-small" type="number" name="desired_value" value="{{ timer.current_seconds }}" min="{{ timer.min_value }}" max="{{ timer.max_value }}" step="{{ timer.step_value }}">
+                <button type="submit">Сохранить таймер</button>
+              </form>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       {% if device_view.controls.supports_switch %}
       <div class="control-group">
         <div class="muted tiny">Питание</div>
@@ -403,7 +502,7 @@
       </div>
       {% endif %}
 
-      {% if not device_view.controls.supports_switch and not device_view.controls.supports_mode and not device_view.controls.supports_target_temperature and not device_view.controls.supports_multi_switch %}
+      {% if not device_view.controls.supports_switch and not device_view.controls.supports_mode and not device_view.controls.supports_target_temperature and not device_view.controls.supports_multi_switch and not device_view.controls.supports_relay_status and not device_view.controls.supports_light_mode and not device_view.controls.supports_child_lock and not device_view.controls.supports_countdowns %}
       <div class="empty-state">Для этого устройства в Tuya Cloud пока не обнаружены поддерживаемые команды управления.</div>
       {% endif %}
     </article>

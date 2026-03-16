@@ -66,6 +66,102 @@ def set_device_switch_code_state(db: Session, device_id: int, command_code: str,
 
 
 
+def set_device_boolean_code_state(db: Session, device_id: int, command_code: str, desired_state: bool, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
+    device = _get_active_device(db, device_id)
+    provider = _get_matching_provider(db, device)
+    code = (command_code or '').strip()
+    if not code:
+        raise DeviceControlError('код команды не должен быть пустым')
+    if code not in set(device.control_codes):
+        raise DeviceControlError(f'устройство не поддерживает команду {code}')
+    result = _execute_device_command(
+        db,
+        device=device,
+        provider=provider,
+        command_code=code,
+        command_value=bool(desired_state),
+        trigger=trigger,
+        success_updates={
+            'last_status_at': utc_now_naive(),
+        },
+    )
+    result['command_code'] = code
+    result['value'] = bool(desired_state)
+    return result
+
+
+
+def set_device_enum_code_value(db: Session, device_id: int, command_code: str, desired_value: str, *, allowed_values: list[str] | tuple[str, ...] | None = None, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
+    device = _get_active_device(db, device_id)
+    provider = _get_matching_provider(db, device)
+    code = (command_code or '').strip()
+    value = (desired_value or '').strip()
+    if not code:
+        raise DeviceControlError('код команды не должен быть пустым')
+    if not value:
+        raise DeviceControlError('значение не должно быть пустым')
+    if code not in set(device.control_codes):
+        raise DeviceControlError(f'устройство не поддерживает команду {code}')
+    allowed = [str(item).strip() for item in (allowed_values or []) if str(item).strip()]
+    if allowed and value not in allowed:
+        raise DeviceControlError(f'значение {value!r} не входит в допустимый список')
+    result = _execute_device_command(
+        db,
+        device=device,
+        provider=provider,
+        command_code=code,
+        command_value=value,
+        trigger=trigger,
+        success_updates={
+            'last_status_at': utc_now_naive(),
+        },
+    )
+    result['command_code'] = code
+    result['value'] = value
+    return result
+
+
+
+def set_device_integer_code_value(db: Session, device_id: int, command_code: str, desired_value: str, *, minimum: int | None = None, maximum: int | None = None, step: int | None = None, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
+    device = _get_active_device(db, device_id)
+    provider = _get_matching_provider(db, device)
+    code = (command_code or '').strip()
+    raw = (desired_value or '').strip()
+    if not code:
+        raise DeviceControlError('код команды не должен быть пустым')
+    if not raw:
+        raise DeviceControlError('значение не должно быть пустым')
+    if code not in set(device.control_codes):
+        raise DeviceControlError(f'устройство не поддерживает команду {code}')
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise DeviceControlError('значение должно быть целым числом') from exc
+    if minimum is not None and value < minimum:
+        raise DeviceControlError(f'значение ниже допустимого минимума {minimum}')
+    if maximum is not None and value > maximum:
+        raise DeviceControlError(f'значение выше допустимого максимума {maximum}')
+    if step and step > 0:
+        base = minimum or 0
+        if (value - base) % step != 0:
+            raise DeviceControlError(f'значение должно идти с шагом {step}')
+    result = _execute_device_command(
+        db,
+        device=device,
+        provider=provider,
+        command_code=code,
+        command_value=value,
+        trigger=trigger,
+        success_updates={
+            'last_status_at': utc_now_naive(),
+        },
+    )
+    result['command_code'] = code
+    result['value'] = value
+    return result
+
+
+
 def set_device_mode(db: Session, device_id: int, desired_mode: str, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
     device = _get_active_device(db, device_id)
     provider = _get_matching_provider(db, device)
