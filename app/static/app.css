@@ -1548,6 +1548,35 @@ button:disabled:hover {
   color: #ffd1c6;
 }
 
+.scenario-target-preview {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.scenario-target-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.scenario-target-preview-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--text);
+}
+
+.scenario-target-preview-alert {
+  margin: 0;
+}
+
 @media (max-width: 900px) {
   .scenario-filter-actions {
     align-items: stretch;

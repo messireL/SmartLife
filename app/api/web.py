@@ -462,6 +462,12 @@ def scenarios_page(
 ):
     runtime = get_runtime_config(db)
     tuya_scene_bridge = _safe_tuya_scene_bridge_overview(db)
+    automation_target_choices = get_automation_target_choices(db, tuya_bridge=tuya_scene_bridge)
+    automation_target_preview_map = {
+        str(item.get("value")): item.get("preview", {})
+        for item in automation_target_choices
+        if item.get("value")
+    }
     rules = list_automation_rules(
         db,
         scene_choices=tuya_scene_bridge.get("scene_choices", []),
@@ -493,7 +499,8 @@ def scenarios_page(
             "automation_rules": filtered_rules,
             "automation_rules_total": len(rules),
             "automation_rules_filtered": len(filtered_rules),
-            "automation_target_choices": get_automation_target_choices(db, tuya_bridge=tuya_scene_bridge),
+            "automation_target_choices": automation_target_choices,
+            "automation_target_preview_map": automation_target_preview_map,
             "automation_runs": filtered_runs,
             "automation_runs_total": len(formatted_runs),
             "automation_runs_filtered": len(filtered_runs),

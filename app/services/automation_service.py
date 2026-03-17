@@ -173,6 +173,110 @@ def _group_choice_label(*, group_kind: str, label: str, devices_total: int, chan
     return f"{prefix} · {label} ({devices_total} устр. / {channels_total} канал.)"
 
 
+def _member_display_label(device: Device, code: str) -> str:
+    return f"{device.display_name} · {_label_for_switch_code(device, code)}"
+
+
+def _preview_lines(lines: list[str], *, limit: int = 5) -> tuple[list[str], int]:
+    visible = lines[:limit]
+    return visible, max(0, len(lines) - len(visible))
+
+
+def _compact_list(lines: list[str], *, limit: int = 3, separator: str = ", ") -> str:
+    cleaned = [str(item).strip() for item in lines if str(item or "").strip()]
+    if not cleaned:
+        return ""
+    visible = cleaned[:limit]
+    more = len(cleaned) - len(visible)
+    result = separator.join(visible)
+    if more > 0:
+        result = f"{result}{separator}ещё {more}"
+    return result
+
+
+def _build_members_preview(
+    *,
+    title: str,
+    members: list[tuple[Device, str]],
+    note: str = "",
+    empty_warning: str = "",
+    empty_summary: str = "0 устройств · 0 каналов",
+) -> dict[str, Any]:
+    seen: set[tuple[int, str]] = set()
+    device_ids: set[int] = set()
+    lines: list[str] = []
+    for device, code in members:
+        key = (device.id, code)
+        if key in seen:
+            continue
+        seen.add(key)
+        device_ids.add(device.id)
+        lines.append(_member_display_label(device, code))
+    visible_lines, more_count = _preview_lines(lines)
+    return {
+        "title": title,
+        "summary": f"{len(device_ids)} устройств · {len(seen)} каналов" if seen else empty_summary,
+        "lines": visible_lines,
+        "more_count": more_count,
+        "note": note,
+        "warning": empty_warning if not seen else "",
+        "devices_total": len(device_ids),
+        "channels_total": len(seen),
+    }
+
+
+def _build_group_preview(db: Session, *, group_kind: str, group_key: str) -> dict[str, Any]:
+    selector = _encode_group_selector(group_kind, group_key)
+    members = _resolve_group_targets(db, group_kind=group_kind, group_key=group_key)
+    return _build_members_preview(
+        title=_rule_target_label_group(selector, db=db),
+        members=members,
+        note="Состав группы считается по текущим устройствам и ролям после sync, без ручного пересоздания сценария.",
+        empty_warning="Сейчас группа пустая: после sync или переименований проверь комнаты, плашки и роли каналов.",
+    )
+
+
+def _build_device_preview(device: Device, code: str) -> dict[str, Any]:
+    room_name = device.display_room_name or "Без комнаты"
+    line = _member_display_label(device, code)
+    return {
+        "title": _rule_target_label_device(device, code),
+        "summary": f"Комната: {room_name}",
+        "lines": [line],
+        "more_count": 0,
+        "note": "Команда уйдёт в один конкретный канал устройства.",
+        "warning": "",
+        "devices_total": 1,
+        "channels_total": 1,
+    }
+
+
+def _build_scene_preview(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "title": str(item.get("label") or item.get("scene_name") or "Tuya-сцена"),
+        "summary": f"Дом: {item.get('home_name') or '—'} · scene_id {item.get('scene_id') or '—'}",
+        "lines": [f"{item.get('home_name') or 'Дом'} · {item.get('scene_name') or item.get('scene_id') or 'Без имени'}"],
+        "more_count": 0,
+        "note": "Поле действия ниже игнорируется: Tap-to-Run просто запускается.",
+        "warning": "",
+        "devices_total": 0,
+        "channels_total": 0,
+    }
+
+
+def _build_automation_preview(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "title": str(item.get("label") or item.get("automation_name") or "Tuya-автоматизация"),
+        "summary": f"Дом: {item.get('home_name') or '—'} · automation_id {item.get('automation_id') or '—'}",
+        "lines": [f"{item.get('home_name') or 'Дом'} · {item.get('automation_name') or item.get('automation_id') or 'Без имени'}"],
+        "more_count": 0,
+        "note": "Поле действия определяет, включать или выключать эту Tuya-автоматизацию по расписанию.",
+        "warning": "",
+        "devices_total": 0,
+        "channels_total": 0,
+    }
+
+
 def _build_group_target_choices(db: Session) -> list[dict[str, Any]]:
     devices = db.execute(
         select(Device).options(joinedload(Device.badge))
@@ -216,6 +320,7 @@ def _build_group_target_choices(db: Session) -> list[dict[str, Any]]:
             bucket["channels_total"] += 1
 
     for room_name, meta in sorted(room_map.items(), key=lambda item: item[0].lower()):
+        preview = _build_group_preview(db, group_kind="room", group_key=room_name)
         choices.append({
             "value": _encode_group_selector("room", room_name),
             "action_kind": DEVICE_GROUP_KIND,
@@ -227,9 +332,11 @@ def _build_group_target_choices(db: Session) -> list[dict[str, Any]]:
             "device_name": room_name,
             "channel_name": "Все каналы комнаты",
             "label": _group_choice_label(group_kind="room", label=room_name, devices_total=meta["devices_total"], channels_total=meta["channels_total"]),
+            "preview": preview,
         })
     for badge_key, meta in sorted(badge_map.items(), key=lambda item: str(item[1]["badge_name"]).lower()):
         badge_name = str(meta["badge_name"])
+        preview = _build_group_preview(db, group_kind="badge", group_key=badge_key)
         choices.append({
             "value": _encode_group_selector("badge", badge_key),
             "action_kind": DEVICE_GROUP_KIND,
@@ -241,10 +348,12 @@ def _build_group_target_choices(db: Session) -> list[dict[str, Any]]:
             "device_name": badge_name,
             "channel_name": "Все каналы плашки",
             "label": _group_choice_label(group_kind="badge", label=badge_name, devices_total=int(meta["devices_total"]), channels_total=int(meta["channels_total"])),
+            "preview": preview,
         })
     role_label_map = {item["key"]: item["label"] for item in get_channel_role_choices() if item.get("key")}
     for role_key, meta in sorted(role_map.items(), key=lambda item: str(item[1]["role_label"]).lower()):
         role_label = str(meta["role_label"] or role_label_map.get(role_key) or role_key)
+        preview = _build_group_preview(db, group_kind="role", group_key=role_key)
         choices.append({
             "value": _encode_group_selector("role", role_key),
             "action_kind": DEVICE_GROUP_KIND,
@@ -256,6 +365,7 @@ def _build_group_target_choices(db: Session) -> list[dict[str, Any]]:
             "device_name": role_label,
             "channel_name": "Все каналы роли",
             "label": _group_choice_label(group_kind="role", label=role_label, devices_total=int(meta["devices_total"]), channels_total=int(meta["channels_total"])),
+            "preview": preview,
         })
     return choices
 
@@ -331,6 +441,8 @@ def _hydrate_rule(
 ) -> dict[str, Any]:
     weekdays_set = set(rule.weekdays)
     next_run = get_rule_next_run(rule)
+    target_preview = {"title": target_label if 'target_label' in locals() else rule.command_code, "summary": "", "lines": [], "more_count": 0, "note": "", "warning": "", "devices_total": 0, "channels_total": 0}
+    target_scope_label: str | None = None
     if rule.action_kind == TUYA_SCENE_KIND:
         target_label = _rule_target_label_scene(rule.tuya_home_id, rule.tuya_scene_id, scene_choices)
         desired_state_label = "запустить сцену"
@@ -338,6 +450,13 @@ def _hydrate_rule(
         device_badge = None
         target_code = rule.tuya_scene_id or rule.command_code
         selected_target_key = f"scene:{rule.tuya_home_id}:{rule.tuya_scene_id}"
+        target_item = next((item for item in (scene_choices or []) if item.get("home_id") == rule.tuya_home_id and item.get("scene_id") == rule.tuya_scene_id), None)
+        target_preview = _build_scene_preview(target_item or {
+            "label": target_label,
+            "home_name": rule.tuya_home_id or "—",
+            "scene_id": rule.tuya_scene_id or "—",
+            "scene_name": rule.tuya_scene_id or "—",
+        })
     elif rule.action_kind == TUYA_AUTOMATION_KIND:
         target_label = _rule_target_label_automation(rule.tuya_home_id, rule.tuya_scene_id, automation_choices)
         desired_state_label = "включить автоматизацию" if rule.desired_state else "выключить автоматизацию"
@@ -345,6 +464,13 @@ def _hydrate_rule(
         device_badge = None
         target_code = rule.tuya_scene_id or rule.command_code
         selected_target_key = f"automation:{rule.tuya_home_id}:{rule.tuya_scene_id}"
+        target_item = next((item for item in (automation_choices or []) if item.get("home_id") == rule.tuya_home_id and item.get("automation_id") == rule.tuya_scene_id), None)
+        target_preview = _build_automation_preview(target_item or {
+            "label": target_label,
+            "home_name": rule.tuya_home_id or "—",
+            "automation_id": rule.tuya_scene_id or "—",
+            "automation_name": rule.tuya_scene_id or "—",
+        })
     elif rule.action_kind == DEVICE_GROUP_KIND:
         target_label = _rule_target_label_group(rule.command_code, db=db)
         desired_state_label = "включить группу" if rule.desired_state else "выключить группу"
@@ -352,6 +478,21 @@ def _hydrate_rule(
         device_badge = None
         target_code = rule.command_code
         selected_target_key = rule.command_code
+        parsed = _parse_group_selector(rule.command_code)
+        if db is not None:
+            target_preview = _build_group_preview(db, group_kind=parsed["group_kind"], group_key=parsed["group_key"])
+        else:
+            target_preview = {
+                "title": target_label,
+                "summary": "Состав группы будет посчитан после открытия страницы.",
+                "lines": [],
+                "more_count": 0,
+                "note": "Состав группы живой и зависит от текущих устройств, комнат, плашек и ролей.",
+                "warning": "",
+                "devices_total": 0,
+                "channels_total": 0,
+            }
+        target_scope_label = target_preview.get("summary") or None
     else:
         target_label = _rule_target_label_device(rule.device, rule.command_code) if rule.device else rule.command_code
         desired_state_label = "включить" if rule.desired_state else "выключить"
@@ -359,6 +500,19 @@ def _hydrate_rule(
         device_badge = rule.device.badge.name if rule.device and rule.device.badge else None
         target_code = rule.command_code
         selected_target_key = f"device:{rule.device_id}:{rule.command_code}" if rule.device_id else rule.command_code
+        if rule.device is not None:
+            target_preview = _build_device_preview(rule.device, rule.command_code)
+        else:
+            target_preview = {
+                "title": target_label,
+                "summary": "Устройство больше недоступно",
+                "lines": [],
+                "more_count": 0,
+                "note": "",
+                "warning": "Устройство удалено или больше не приходит от провайдера.",
+                "devices_total": 0,
+                "channels_total": 0,
+            }
     return {
         "id": rule.id,
         "name": rule.name,
@@ -368,6 +522,13 @@ def _hydrate_rule(
         "device_badge": device_badge,
         "target_code": target_code,
         "target_label": target_label,
+        "target_scope_label": target_scope_label,
+        "target_preview_title": target_preview.get("title") or target_label,
+        "target_preview_summary": target_preview.get("summary") or "",
+        "target_preview_lines": target_preview.get("lines") or [],
+        "target_preview_more_count": int(target_preview.get("more_count") or 0),
+        "target_preview_note": target_preview.get("note") or "",
+        "target_preview_warning": target_preview.get("warning") or "",
         "selected_target_key": selected_target_key,
         "desired_state": rule.desired_state,
         "desired_state_label": desired_state_label,
@@ -456,6 +617,7 @@ def get_automation_target_choices(db: Session, *, tuya_bridge: dict[str, Any] | 
                     "room": device.display_room_name or "Без комнаты",
                     "device_name": device.display_name,
                     "channel_name": _label_for_switch_code(device, code),
+                    "preview": _build_device_preview(device, code),
                 }
             )
     scene_choices = tuya_bridge.get("scene_choices", []) if tuya_bridge else get_tuya_scene_choices(db)
@@ -469,6 +631,7 @@ def get_automation_target_choices(db: Session, *, tuya_bridge: dict[str, Any] | 
             "room": item["home_name"],
             "device_name": item["home_name"],
             "channel_name": item["scene_name"],
+            "preview": _build_scene_preview(item),
         }
         for item in scene_choices
     )
@@ -481,6 +644,7 @@ def get_automation_target_choices(db: Session, *, tuya_bridge: dict[str, Any] | 
             "room": item["home_name"],
             "device_name": item["home_name"],
             "channel_name": item["automation_name"],
+            "preview": _build_automation_preview(item),
         }
         for item in automation_choices
     )
@@ -751,6 +915,7 @@ def execute_automation_rule(db: Session, rule: AutomationRule, *, trigger: str, 
             if not members:
                 raise DeviceControlError("группа больше не содержит управляемых каналов")
             success_count = 0
+            success_lines: list[str] = []
             errors: list[str] = []
             seen: set[tuple[int, str]] = set()
             for device, code in members:
@@ -761,15 +926,23 @@ def execute_automation_rule(db: Session, rule: AutomationRule, *, trigger: str, 
                 try:
                     set_device_switch_code_state(db, device.id, code, rule.desired_state, trigger=trigger)
                     success_count += 1
+                    success_lines.append(_member_display_label(device, code))
                 except DeviceControlError as exc:
-                    errors.append(f"{device.display_name} · {_label_for_switch_code(device, code)}: {exc}")
+                    errors.append(f"{_member_display_label(device, code)}: {exc}")
             summary_label = _rule_target_label_group(rule.command_code, db=db)
             if success_count == 0:
                 raise DeviceControlError('; '.join(errors) if errors else 'групповая команда не выполнилась')
-            summary = f"{summary_label} → {'вкл' if rule.desired_state else 'выкл'} · успех {success_count}/{len(seen)}"
+            summary_parts = [f"{summary_label} → {'вкл' if rule.desired_state else 'выкл'}", f"успех {success_count}/{len(seen)}"]
+            ok_sample = _compact_list(success_lines, limit=3)
+            if ok_sample:
+                summary_parts.append(f"ok: {ok_sample}")
+            summary = " · ".join(summary_parts)
+            error_message = ""
             if errors:
-                summary = f"{summary} · ошибок {len(errors)}"
-            _log_rule_run(db, rule=rule, trigger=trigger, status='success' if not errors else 'error', result_summary=summary, error_message='; '.join(errors) if errors else None)
+                error_message = f"Ошибки ({len(errors)}): {_compact_list(errors, limit=4, separator='; ')}"
+            _log_rule_run(db, rule=rule, trigger=trigger, status='success' if not errors else 'error', result_summary=summary, error_message=error_message or None)
+            if error_message:
+                summary = f"{summary} · {error_message}"
         except Exception as exc:
             summary = str(exc)
             _log_rule_run(db, rule=rule, trigger=trigger, status='error', error_message=summary)
@@ -793,7 +966,7 @@ def execute_automation_rule(db: Session, rule: AutomationRule, *, trigger: str, 
             rule.desired_state,
             trigger=trigger,
         )
-        summary = f"{device.display_name} · {result['command_code']} → {'вкл' if rule.desired_state else 'выкл'}"
+        summary = f"{device.display_name} · {_label_for_switch_code(device, result['command_code'])} → {'вкл' if rule.desired_state else 'выкл'}"
         _log_rule_run(db, rule=rule, trigger=trigger, status="success", result_summary=summary)
     except DeviceControlError as exc:
         _log_rule_run(db, rule=rule, trigger=trigger, status="error", error_message=str(exc))

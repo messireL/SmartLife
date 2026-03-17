@@ -110,13 +110,16 @@
           <input class="input" type="text" name="name" placeholder="Например: Ночной бойлер или Включить Tuya-автоматизацию квартиры 2">
         </label>
         <label>Что запускать
-          <select class="input" name="target_key" required>
+          <select class="input" name="target_key" required data-target-preview-select>
             <option value="">Выбери устройство, группу, Tuya-сцену или Tuya-автоматизацию</option>
             {% for item in automation_target_choices %}
               <option value="{{ item.value }}">{{ item.label }}</option>
             {% endfor %}
           </select>
         </label>
+        <div class="scenario-target-preview" data-target-preview-output>
+          <div class="muted tiny">Выбери цель выше — здесь сразу появится текущий состав группы или краткая карточка конкретной цели.</div>
+        </div>
         <div class="form-grid two-cols">
           <label>Действие
             <select class="input" name="desired_state">
@@ -180,7 +183,7 @@
                 {% if rule.is_enabled %}<span class="badge online">включён</span>{% else %}<span class="badge idle">пауза</span>{% endif %}
                 {% if rule.action_kind == 'device_switch' %}<span class="badge">локальный</span>{% elif rule.action_kind == 'device_group' %}<span class="badge">группа</span>{% elif rule.action_kind == 'tuya_scene' %}<span class="badge">Tap-to-Run</span>{% else %}<span class="badge">Tuya Automation</span>{% endif %}
               </div>
-              <div class="muted tiny">{{ rule.target_label }} · {{ rule.desired_state_label }} в {{ rule.schedule_time }} · {{ rule.weekdays_label }}</div>
+              <div class="muted tiny">{{ rule.target_label }}{% if rule.target_scope_label %} · {{ rule.target_scope_label }}{% endif %} · {{ rule.desired_state_label }} в {{ rule.schedule_time }} · {{ rule.weekdays_label }}</div>
               <div class="muted tiny">Следующий запуск: {{ rule.next_run_label }}</div>
               <div class="muted tiny">Последний итог: <span class="badge {{ rule.last_run_status_badge }}">{{ rule.last_run_status_label }}</span>{% if rule.last_result_summary %} · {{ rule.last_result_summary }}{% endif %}</div>
             </div>
@@ -199,11 +202,36 @@
               <input class="input" type="text" name="name" value="{{ rule.name }}">
             </label>
             <label>Что запускать
-              <select class="input" name="target_key" required>
+              <select class="input" name="target_key" required data-target-preview-select>
                 {% for item in automation_target_choices %}                  <option value="{{ item.value }}" {% if item.value == rule.selected_target_key %}selected{% endif %}>{{ item.label }}</option>
                 {% endfor %}
               </select>
             </label>
+            <div class="scenario-target-preview" data-target-preview-output>
+              <div class="scenario-target-preview-head">
+                <strong>{{ rule.target_preview_title }}</strong>
+                {% if rule.target_scope_label %}<span class="badge idle">{{ rule.target_scope_label }}</span>{% endif %}
+              </div>
+              {% if rule.target_preview_warning %}
+                <div class="alert danger scenario-target-preview-alert">{{ rule.target_preview_warning }}</div>
+              {% endif %}
+              {% if rule.target_preview_lines %}
+                <ul class="scenario-target-preview-list">
+                  {% for line in rule.target_preview_lines %}
+                    <li>{{ line }}</li>
+                  {% endfor %}
+                </ul>
+                {% if rule.target_preview_more_count > 0 %}
+                  <div class="muted tiny">И ещё {{ rule.target_preview_more_count }} элемент(ов) в составе.</div>
+                {% endif %}
+              {% endif %}
+              {% if rule.target_preview_summary %}
+                <div class="muted tiny">{{ rule.target_preview_summary }}</div>
+              {% endif %}
+              {% if rule.target_preview_note %}
+                <div class="muted tiny">{{ rule.target_preview_note }}</div>
+              {% endif %}
+            </div>
             <div class="form-grid two-cols">
               <label>Действие
                 <select class="input" name="desired_state">
@@ -370,10 +398,14 @@
               <td>{{ item.trigger_label }}</td>
               <td><span class="badge {{ item.status_badge }}">{{ item.status_label }}</span></td>
               <td>
+                {% if item.result_summary %}
+                  <div>{{ item.result_summary }}</div>
+                {% endif %}
                 {% if item.error_message %}
-                  <span class="log-error-text">{{ item.error_message }}</span>
-                {% else %}
-                  {{ item.result_summary or '—' }}
+                  <div class="log-error-text tiny">{{ item.error_message }}</div>
+                {% endif %}
+                {% if not item.result_summary and not item.error_message %}
+                  —
                 {% endif %}
               </td>
             </tr>
@@ -385,4 +417,59 @@
     </div>
   </section>
 {% endif %}
+
+<script>
+  (() => {
+    const previewMap = {{ automation_target_preview_map|tojson }};
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function renderPreview(container, meta) {
+      if (!container) return;
+      if (!meta || (!meta.title && !meta.summary && !(meta.lines || []).length)) {
+        container.innerHTML = '<div class="muted tiny">Выбери цель выше — здесь сразу появится текущий состав группы или краткая карточка конкретной цели.</div>';
+        return;
+      }
+      const lines = Array.isArray(meta.lines) ? meta.lines : [];
+      const moreCount = Number(meta.more_count || 0);
+      const summaryBadge = meta.devices_total || meta.channels_total
+        ? `<span class="badge idle">${escapeHtml(meta.devices_total || 0)} устр. / ${escapeHtml(meta.channels_total || 0)} канал.</span>`
+        : '';
+      const linesHtml = lines.length
+        ? `<ul class="scenario-target-preview-list">${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`
+        : '';
+      const moreHtml = moreCount > 0 ? `<div class="muted tiny">И ещё ${escapeHtml(moreCount)} элемент(ов) в составе.</div>` : '';
+      const summaryHtml = meta.summary ? `<div class="muted tiny">${escapeHtml(meta.summary)}</div>` : '';
+      const noteHtml = meta.note ? `<div class="muted tiny">${escapeHtml(meta.note)}</div>` : '';
+      const warningHtml = meta.warning ? `<div class="alert danger scenario-target-preview-alert">${escapeHtml(meta.warning)}</div>` : '';
+      container.innerHTML = `
+        <div class="scenario-target-preview-head">
+          <strong>${escapeHtml(meta.title || 'Цель')}</strong>
+          ${summaryBadge}
+        </div>
+        ${warningHtml}
+        ${linesHtml}
+        ${moreHtml}
+        ${summaryHtml}
+        ${noteHtml}
+      `;
+    }
+
+    document.querySelectorAll('[data-target-preview-select]').forEach((select) => {
+      const form = select.closest('form');
+      const container = form ? form.querySelector('[data-target-preview-output]') : null;
+      const update = () => renderPreview(container, previewMap[select.value] || null);
+      select.addEventListener('change', update);
+      update();
+    });
+  })();
+</script>
+
 {% endblock %}
