@@ -152,27 +152,46 @@ def _store_status_snapshots(
             .limit(1)
         ).scalar_one_or_none()
 
+        effective_power_w = item.power_w
+        effective_voltage_v = item.voltage_v
+        effective_current_a = item.current_a
+        telemetry_backfilled = False
+
+        if effective_power_w is None:
+            effective_power_w = _latest_non_null_metric(device.current_power_w, previous.power_w if previous is not None else None)
+            telemetry_backfilled = telemetry_backfilled or effective_power_w is not None
+        if effective_voltage_v is None:
+            effective_voltage_v = _latest_non_null_metric(device.current_voltage_v, previous.voltage_v if previous is not None else None)
+            telemetry_backfilled = telemetry_backfilled or effective_voltage_v is not None
+        if effective_current_a is None:
+            effective_current_a = _latest_non_null_metric(device.current_a, previous.current_a if previous is not None else None)
+            telemetry_backfilled = telemetry_backfilled or effective_current_a is not None
+
+        source_note = item.source_note
+        if telemetry_backfilled:
+            source_note = f"{source_note} · keep last electrical metrics" if source_note else "keep last electrical metrics"
+
         snapshot = DeviceStatusSnapshot(
             device_id=device.id,
             recorded_at=item.recorded_at,
             switch_on=item.switch_on,
-            power_w=item.power_w,
-            voltage_v=item.voltage_v,
-            current_a=item.current_a,
+            power_w=effective_power_w,
+            voltage_v=effective_voltage_v,
+            current_a=effective_current_a,
             energy_total_kwh=item.energy_total_kwh,
             fault_code=item.fault_code,
             current_temperature_c=item.current_temperature_c,
             target_temperature_c=item.target_temperature_c,
             operation_mode=item.operation_mode,
-            source_note=item.source_note,
+            source_note=source_note,
             raw_payload=item.raw_payload,
         )
         db.add(snapshot)
 
         device.switch_on = item.switch_on
-        device.current_power_w = item.power_w
-        device.current_voltage_v = item.voltage_v
-        device.current_a = item.current_a
+        device.current_power_w = effective_power_w
+        device.current_voltage_v = effective_voltage_v
+        device.current_a = effective_current_a
         device.energy_total_kwh = item.energy_total_kwh
         device.fault_code = item.fault_code
         device.device_profile = item.device_profile
@@ -206,10 +225,10 @@ def _store_status_snapshots(
             bucket_type=BucketType.DAY,
             period_start=local_day_start_from_utc(item.recorded_at),
             delta_kwh=delta,
-            power_w=item.power_w,
-            voltage_v=item.voltage_v,
-            current_a=item.current_a,
-            source_note=item.source_note or "live energy delta",
+            power_w=effective_power_w,
+            voltage_v=effective_voltage_v,
+            current_a=effective_current_a,
+            source_note=source_note or "live energy delta",
         )
         _increment_aggregate(
             db,
@@ -217,14 +236,21 @@ def _store_status_snapshots(
             bucket_type=BucketType.MONTH,
             period_start=local_month_start_from_utc(item.recorded_at),
             delta_kwh=delta,
-            power_w=item.power_w,
-            voltage_v=item.voltage_v,
-            current_a=item.current_a,
-            source_note=item.source_note or "live energy delta",
+            power_w=effective_power_w,
+            voltage_v=effective_voltage_v,
+            current_a=effective_current_a,
+            source_note=source_note or "live energy delta",
         )
         aggregated += 2
 
     return inserted, aggregated
+
+
+
+def _latest_non_null_metric(current_value: Decimal | None, previous_value: Decimal | None) -> Decimal | None:
+    if current_value is not None:
+        return current_value
+    return previous_value
 
 
 
