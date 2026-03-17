@@ -1548,6 +1548,22 @@ button:disabled:hover {
   color: #ffd1c6;
 }
 
+.scenario-form-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.scenario-form-warning {
+  max-width: 420px;
+  text-align: right;
+}
+
+button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .scenario-target-preview {
   display: grid;
   gap: 8px;

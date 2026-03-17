@@ -257,7 +257,7 @@ def _build_scene_preview(item: dict[str, Any]) -> dict[str, Any]:
         "summary": f"Дом: {item.get('home_name') or '—'} · scene_id {item.get('scene_id') or '—'}",
         "lines": [f"{item.get('home_name') or 'Дом'} · {item.get('scene_name') or item.get('scene_id') or 'Без имени'}"],
         "more_count": 0,
-        "note": "Поле действия ниже игнорируется: Tap-to-Run просто запускается.",
+        "note": "Поле действия ниже заблокируется автоматически: Tap-to-Run просто запускается.",
         "warning": "",
         "devices_total": 0,
         "channels_total": 0,
@@ -270,7 +270,7 @@ def _build_automation_preview(item: dict[str, Any]) -> dict[str, Any]:
         "summary": f"Дом: {item.get('home_name') or '—'} · automation_id {item.get('automation_id') or '—'}",
         "lines": [f"{item.get('home_name') or 'Дом'} · {item.get('automation_name') or item.get('automation_id') or 'Без имени'}"],
         "more_count": 0,
-        "note": "Поле действия определяет, включать или выключать эту Tuya-автоматизацию по расписанию.",
+        "note": "Поле действия остаётся активным: Tuya-автоматизацию можно включать и выключать по нашему расписанию.",
         "warning": "",
         "devices_total": 0,
         "channels_total": 0,
@@ -517,6 +517,9 @@ def _hydrate_rule(
         "id": rule.id,
         "name": rule.name,
         "action_kind": rule.action_kind,
+        "target_is_empty": rule.action_kind == DEVICE_GROUP_KIND and not int(target_preview.get("channels_total") or 0),
+        "target_preview_devices_total": int(target_preview.get("devices_total") or 0),
+        "target_preview_channels_total": int(target_preview.get("channels_total") or 0),
         "device_id": rule.device_id,
         "device_name": device_name,
         "device_badge": device_badge,
@@ -574,6 +577,21 @@ def list_recent_automation_runs(db: Session, limit: int = 30) -> list[Automation
     ).scalars().all()
 
 
+def _format_run_target_label(item: AutomationRunLog) -> str:
+    rule = item.rule
+    if rule is None:
+        return "Удалённая цель"
+    if rule.action_kind == TUYA_SCENE_KIND:
+        return _rule_target_label_scene(rule.tuya_home_id, rule.tuya_scene_id)
+    if rule.action_kind == TUYA_AUTOMATION_KIND:
+        return _rule_target_label_automation(rule.tuya_home_id, rule.tuya_scene_id)
+    if rule.action_kind == DEVICE_GROUP_KIND:
+        return _rule_target_label_group(rule.command_code)
+    if item.device is not None:
+        return _rule_target_label_device(item.device, rule.command_code)
+    return rule.command_code or "Неизвестная цель"
+
+
 def format_automation_runs(rows: list[AutomationRunLog]) -> list[dict[str, Any]]:
     formatted: list[dict[str, Any]] = []
     for item in rows:
@@ -589,6 +607,8 @@ def format_automation_runs(rows: list[AutomationRunLog]) -> list[dict[str, Any]]
                 "status": item.status,
                 "status_label": status_meta.get("label", item.status or "—"),
                 "status_badge": status_meta.get("badge", "idle"),
+                "target_label": _format_run_target_label(item),
+                "action_kind": item.rule.action_kind if item.rule is not None else None,
                 "result_summary": item.result_summary,
                 "error_message": item.error_message,
             }

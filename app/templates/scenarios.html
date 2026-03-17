@@ -105,7 +105,7 @@
           <div class="muted tiny">Можно выбрать локальное устройство, комнату, плашку, роль канала, Tuya Tap-to-Run сцену или Tuya-автоматизацию и по расписанию включать её либо отключать.</div>
         </div>
       </div>
-      <form class="form-stack" method="post" action="/scenarios/create">
+      <form class="form-stack" method="post" action="/scenarios/create" data-scenario-form>
         <label>Название
           <input class="input" type="text" name="name" placeholder="Например: Ночной бойлер или Включить Tuya-автоматизацию квартиры 2">
         </label>
@@ -122,11 +122,11 @@
         </div>
         <div class="form-grid two-cols">
           <label>Действие
-            <select class="input" name="desired_state">
+            <select class="input" name="desired_state" data-desired-state-select>
               <option value="on">Включить / запустить</option>
               <option value="off">Выключить</option>
             </select>
-            <div class="muted tiny">Для Tap-to-Run действие игнорируется: сцена просто стартует. Для Tuya Automation это уже важно — можно включать и выключать по расписанию.</div>
+            <div class="muted tiny" data-desired-state-hint>Для Tap-to-Run действие заблокируется автоматически: сцена просто стартует. Для Tuya Automation это уже важно — можно включать и выключать по расписанию.</div>
           </label>
           <label>Время
             <input class="input" type="time" name="schedule_time" value="23:00" required>
@@ -144,7 +144,8 @@
           <textarea class="input" name="notes" rows="3" placeholder="Например: выключает ночную Tuya-автоматизацию на выходные"></textarea>
         </label>
         <label class="checkbox-inline"><input type="checkbox" name="is_enabled" value="1" checked> <span>Сразу включить сценарий</span></label>
-        <button type="submit">Создать сценарий</button>
+        <div class="scenario-form-warning muted tiny" data-form-warning hidden>Выбери рабочую цель сценария. Если группа пустая, сохранить правило сейчас нельзя.</div>
+        <button type="submit" data-scenario-submit>Создать сценарий</button>
       </form>
     </article>
 
@@ -182,13 +183,14 @@
                 <h3>{{ rule.name }}</h3>
                 {% if rule.is_enabled %}<span class="badge online">включён</span>{% else %}<span class="badge idle">пауза</span>{% endif %}
                 {% if rule.action_kind == 'device_switch' %}<span class="badge">локальный</span>{% elif rule.action_kind == 'device_group' %}<span class="badge">группа</span>{% elif rule.action_kind == 'tuya_scene' %}<span class="badge">Tap-to-Run</span>{% else %}<span class="badge">Tuya Automation</span>{% endif %}
+                {% if rule.target_is_empty %}<span class="badge error">пустая цель</span>{% endif %}
               </div>
               <div class="muted tiny">{{ rule.target_label }}{% if rule.target_scope_label %} · {{ rule.target_scope_label }}{% endif %} · {{ rule.desired_state_label }} в {{ rule.schedule_time }} · {{ rule.weekdays_label }}</div>
               <div class="muted tiny">Следующий запуск: {{ rule.next_run_label }}</div>
               <div class="muted tiny">Последний итог: <span class="badge {{ rule.last_run_status_badge }}">{{ rule.last_run_status_label }}</span>{% if rule.last_result_summary %} · {{ rule.last_result_summary }}{% endif %}</div>
             </div>
             <div class="rule-head-actions">
-              <form method="post" action="/scenarios/{{ rule.id }}/run"><button type="submit">Запустить сейчас</button></form>
+              <form method="post" action="/scenarios/{{ rule.id }}/run"><button type="submit" {% if rule.target_is_empty %}disabled title="Сейчас группа пустая, запускать нечего."{% endif %}>Запустить сейчас</button></form>
               <form method="post" action="/scenarios/{{ rule.id }}/duplicate"><button type="submit">Дублировать</button></form>
               <form method="post" action="/scenarios/{{ rule.id }}/toggle-enabled">
                 <input type="hidden" name="enabled" value="{{ 0 if rule.is_enabled else 1 }}">
@@ -197,7 +199,7 @@
               <form method="post" action="/scenarios/{{ rule.id }}/delete" onsubmit="return confirm('Удалить сценарий безвозвратно?');"><button class="danger-ghost" type="submit">Удалить</button></form>
             </div>
           </div>
-          <form class="form-stack" method="post" action="/scenarios/{{ rule.id }}/update">
+          <form class="form-stack" method="post" action="/scenarios/{{ rule.id }}/update" data-scenario-form>
             <label>Название
               <input class="input" type="text" name="name" value="{{ rule.name }}">
             </label>
@@ -234,11 +236,11 @@
             </div>
             <div class="form-grid two-cols">
               <label>Действие
-                <select class="input" name="desired_state">
+                <select class="input" name="desired_state" data-desired-state-select>
                   <option value="on" {% if rule.desired_state %}selected{% endif %}>Включить / запустить</option>
                   <option value="off" {% if not rule.desired_state %}selected{% endif %}>Выключить</option>
                 </select>
-                <div class="muted tiny">Для Tuya-сцены поле игнорируется, а для Tuya-автоматизации уже определяет включать её или выключать.</div>
+                <div class="muted tiny" data-desired-state-hint>Для Tuya-сцены поле действия заблокируется автоматически, а для Tuya-автоматизации остаётся рабочим.</div>
               </label>
               <label>Время
                 <input class="input" type="time" name="schedule_time" value="{{ rule.schedule_time }}" required>
@@ -258,7 +260,10 @@
             <label class="checkbox-inline"><input type="checkbox" name="is_enabled" value="1" {% if rule.is_enabled %}checked{% endif %}> <span>Сценарий активен</span></label>
             <div class="rule-footer">
               <div class="muted tiny">Последний запуск: {{ rule.last_run_at|localdt if rule.last_run_at else 'ещё не было' }}{% if rule.last_result_summary %} · {{ rule.last_result_summary }}{% endif %}</div>
-              <button type="submit">Сохранить сценарий</button>
+              <div class="scenario-form-actions">
+                <div class="scenario-form-warning muted tiny" data-form-warning {% if not rule.target_is_empty %}hidden{% endif %}>Сейчас цель пустая или недоступна. Сохранять и запускать такое правило бессмысленно.</div>
+                <button type="submit" data-scenario-submit {% if rule.target_is_empty %}disabled{% endif %}>Сохранить сценарий</button>
+              </div>
             </div>
           </form>
         </article>
@@ -389,12 +394,22 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Время</th><th>Сценарий</th><th>Запуск</th><th>Статус</th><th>Итог</th></tr></thead>
+        <thead><tr><th>Время</th><th>Сценарий</th><th>Цель</th><th>Запуск</th><th>Статус</th><th>Итог</th></tr></thead>
         <tbody>
           {% for item in automation_runs %}
             <tr>
               <td>{{ item.requested_at|localdt }}</td>
               <td>{{ item.rule.name if item.rule else 'Удалённый сценарий' }}</td>
+              <td>
+                <div>{{ item.target_label }}</div>
+                {% if item.action_kind == 'device_group' %}
+                  <div class="muted tiny">Групповая цель на текущем составе устройств</div>
+                {% elif item.action_kind == 'tuya_scene' %}
+                  <div class="muted tiny">Tap-to-Run сцена</div>
+                {% elif item.action_kind == 'tuya_automation' %}
+                  <div class="muted tiny">Tuya Automation</div>
+                {% endif %}
+              </td>
               <td>{{ item.trigger_label }}</td>
               <td><span class="badge {{ item.status_badge }}">{{ item.status_label }}</span></td>
               <td>
@@ -410,7 +425,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="5" class="muted">По этим фильтрам запусков пока не видно.</td></tr>
+            <tr><td colspan="6" class="muted">По этим фильтрам запусков пока не видно.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -421,14 +436,18 @@
 <script>
   (() => {
     const previewMap = {{ automation_target_preview_map|tojson }};
+    const DEFAULT_HINT = 'Для обычной локальной цели или группы действие остаётся рабочим: можно включать и выключать по расписанию.';
+    const SCENE_HINT = 'Для Tap-to-Run сцены действие заблокировано автоматически: такая цель умеет только запускаться.';
+    const AUTOMATION_HINT = 'Для Tuya Automation поле действия активно: можно включать и выключать автоматизацию по расписанию.';
+    const EMPTY_TARGET_HINT = 'Сейчас выбранная цель пустая или недоступна. Сначала наполни группу устройствами или выбери другую цель.';
 
     function escapeHtml(value) {
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
     function renderPreview(container, meta) {
@@ -443,7 +462,7 @@
         ? `<span class="badge idle">${escapeHtml(meta.devices_total || 0)} устр. / ${escapeHtml(meta.channels_total || 0)} канал.</span>`
         : '';
       const linesHtml = lines.length
-        ? `<ul class="scenario-target-preview-list">${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`
+        ? `<ul class="scenario-target-preview-list">${lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`
         : '';
       const moreHtml = moreCount > 0 ? `<div class="muted tiny">И ещё ${escapeHtml(moreCount)} элемент(ов) в составе.</div>` : '';
       const summaryHtml = meta.summary ? `<div class="muted tiny">${escapeHtml(meta.summary)}</div>` : '';
@@ -462,10 +481,58 @@
       `;
     }
 
+    function syncScenarioForm(form, select) {
+      if (!form || !select) return;
+      const meta = previewMap[select.value] || null;
+      const container = form.querySelector('[data-target-preview-output]');
+      const desiredStateSelect = form.querySelector('[data-desired-state-select]');
+      const desiredStateHint = form.querySelector('[data-desired-state-hint]');
+      const submitButton = form.querySelector('[data-scenario-submit]');
+      const warningBox = form.querySelector('[data-form-warning]');
+      renderPreview(container, meta);
+
+      const isScene = typeof select.value === 'string' && select.value.startsWith('scene:');
+      const isAutomation = typeof select.value === 'string' && select.value.startsWith('automation:');
+      const isGroup = typeof select.value === 'string' && (
+        select.value.startsWith('group_room:') ||
+        select.value.startsWith('group_badge:') ||
+        select.value.startsWith('group_role:')
+      );
+      const isEmptyGroup = isGroup && meta && Number(meta.channels_total || 0) === 0;
+      const hasTarget = Boolean(select.value);
+      const shouldDisableSubmit = !hasTarget || isEmptyGroup;
+
+      if (desiredStateSelect) {
+        if (isScene) {
+          desiredStateSelect.value = 'on';
+          desiredStateSelect.disabled = true;
+        } else {
+          desiredStateSelect.disabled = false;
+        }
+      }
+      if (desiredStateHint) {
+        desiredStateHint.textContent = isScene ? SCENE_HINT : (isAutomation ? AUTOMATION_HINT : DEFAULT_HINT);
+      }
+      if (warningBox) {
+        if (!hasTarget) {
+          warningBox.textContent = 'Сначала выбери цель сценария.';
+          warningBox.hidden = false;
+        } else if (isEmptyGroup) {
+          warningBox.textContent = EMPTY_TARGET_HINT;
+          warningBox.hidden = false;
+        } else {
+          warningBox.hidden = true;
+        }
+      }
+      if (submitButton) {
+        submitButton.disabled = shouldDisableSubmit;
+        submitButton.title = isEmptyGroup ? 'Сейчас группа пустая, сохранить правило нельзя.' : (!hasTarget ? 'Сначала выбери цель сценария.' : '');
+      }
+    }
+
     document.querySelectorAll('[data-target-preview-select]').forEach((select) => {
-      const form = select.closest('form');
-      const container = form ? form.querySelector('[data-target-preview-output]') : null;
-      const update = () => renderPreview(container, previewMap[select.value] || null);
+      const form = select.closest('[data-scenario-form]');
+      const update = () => syncScenarioForm(form, select);
       select.addEventListener('change', update);
       update();
     });
