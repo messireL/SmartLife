@@ -44,6 +44,7 @@ cd /opt/SmartLife
 cd /opt/SmartLife
 ./scripts/manage.sh backup-db
 ./scripts/manage.sh backup-list
+./scripts/manage.sh backup-prune [keep_last]
 ./scripts/manage.sh restore-db backups/db/<file>.dump
 ```
 

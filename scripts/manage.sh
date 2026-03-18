@@ -562,6 +562,69 @@ ensure_db_running_for_backup() {
   wait_for_db_ready 45
 }
 
+read_backup_retention_policy() {
+  local policy_file="$BACKUPS_DIR/.retention.env"
+  KEEP_LAST=0
+  AUTO_PRUNE_ENABLED="no"
+  if [[ -f "$policy_file" ]]; then
+    # shellcheck disable=SC1090
+    source "$policy_file"
+  fi
+}
+
+backup_prune() {
+  ensure_backup_dir
+  local keep_last="${1:-}"
+  if [[ -z "$keep_last" ]]; then
+    read_backup_retention_policy
+    keep_last="${KEEP_LAST:-0}"
+  fi
+  keep_last="${keep_last:-0}"
+  if ! [[ "$keep_last" =~ ^[0-9]+$ ]]; then
+    echo "Некорректное значение keep_last: $keep_last" >&2
+    return 1
+  fi
+  if (( keep_last <= 0 )); then
+    echo "Автоочистка отключена: keep_last=$keep_last." >&2
+    return 0
+  fi
+
+  mapfile -t backups < <(find "$BACKUPS_DIR" -maxdepth 1 -type f -name '*.dump' -printf '%T@ %p\n' | sort -nr | awk '{ $1=""; sub(/^ /, ""); print }')
+  local total="${#backups[@]}"
+  if (( total <= keep_last )); then
+    echo "Лишних бэкапов нет: файлов $total, лимит $keep_last." >&2
+    return 0
+  fi
+
+  local removed=0
+  local freed_bytes=0
+  local path
+  for path in "${backups[@]:keep_last}"; do
+    [[ -f "$path" ]] || continue
+    local size=0
+    size="$(stat -c '%s' "$path" 2>/dev/null || echo 0)"
+    rm -f -- "$path"
+    freed_bytes=$((freed_bytes + size))
+    removed=$((removed + 1))
+  done
+
+  local freed_mb
+  freed_mb="$(awk -v bytes="$freed_bytes" 'BEGIN { printf "%.2f", bytes / 1048576 }')"
+  echo "Автоочистка бэкапов: удалено $removed, освобождено ${freed_mb} MB, оставлено $keep_last последних файлов." >&2
+}
+
+maybe_auto_prune_backups() {
+  read_backup_retention_policy
+  local enabled="$(printf '%s' "${AUTO_PRUNE_ENABLED:-no}" | tr '[:upper:]' '[:lower:]')"
+  case "$enabled" in
+    1|true|yes|on)
+      backup_prune "${KEEP_LAST:-0}" || true
+      ;;
+    *)
+      ;;
+  esac
+}
+
 backup_db() {
   local label="${1:-manual}"
   ensure_backup_dir
@@ -575,6 +638,7 @@ backup_db() {
 
   compose exec -T db sh -lc 'export PGPASSWORD="$(cat /run/secrets/db_password)"; pg_dump -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$file_path"
   echo "Бэкап БД сохранён: $file_path" >&2
+  maybe_auto_prune_backups
   printf '%s\n' "$file_path"
 }
 
@@ -698,6 +762,10 @@ case "$COMMAND" in
   backup-list)
     backup_list
     ;;
+  backup-prune)
+    shift || true
+    backup_prune "${1:-}"
+    ;;
   cleanup-docker)
     echo "[SmartLife] Docker cleanup completed." >&2
     ;;
@@ -721,7 +789,7 @@ case "$COMMAND" in
     echo "$(show_url)"
     ;;
   *)
-    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--no-build]|down|build|logs|restart|ps|sync|rebuild-energy|cleanup-demo|cleanup-docker|backup-db [label]|backup-list|restore-db <file>|seed-demo|shell|runtime-info|health|url}"
+    echo "Usage: $0 {configure|configure-tuya|configure-demo|configure-sync|configure-timezone [TZ]|up [--no-build]|down|build|logs|restart|ps|sync|rebuild-energy|cleanup-demo|cleanup-docker|backup-db [label]|backup-list|backup-prune [keep_last]|restore-db <file>|seed-demo|shell|runtime-info|health|url}"
     exit 1
     ;;
 esac

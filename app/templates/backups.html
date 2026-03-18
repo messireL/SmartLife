@@ -2,14 +2,57 @@
 {% block content %}
 <section class="card page-hero">
   <h1>Резервные копии</h1>
-  <div class="muted">Перед restart и up --build теперь делается автобэкап БД. Автовосстановление не включал специально — оно любит откатывать жизнь назад в самый неподходящий момент. Удаление лишних `.dump` не ломает статистику SmartLife: графики, снапшоты и тарифные расчёты живут в PostgreSQL, а не в каталоге бэкапов.</div>
+  <div class="muted">Перед restart и up --build SmartLife делает автобэкап БД. Удаление лишних <code>.dump</code> не ломает статистику приложения: графики, снапшоты и тарифные расчёты продолжают жить в PostgreSQL. То есть можно спокойно подметать каталог, не боясь амнезии.</div>
+</section>
+
+<section class="card grid-two backup-meta-grid">
+  <div>
+    <div class="section-header"><h2>Команды</h2></div>
+    <pre class="command-block">./scripts/manage.sh backup-db
+./scripts/manage.sh backup-list
+./scripts/manage.sh backup-prune
+./scripts/manage.sh restore-db backups/db/&lt;file&gt;.dump</pre>
+  </div>
+  <div>
+    <div class="section-header"><h2>Итог по каталогу</h2></div>
+    <div class="status-list compact-status-list">
+      <div class="status-row"><span class="muted">Всего dump-файлов</span><strong>{{ backups_total_all }}</strong></div>
+      <div class="status-row"><span class="muted">Общий объём</span><strong>{{ backups_total_mb_all }} MB</strong></div>
+      <div class="status-row"><span class="muted">Под фильтром</span><strong>{{ backups_total }} шт. / {{ backups_total_mb }} MB</strong></div>
+      <div class="status-row"><span class="muted">Можно убрать по политике</span><strong>{{ backup_prunable_count }} шт. / {{ backup_prunable_mb }} MB</strong></div>
+    </div>
+  </div>
 </section>
 
 <section class="card">
-  <div class="section-header"><h2>Команды</h2></div>
-  <pre class="command-block">./scripts/manage.sh backup-db
-./scripts/manage.sh backup-list
-./scripts/manage.sh restore-db backups/db/&lt;file&gt;.dump</pre>
+  <div class="section-header">
+    <h2>Политика хранения</h2>
+    <div class="muted">Держим только последние N dump-файлов. Статистику SmartLife это не затрагивает.</div>
+  </div>
+  <div class="backup-policy-layout">
+    <form class="stack-form" method="post" action="/backups/settings">
+      <div class="form-grid form-grid-3">
+        <label>
+          <span>Хранить последних бэкапов</span>
+          <input class="input" type="number" min="0" max="500" name="keep_last" value="{{ backup_keep_last }}">
+          <span class="muted tiny">0 = политика выключена, ничего не удаляем автоматически.</span>
+        </label>
+        <label class="checkbox-field checkbox-field-padded">
+          <input type="checkbox" name="auto_prune_enabled" value="yes" {% if backup_auto_prune_enabled %}checked{% endif %}>
+          <span>Автоочистка после нового бэкапа</span>
+        </label>
+        <div class="backup-policy-actions">
+          <button class="button-primary" type="submit">Сохранить политику</button>
+        </div>
+      </div>
+    </form>
+    <form method="post" action="/backups/prune" onsubmit="return confirm('Удалить все dump-файлы, кроме последних {{ backup_keep_last }}? Статистику SmartLife это не затронет.');">
+      <input type="hidden" name="page" value="{{ backup_page }}">
+      <input type="hidden" name="per_page" value="{{ backup_per_page }}">
+      <input type="hidden" name="q" value="{{ backup_query }}">
+      <button class="button-secondary" type="submit" {% if backup_keep_last <= 0 %}disabled{% endif %}>Очистить сейчас</button>
+    </form>
+  </div>
 </section>
 
 <section class="card">
@@ -18,7 +61,11 @@
     <div class="muted">{{ backup_start_index }}–{{ backup_end_index }} из {{ backups_total }} шт.</div>
   </div>
 
-  <form class="inline-actions" method="get" action="/backups" style="margin-bottom:16px;">
+  <form class="inline-actions wrap-actions" method="get" action="/backups" style="margin-bottom:16px;">
+    <label>
+      <span class="muted tiny">Поиск по имени файла</span>
+      <input class="input" type="search" name="q" value="{{ backup_query }}" placeholder="например pre_up или 20260318">
+    </label>
     <label>
       <span class="muted tiny">На странице</span>
       <select class="input input-small" name="per_page" onchange="this.form.submit()">
@@ -28,7 +75,10 @@
       </select>
     </label>
     <input type="hidden" name="page" value="1">
-    <noscript><button class="button-secondary" type="submit">Применить</button></noscript>
+    <button class="button-secondary" type="submit">Применить</button>
+    {% if backup_query %}
+      <a class="tab-link" href="/backups?per_page={{ backup_per_page }}">Сбросить фильтр</a>
+    {% endif %}
   </form>
 
   <div class="table-wrap">
@@ -45,12 +95,13 @@
                 <input type="hidden" name="backup_name" value="{{ item.name }}">
                 <input type="hidden" name="page" value="{{ backup_page }}">
                 <input type="hidden" name="per_page" value="{{ backup_per_page }}">
+                <input type="hidden" name="q" value="{{ backup_query }}">
                 <button type="submit" class="button-danger">Удалить</button>
               </form>
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="4" class="muted">Пока нет ни одной резервной копии.</td></tr>
+          <tr><td colspan="4" class="muted">По этому фильтру ничего не найдено. Либо каталог пуст, либо имя файла не совпало.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -61,12 +112,12 @@
       <div class="muted">Страница {{ backup_page }} из {{ backup_total_pages }}</div>
       <div class="inline-actions">
         {% if backup_page > 1 %}
-          <a class="tab-link" href="/backups?page=1&per_page={{ backup_per_page }}">« Первая</a>
-          <a class="tab-link" href="/backups?page={{ backup_page - 1 }}&per_page={{ backup_per_page }}">‹ Назад</a>
+          <a class="tab-link" href="/backups?page=1&per_page={{ backup_per_page }}{% if backup_query %}&q={{ backup_query|urlq }}{% endif %}">« Первая</a>
+          <a class="tab-link" href="/backups?page={{ backup_page - 1 }}&per_page={{ backup_per_page }}{% if backup_query %}&q={{ backup_query|urlq }}{% endif %}">‹ Назад</a>
         {% endif %}
         {% if backup_page < backup_total_pages %}
-          <a class="tab-link" href="/backups?page={{ backup_page + 1 }}&per_page={{ backup_per_page }}">Вперёд ›</a>
-          <a class="tab-link" href="/backups?page={{ backup_total_pages }}&per_page={{ backup_per_page }}">Последняя »</a>
+          <a class="tab-link" href="/backups?page={{ backup_page + 1 }}&per_page={{ backup_per_page }}{% if backup_query %}&q={{ backup_query|urlq }}{% endif %}">Вперёд ›</a>
+          <a class="tab-link" href="/backups?page={{ backup_total_pages }}&per_page={{ backup_per_page }}{% if backup_query %}&q={{ backup_query|urlq }}{% endif %}">Последняя »</a>
         {% endif %}
       </div>
     </div>

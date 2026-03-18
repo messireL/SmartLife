@@ -214,6 +214,8 @@ def get_sync_overview(db: Session) -> dict:
         "tuya_full_sync_interval_minutes": runtime.tuya_full_sync_interval_minutes,
         "tuya_spec_cache_hours": runtime.tuya_spec_cache_hours,
         "tuya_last_full_sync_at": runtime.tuya_last_full_sync_at,
+        "backup_keep_last": runtime.backup_keep_last,
+        "backup_auto_prune_enabled": runtime.backup_auto_prune_enabled,
     }
 
 

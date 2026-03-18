@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.core.timeutils import format_local_date, format_local_datetime
 from app.db.models import Device, DeviceBadge, SyncRun, SyncRunTrigger
 from app.db.session import get_db
-from app.services.backup_service import delete_backup, list_backups
+from app.services.backup_service import delete_backup, filter_backups, get_prunable_backups, list_backups, prune_backups, summarize_backups, write_backup_policy
 from app.services.dashboard_service import (
     get_dashboard_panels,
     get_dashboard_summary,
@@ -58,6 +58,7 @@ from app.services.tuya_scene_service import (
 )
 from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
 from app.services.runtime_config_service import (
+    configure_backup_retention,
     configure_demo_provider,
     configure_tariff_settings,
     configure_tuya_api_runtime,
@@ -994,36 +995,111 @@ def delete_tariff_profile_settings(profile_key: str = Form(default=""), db: Sess
     return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 
+def _backup_redirect_url(*, page: int, per_page: int, query: str = "", flash: str = "") -> str:
+    url = f"/backups?page={page}&per_page={per_page}"
+    if query:
+        url += f"&q={quote_plus(query)}"
+    if flash:
+        url += f"&flash={quote_plus(flash)}"
+    return url
+
+
 @router.get("/backups", response_class=HTMLResponse)
 def backups_page(
     request: Request,
     page: int = Query(default=1),
     per_page: int = Query(default=20),
+    q: str = Query(default=""),
     db: Session = Depends(get_db),
 ):
     runtime = get_runtime_config(db)
     all_backups = list_backups()
+    filtered_backups = filter_backups(all_backups, q)
     per_page = _clamp_int(per_page, minimum=10, maximum=100)
-    total = len(all_backups)
+    total = len(filtered_backups)
     total_pages = max(1, math.ceil(total / per_page)) if total else 1
     page = _clamp_int(page, minimum=1, maximum=total_pages)
     start_index = (page - 1) * per_page
     end_index = start_index + per_page
-    page_items = all_backups[start_index:end_index]
+    page_items = filtered_backups[start_index:end_index]
+    all_summary = summarize_backups(all_backups)
+    filtered_summary = summarize_backups(filtered_backups)
+    prunable_backups = get_prunable_backups(all_backups, keep_last=runtime.backup_keep_last)
     context = _base_context(request=request, active_nav="backups", page_title="Резервные копии", runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
             "backups": page_items,
             "backups_total": total,
+            "backups_total_all": all_summary["count"],
+            "backups_total_mb": filtered_summary["total_mb"],
+            "backups_total_mb_all": all_summary["total_mb"],
             "backup_page": page,
             "backup_per_page": per_page,
+            "backup_query": q,
             "backup_total_pages": total_pages,
             "backup_start_index": (start_index + 1) if total else 0,
             "backup_end_index": min(end_index, total),
+            "backup_auto_prune_enabled": runtime.backup_auto_prune_enabled,
+            "backup_keep_last": runtime.backup_keep_last,
+            "backup_prunable_count": len(prunable_backups),
+            "backup_prunable_mb": summarize_backups(prunable_backups)["total_mb"],
         }
     )
     return templates.TemplateResponse(request, "backups.html", context)
+
+
+@router.post("/backups/settings")
+def update_backup_retention_settings(
+    keep_last: str = Form(default="30"),
+    auto_prune_enabled: str = Form(default="no"),
+    db: Session = Depends(get_db),
+):
+    try:
+        keep_last_value = _normalize_positive_int(keep_last, "Хранить последних бэкапов", minimum=0, maximum=500)
+        auto_enabled = auto_prune_enabled == "yes"
+        configure_backup_retention(db, keep_last=keep_last_value, auto_prune_enabled=auto_enabled)
+        write_backup_policy(keep_last=keep_last_value, auto_prune_enabled=auto_enabled)
+        if keep_last_value == 0:
+            flash = "Политика хранения сохранена: автоочистка выключена, старые dump-файлы остаются как есть."
+        else:
+            mode_label = "включена" if auto_prune_enabled == "yes" else "выключена"
+            flash = f"Политика хранения сохранена: держим последние {keep_last_value} бэкапов, автоочистка сейчас {mode_label}."
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/backups?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/backups/prune")
+def prune_backup_files(
+    page: str = Form(default="1"),
+    per_page: str = Form(default="20"),
+    q: str = Form(default=""),
+    db: Session = Depends(get_db),
+):
+    try:
+        page_value = _normalize_positive_int(page, "Страница", minimum=1, maximum=100000)
+    except ValueError:
+        page_value = 1
+    try:
+        per_page_value = _normalize_positive_int(per_page, "Размер страницы", minimum=10, maximum=100)
+    except ValueError:
+        per_page_value = 20
+
+    runtime = get_runtime_config(db)
+    if runtime.backup_keep_last <= 0:
+        flash = "Автоочистка не выполнена: в политике хранения стоит 0, значит удалять лишние бэкапы сейчас нельзя."
+    else:
+        result = prune_backups(keep_last=runtime.backup_keep_last)
+        if result["deleted_count"]:
+            flash = f"Автоочистка завершена: удалено {result['deleted_count']} dump-файлов, освобождено {result['freed_mb']} MB. Статистику SmartLife это не затрагивает."
+        else:
+            flash = f"Лишних бэкапов не найдено: уже хранятся только последние {runtime.backup_keep_last} файлов."
+
+    total = len(filter_backups(list_backups(), q))
+    total_pages = max(1, math.ceil(total / per_page_value)) if total else 1
+    page_value = min(page_value, total_pages)
+    return RedirectResponse(url=_backup_redirect_url(page=page_value, per_page=per_page_value, query=q, flash=flash), status_code=303)
 
 
 @router.post("/backups/delete")
@@ -1031,6 +1107,7 @@ def delete_backup_file(
     backup_name: str = Form(default=""),
     page: str = Form(default="1"),
     per_page: str = Form(default="20"),
+    q: str = Form(default=""),
     db: Session = Depends(get_db),
 ):
     try:
@@ -1048,11 +1125,11 @@ def delete_backup_file(
     except ValueError as exc:
         flash = str(exc)
 
-    total = len(list_backups())
+    total = len(filter_backups(list_backups(), q))
     total_pages = max(1, math.ceil(total / per_page_value)) if total else 1
     page_value = min(page_value, total_pages)
     return RedirectResponse(
-        url=f"/backups?page={page_value}&per_page={per_page_value}&flash={quote_plus(flash)}",
+        url=_backup_redirect_url(page=page_value, per_page=per_page_value, query=q, flash=flash),
         status_code=303,
     )
 

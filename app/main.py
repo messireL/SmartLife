@@ -72,6 +72,8 @@ def root_health():
         "background_sync_enabled": settings.smartlife_background_sync_enabled,
         "sync_on_startup": settings.smartlife_sync_on_startup,
         "sync_interval_seconds": settings.smartlife_sync_interval_seconds,
+        "backup_keep_last": runtime.backup_keep_last,
+        "backup_auto_prune_enabled": runtime.backup_auto_prune_enabled,
         "database_ready": diagnostics.schema_ready,
         "runtime_ready": diagnostics.runtime_ready,
         "schema_issues": diagnostics.schema_issues,

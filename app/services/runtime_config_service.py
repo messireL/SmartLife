@@ -22,6 +22,8 @@ RUNTIME_KEY_TUYA_API_MODE = "tuya.api_mode"
 RUNTIME_KEY_TUYA_FULL_SYNC_INTERVAL_MINUTES = "tuya.full_sync_interval_minutes"
 RUNTIME_KEY_TUYA_SPEC_CACHE_HOURS = "tuya.spec_cache_hours"
 RUNTIME_KEY_TUYA_LAST_FULL_SYNC_AT = "tuya.last_full_sync_at"
+RUNTIME_KEY_BACKUP_KEEP_LAST = "backup.keep_last"
+RUNTIME_KEY_BACKUP_AUTO_PRUNE_ENABLED = "backup.auto_prune_enabled"
 
 TUYA_API_MODE_STANDARD = "standard"
 TUYA_API_MODE_ECONOMY = "economy"
@@ -140,6 +142,8 @@ class RuntimeConfig:
     tuya_full_sync_interval_minutes: int
     tuya_spec_cache_hours: int
     tuya_last_full_sync_at: str
+    backup_keep_last: int
+    backup_auto_prune_enabled: bool
     tariff_mode: str
     tariff_currency: str
     tariff_flat_price_per_kwh: str
@@ -182,6 +186,10 @@ class RuntimeConfig:
     @property
     def tuya_api_mode_label(self) -> str:
         return "Экономичный" if self.tuya_api_mode == TUYA_API_MODE_ECONOMY else "Стандартный"
+
+    @property
+    def backup_auto_prune_enabled_label(self) -> str:
+        return "Включена" if self.backup_auto_prune_enabled else "Выключена"
 
     @property
     def tariff_mode_label(self) -> str:
@@ -460,6 +468,8 @@ def _build_runtime_config(db: Session) -> RuntimeConfig:
         tuya_full_sync_interval_minutes=get_setting_int_value(db, RUNTIME_KEY_TUYA_FULL_SYNC_INTERVAL_MINUTES, 15, minimum=5, maximum=1440),
         tuya_spec_cache_hours=get_setting_int_value(db, RUNTIME_KEY_TUYA_SPEC_CACHE_HOURS, 24, minimum=1, maximum=720),
         tuya_last_full_sync_at=get_setting_value(db, RUNTIME_KEY_TUYA_LAST_FULL_SYNC_AT, ""),
+        backup_keep_last=get_setting_int_value(db, RUNTIME_KEY_BACKUP_KEEP_LAST, 30, minimum=0, maximum=500),
+        backup_auto_prune_enabled=get_setting_value(db, RUNTIME_KEY_BACKUP_AUTO_PRUNE_ENABLED, "no").strip().lower() in {"1", "true", "yes", "on"},
         tariff_mode=active_plan.tariff_mode,
         tariff_currency=active_plan.tariff_currency,
         tariff_flat_price_per_kwh=active_plan.tariff_flat_price_per_kwh,
@@ -493,6 +503,8 @@ def bootstrap_runtime_settings(db: Session) -> RuntimeConfig:
         RUNTIME_KEY_TUYA_FULL_SYNC_INTERVAL_MINUTES: "15",
         RUNTIME_KEY_TUYA_SPEC_CACHE_HOURS: "24",
         RUNTIME_KEY_TUYA_LAST_FULL_SYNC_AT: "",
+        RUNTIME_KEY_BACKUP_KEEP_LAST: "30",
+        RUNTIME_KEY_BACKUP_AUTO_PRUNE_ENABLED: "no",
     }
     changed = False
     for key, default_value in defaults.items():
@@ -549,6 +561,18 @@ def configure_tuya_api_runtime(db: Session, *, api_mode: str, full_sync_interval
             RUNTIME_KEY_TUYA_API_MODE: mode,
             RUNTIME_KEY_TUYA_FULL_SYNC_INTERVAL_MINUTES: str(max(5, min(1440, int(full_sync_interval_minutes)))),
             RUNTIME_KEY_TUYA_SPEC_CACHE_HOURS: str(max(1, min(720, int(spec_cache_hours)))),
+        },
+    )
+    return get_runtime_config(db)
+
+
+def configure_backup_retention(db: Session, *, keep_last: int, auto_prune_enabled: bool) -> RuntimeConfig:
+    keep_last_value = max(0, min(500, int(keep_last)))
+    set_runtime_values(
+        db,
+        {
+            RUNTIME_KEY_BACKUP_KEEP_LAST: str(keep_last_value),
+            RUNTIME_KEY_BACKUP_AUTO_PRUNE_ENABLED: "yes" if auto_prune_enabled else "no",
         },
     )
     return get_runtime_config(db)

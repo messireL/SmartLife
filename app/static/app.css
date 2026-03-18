@@ -1647,3 +1647,61 @@ button[disabled] {
     align-items: stretch;
   }
 }
+
+.grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.compact-status-list {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-status-list .status-row {
+  padding-bottom: 10px;
+}
+
+.form-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+}
+
+.checkbox-field-padded {
+  padding-top: 24px;
+}
+
+.backup-policy-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.backup-policy-actions {
+  display: flex;
+  align-items: flex-end;
+}
+
+.wrap-actions {
+  display: flex;
+}
+
+@media (max-width: 960px) {
+  .grid-two,
+  .form-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-policy-actions {
+    align-items: stretch;
+  }
+}
