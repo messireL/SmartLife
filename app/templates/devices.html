@@ -97,12 +97,15 @@
               </td>
               <td>{{ device.display_room_name or '—' }}</td>
               <td>
-                {% if device.current_temperature_c is not none %}
-                  <div class="metric-main">{{ device.current_temperature_c }} °C</div>
-                  <div class="tiny muted">цель {{ device.target_temperature_c or '—' }} °C</div>
-                {% elif device.current_power_w is not none %}
+                {% if device.current_power_w is not none %}
                   <div class="metric-main">{{ device.current_power_w }} W</div>
                   <div class="tiny muted">{{ device.current_a or '—' }} A · {{ device.current_voltage_v or '—' }} V</div>
+                  {% if device.current_temperature_c is not none or device.target_temperature_c is not none %}
+                    <div class="tiny muted">{{ device.current_temperature_c or '—' }} °C · цель {{ device.target_temperature_c or '—' }} °C</div>
+                  {% endif %}
+                {% elif device.current_temperature_c is not none %}
+                  <div class="metric-main">{{ device.current_temperature_c }} °C</div>
+                  <div class="tiny muted">цель {{ device.target_temperature_c or '—' }} °C</div>
                 {% else %}
                   <div class="metric-main">—</div>
                   <div class="tiny muted">{{ device.provider.value }}</div>
