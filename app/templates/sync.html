@@ -18,6 +18,15 @@
 </section>
 
 <section class="card">
+  <div class="status-stack">
+    <div class="status-row"><span class="muted">Режим Tuya API</span><span>{{ sync_overview.tuya_api_mode_label }}</span></div>
+    <div class="status-row"><span class="muted">Полный cloud refresh</span><span>раз в {{ sync_overview.tuya_full_sync_interval_minutes }} мин</span></div>
+    <div class="status-row"><span class="muted">TTL кэша спецификаций</span><span>{{ sync_overview.tuya_spec_cache_hours }} ч</span></div>
+    <div class="status-row"><span class="muted">Последний полный refresh</span><span>{{ sync_overview.tuya_last_full_sync_at or '—' }}</span></div>
+  </div>
+</section>
+
+<section class="card">
   <div class="table-wrap">
     <table>
       <thead><tr><th>Старт</th><th>Статус</th><th>Trigger</th><th>ms</th><th>Результат</th><th>Ошибка</th></tr></thead>

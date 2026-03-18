@@ -197,6 +197,7 @@ def get_dashboard_summary(db: Session) -> dict:
 
 def get_sync_overview(db: Session) -> dict:
     settings = get_settings()
+    runtime = get_runtime_config(db)
     last_run = db.execute(select(SyncRun).order_by(SyncRun.started_at.desc(), SyncRun.id.desc()).limit(1)).scalar_one_or_none()
     success_total = db.scalar(select(func.count()).select_from(SyncRun).where(SyncRun.status == SyncRunStatus.SUCCESS)) or 0
     error_total = db.scalar(select(func.count()).select_from(SyncRun).where(SyncRun.status == SyncRunStatus.ERROR)) or 0
@@ -208,6 +209,11 @@ def get_sync_overview(db: Session) -> dict:
         "last_run": last_run,
         "success_total": success_total,
         "error_total": error_total,
+        "tuya_api_mode": runtime.tuya_api_mode,
+        "tuya_api_mode_label": runtime.tuya_api_mode_label,
+        "tuya_full_sync_interval_minutes": runtime.tuya_full_sync_interval_minutes,
+        "tuya_spec_cache_hours": runtime.tuya_spec_cache_hours,
+        "tuya_last_full_sync_at": runtime.tuya_last_full_sync_at,
     }
 
 

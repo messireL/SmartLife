@@ -9,23 +9,41 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.timeutils import local_day_start_from_utc, local_month_start_from_utc
-from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, ProviderType
+from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample, ProviderType, SyncRunTrigger
 from app.integrations.base import ProviderDevice, ProviderEnergySample, ProviderStatusSnapshot
 from app.integrations.registry import get_provider
+from app.integrations.tuya_provider import TuyaCloudProvider
+from app.services.runtime_config_service import mark_tuya_full_sync_completed
 from app.services.device_query_service import is_temp_device_name
 
 
 ZERO = Decimal("0.000")
 
 
-def sync_from_provider(db: Session) -> dict:
+def sync_from_provider(db: Session, *, trigger: SyncRunTrigger = SyncRunTrigger.MANUAL) -> dict:
     provider = get_provider(db)
-    devices = provider.get_devices()
+    sync_mode = "full"
+    sync_reason = "provider default"
+    refresh_devices_from_cloud = True
+    use_cached_spec = False
+
+    if isinstance(provider, TuyaCloudProvider):
+        if trigger in {SyncRunTrigger.MANUAL, SyncRunTrigger.CLI, SyncRunTrigger.STARTUP}:
+            sync_mode = "full"
+            sync_reason = f"{trigger.value} trigger forces full sync"
+        else:
+            plan = provider.plan_sync()
+            sync_mode = plan.mode
+            sync_reason = plan.reason
+            refresh_devices_from_cloud = plan.refresh_devices_from_cloud
+            use_cached_spec = plan.use_cached_spec
+
+    devices = provider.get_devices() if refresh_devices_from_cloud else provider.get_cached_devices()
     daily_samples = provider.get_daily_energy_samples()
     monthly_samples = provider.get_monthly_energy_samples()
-    snapshots = provider.get_status_snapshots(devices)
+    snapshots = provider.get_status_snapshots(devices, use_cached_spec=use_cached_spec) if isinstance(provider, TuyaCloudProvider) else provider.get_status_snapshots(devices)
 
-    pruned_devices = _prune_missing_provider_devices(db, provider.provider_name, devices)
+    pruned_devices = _prune_missing_provider_devices(db, provider.provider_name, devices) if refresh_devices_from_cloud else 0
     device_map = _upsert_devices(db, devices)
     inserted_daily = _upsert_energy_samples(db, BucketType.DAY, daily_samples, device_map)
     inserted_monthly = _upsert_energy_samples(db, BucketType.MONTH, monthly_samples, device_map)
@@ -36,10 +54,16 @@ def sync_from_provider(db: Session) -> dict:
         device_map,
         aggregate_energy=aggregate_from_snapshots,
     )
+    if isinstance(provider, TuyaCloudProvider) and sync_mode == "full":
+        mark_tuya_full_sync_completed(db)
     db.commit()
 
     return {
         "provider": provider.provider_name.value,
+        "sync_mode": sync_mode,
+        "sync_reason": sync_reason,
+        "refreshed_devices_from_cloud": refresh_devices_from_cloud,
+        "used_cached_spec": use_cached_spec,
         "devices_total": len(devices),
         "daily_samples_total": inserted_daily,
         "monthly_samples_total": inserted_monthly,

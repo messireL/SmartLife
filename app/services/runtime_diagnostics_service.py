@@ -91,6 +91,10 @@ class RuntimeDiagnostics:
     app_settings_count: int | None
     provider: str
     provider_configured: bool
+    tuya_api_mode: str
+    tuya_full_sync_interval_minutes: int
+    tuya_spec_cache_hours: int
+    tuya_last_full_sync_at: str
     tariff_mode: str
     tariff_effective_from: str
     tariff_history_count: int
@@ -152,6 +156,8 @@ def get_runtime_diagnostics(db: Session) -> RuntimeDiagnostics:
     warnings: list[str] = []
     if runtime.provider == ProviderType.TUYA_CLOUD.value and not runtime.tuya_is_configured:
         warnings.append("provider=tuya_cloud, но Access ID / Secret в PostgreSQL не заданы полностью")
+    if runtime.provider == ProviderType.TUYA_CLOUD.value and runtime.tuya_api_mode == "economy":
+        warnings.append(f"tuya economy mode включён: полный cloud refresh каждые {runtime.tuya_full_sync_interval_minutes} мин, cached spec до {runtime.tuya_spec_cache_hours} ч")
     if not history:
         warnings.append("история тарифов пуста; будет использован fallback из legacy-значений")
     if runtime.tariff_effective_from != active_month_start.isoformat():
@@ -175,6 +181,10 @@ def get_runtime_diagnostics(db: Session) -> RuntimeDiagnostics:
         app_settings_count=app_settings_count,
         provider=runtime.provider,
         provider_configured=runtime.provider != ProviderType.TUYA_CLOUD.value or runtime.tuya_is_configured,
+        tuya_api_mode=runtime.tuya_api_mode,
+        tuya_full_sync_interval_minutes=runtime.tuya_full_sync_interval_minutes,
+        tuya_spec_cache_hours=runtime.tuya_spec_cache_hours,
+        tuya_last_full_sync_at=runtime.tuya_last_full_sync_at,
         tariff_mode=runtime.tariff_mode,
         tariff_effective_from=runtime.tariff_effective_from,
         tariff_history_count=len(history),

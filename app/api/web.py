@@ -59,6 +59,7 @@ from app.services.sync_runner import SyncAlreadyRunningError, run_sync_job
 from app.services.runtime_config_service import (
     configure_demo_provider,
     configure_tariff_settings,
+    configure_tuya_api_runtime,
     configure_tuya_cloud,
     get_next_scheduled_tariff_plan,
     get_runtime_config,
@@ -794,6 +795,34 @@ def update_runtime_cloud_settings(
     return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 
+@router.post("/settings/tuya-api-runtime")
+def update_tuya_api_runtime_settings(
+    tuya_api_mode: str = Form(default="standard"),
+    tuya_full_sync_interval_minutes: str = Form(default="15"),
+    tuya_spec_cache_hours: str = Form(default="24"),
+    db: Session = Depends(get_db),
+):
+    try:
+        full_minutes = _normalize_positive_int(tuya_full_sync_interval_minutes, "Полный cloud refresh, минут", minimum=5, maximum=1440)
+        spec_hours = _normalize_positive_int(tuya_spec_cache_hours, "TTL кэша спецификаций, часов", minimum=1, maximum=720)
+    except ValueError as exc:
+        return RedirectResponse(url=f"/settings?flash={quote_plus(str(exc))}", status_code=303)
+
+    runtime = configure_tuya_api_runtime(
+        db,
+        api_mode=(tuya_api_mode or "standard").strip(),
+        full_sync_interval_minutes=full_minutes,
+        spec_cache_hours=spec_hours,
+    )
+    if runtime.tuya_api_mode == "economy":
+        flash = (
+            f"Экономичный режим Tuya включён: статус устройств опрашивается как раньше, "
+            f"а полный cloud refresh теперь раз в {runtime.tuya_full_sync_interval_minutes} мин; "
+            f"кэш спецификаций живёт до {runtime.tuya_spec_cache_hours} ч."
+        )
+    else:
+        flash = "Экономичный режим Tuya выключен. Каждый цикл снова работает как полный cloud refresh."
+    return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 
 @router.post("/settings/tuya-scenes")

@@ -5,17 +5,22 @@ import hmac
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Sequence
 from urllib.parse import quote, urlencode
 from uuid import uuid4
 
 import httpx
+from sqlalchemy import select
 
 from app.db.session import SessionLocal
-from app.services.runtime_config_service import get_runtime_config
-from app.db.models import ProviderType
+from app.services.runtime_config_service import (
+    TUYA_API_MODE_ECONOMY,
+    get_runtime_config,
+    get_setting_value,
+)
+from app.db.models import Device, ProviderType
 from app.integrations.base import DeviceProvider, ProviderDevice, ProviderEnergySample, ProviderStatusSnapshot
 
 _EMPTY_BODY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -62,12 +67,21 @@ class TuyaDeviceSpec:
         return self.status_map.get(code) or self.function_map.get(code)
 
 
+@dataclass(slots=True)
+class TuyaSyncPlan:
+    mode: str
+    refresh_devices_from_cloud: bool
+    use_cached_spec: bool
+    reason: str
+
+
 class TuyaCloudProvider(DeviceProvider):
     provider_name = ProviderType.TUYA_CLOUD
 
     def __init__(self) -> None:
         with SessionLocal() as db:
             runtime = get_runtime_config(db)
+        self.runtime = runtime
         access_id = runtime.tuya_access_id.strip()
         access_secret = runtime.tuya_access_secret.strip()
         if not access_id or not access_secret:
@@ -81,6 +95,65 @@ class TuyaCloudProvider(DeviceProvider):
         )
         self._device_cache: list[dict[str, Any]] | None = None
         self._spec_cache: dict[str, TuyaDeviceSpec] = {}
+
+    def plan_sync(self) -> TuyaSyncPlan:
+        if self.runtime.tuya_api_mode != TUYA_API_MODE_ECONOMY:
+            return TuyaSyncPlan(mode="full", refresh_devices_from_cloud=True, use_cached_spec=False, reason="standard mode")
+
+        with SessionLocal() as db:
+            known_devices = db.execute(
+                select(Device).where(Device.provider == self.provider_name, Device.is_deleted.is_(False)).order_by(Device.id.asc())
+            ).scalars().all()
+            if not known_devices:
+                return TuyaSyncPlan(mode="full", refresh_devices_from_cloud=True, use_cached_spec=False, reason="no cached devices")
+
+            raw_last_full = get_setting_value(db, "tuya.last_full_sync_at", "").strip()
+
+        if not raw_last_full:
+            return TuyaSyncPlan(mode="full", refresh_devices_from_cloud=True, use_cached_spec=False, reason="full sync marker is empty")
+
+        try:
+            last_full = datetime.fromisoformat(raw_last_full)
+        except ValueError:
+            return TuyaSyncPlan(mode="full", refresh_devices_from_cloud=True, use_cached_spec=False, reason="full sync marker is invalid")
+
+        now = datetime.utcnow()
+        full_interval = timedelta(minutes=max(5, self.runtime.tuya_full_sync_interval_minutes))
+        spec_ttl = timedelta(hours=max(1, self.runtime.tuya_spec_cache_hours))
+        elapsed = now - last_full
+
+        if elapsed >= spec_ttl:
+            return TuyaSyncPlan(mode="full", refresh_devices_from_cloud=True, use_cached_spec=False, reason="spec cache ttl elapsed")
+        if elapsed >= full_interval:
+            return TuyaSyncPlan(mode="full", refresh_devices_from_cloud=True, use_cached_spec=True, reason="device list refresh interval elapsed")
+
+        return TuyaSyncPlan(mode="light", refresh_devices_from_cloud=False, use_cached_spec=True, reason="economy mode status-only cycle")
+
+    def get_cached_devices(self) -> list[ProviderDevice]:
+        with SessionLocal() as db:
+            rows = db.execute(
+                select(Device).where(Device.provider == self.provider_name, Device.is_deleted.is_(False)).order_by(Device.id.asc())
+            ).scalars().all()
+        items: list[ProviderDevice] = []
+        for row in rows:
+            items.append(
+                ProviderDevice(
+                    external_id=row.external_id,
+                    provider=self.provider_name,
+                    name=row.name,
+                    model=row.model,
+                    product_id=row.product_id,
+                    product_name=row.product_name,
+                    category=row.category,
+                    room_name=row.display_room_name,
+                    location_name=row.location_name,
+                    icon_url=row.icon_url,
+                    is_online=bool(row.is_online),
+                    last_seen_at=row.last_seen_at,
+                    notes=row.notes,
+                )
+            )
+        return items
 
     def get_devices(self) -> list[ProviderDevice]:
         devices = self.client.list_project_devices()
@@ -114,18 +187,24 @@ class TuyaCloudProvider(DeviceProvider):
     def get_monthly_energy_samples(self) -> list[ProviderEnergySample]:
         return []
 
-    def get_status_snapshots(self, devices: Sequence[ProviderDevice]) -> list[ProviderStatusSnapshot]:
+    def get_status_snapshots(self, devices: Sequence[ProviderDevice], *, use_cached_spec: bool = False) -> list[ProviderStatusSnapshot]:
         snapshots: list[ProviderStatusSnapshot] = []
         for device in devices:
-            spec = self._get_spec(device.external_id)
+            spec = self._get_spec(device.external_id, allow_cached=use_cached_spec)
             statuses = self.client.get_device_status(device.external_id)
             snapshots.append(self._build_snapshot(device, statuses, spec))
         return snapshots
 
-    def _get_spec(self, device_id: str) -> TuyaDeviceSpec:
+    def _get_spec(self, device_id: str, *, allow_cached: bool = False) -> TuyaDeviceSpec:
         cached = self._spec_cache.get(device_id)
         if cached is not None:
             return cached
+
+        if allow_cached:
+            cached_from_db = self._load_cached_spec_from_db(device_id)
+            if cached_from_db is not None:
+                self._spec_cache[device_id] = cached_from_db
+                return cached_from_db
 
         response = self.client.get_device_specification(device_id)
         status_map = _parse_definitions(response.get("status") or [])
@@ -133,6 +212,35 @@ class TuyaCloudProvider(DeviceProvider):
         bundle = TuyaDeviceSpec(status_map=status_map, function_map=function_map)
         self._spec_cache[device_id] = bundle
         return bundle
+
+    def _load_cached_spec_from_db(self, device_id: str) -> TuyaDeviceSpec | None:
+        with SessionLocal() as db:
+            device = db.execute(
+                select(Device).where(Device.provider == self.provider_name, Device.external_id == device_id)
+            ).scalar_one_or_none()
+            raw_last_full = get_setting_value(db, "tuya.last_full_sync_at", "").strip()
+        if device is None or not device.last_status_payload:
+            return None
+        if raw_last_full:
+            try:
+                last_full = datetime.fromisoformat(raw_last_full)
+                cache_ttl = timedelta(hours=max(1, self.runtime.tuya_spec_cache_hours))
+                if datetime.utcnow() - last_full > cache_ttl:
+                    return None
+            except ValueError:
+                return None
+        try:
+            payload = json.loads(device.last_status_payload)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        status_rows = list((payload.get("status_definitions") or {}).values())
+        function_rows = list((payload.get("function_definitions") or {}).values())
+        if not status_rows and not function_rows:
+            return None
+        return TuyaDeviceSpec(
+            status_map={code: _definition_from_serialized(raw) for code, raw in (payload.get("status_definitions") or {}).items() if isinstance(raw, dict)},
+            function_map={code: _definition_from_serialized(raw) for code, raw in (payload.get("function_definitions") or {}).items() if isinstance(raw, dict)},
+        )
 
     def send_switch_command(self, device_id: str, switch_on: bool) -> dict[str, Any]:
         spec = self._get_spec(device_id)
@@ -550,6 +658,19 @@ def _is_supported_control_code(code: str) -> bool:
     if _is_supported_switch_code(code) or code in {"mode", "temp_set", "relay_status", "light_mode", "child_lock"}:
         return True
     return bool(re.fullmatch(r"countdown_[1-9]\d*", code))
+
+
+def _definition_from_serialized(raw: dict[str, Any]) -> TuyaCodeDefinition:
+    return TuyaCodeDefinition(
+        code=str(raw.get("code") or ""),
+        value_type=raw.get("value_type"),
+        scale=int(raw.get("scale") or 0),
+        unit=raw.get("unit"),
+        min_value=_safe_decimal(raw.get("min_value")),
+        max_value=_safe_decimal(raw.get("max_value")),
+        step=_safe_decimal(raw.get("step")),
+        enum_range=tuple(str(item) for item in (raw.get("enum_range") or []) if str(item).strip()),
+    )
 
 
 def _serialize_definition(definition: TuyaCodeDefinition) -> dict[str, Any]:

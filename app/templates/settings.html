@@ -5,6 +5,34 @@
   <div class="muted">Тут собраны ключевые параметры runtime, чтобы не вспоминать потом, на каком IP всё это счастье висит и почему синк идёт каждые 60 секунд.</div>
 </section>
 
+<section class="card">
+  <div class="section-header"><h2>Экономичный режим Tuya API</h2></div>
+  <div class="muted" style="margin-bottom:16px;">Экономичный режим не режет live-статусы существующих устройств: SmartLife по-прежнему опрашивает их каждый цикл, но полный refresh списка устройств и облачных спецификаций делает реже. Это снижает расход Tuya API, а цена — новые устройства, новые коды и онлайн-статусы могут подтягиваться не мгновенно, а к следующему полному refresh.</div>
+  <form class="stack-form" method="post" action="/settings/tuya-api-runtime">
+    <label>
+      <span>Режим Tuya API</span>
+      <select name="tuya_api_mode">
+        <option value="standard" {% if not runtime or runtime.tuya_api_mode == "standard" %}selected{% endif %}>Стандартный — каждый цикл полный cloud refresh</option>
+        <option value="economy" {% if runtime and runtime.tuya_api_mode == "economy" %}selected{% endif %}>Экономичный — статусы часто, полный refresh реже</option>
+      </select>
+    </label>
+    <div class="grid-2">
+      <label>
+        <span>Полный cloud refresh, минут</span>
+        <input type="number" min="5" max="1440" name="tuya_full_sync_interval_minutes" value="{{ runtime.tuya_full_sync_interval_minutes if runtime else 15 }}">
+      </label>
+      <label>
+        <span>TTL кэша спецификаций, часов</span>
+        <input type="number" min="1" max="720" name="tuya_spec_cache_hours" value="{{ runtime.tuya_spec_cache_hours if runtime else 24 }}">
+      </label>
+    </div>
+    <div class="muted">Рекомендация для trial: фон 60 сек оставить, а полный refresh поставить 15 мин. Тогда live-мощность/ток/температура не теряются, а лишние запросы на список устройств и specification уходят заметно реже.</div>
+    <div class="form-actions">
+      <button class="button-primary" type="submit">Сохранить режим Tuya API</button>
+    </div>
+  </form>
+</section>
+
 <section class="grid-2">
   <article class="card">
     <div class="section-header"><h2>Runtime</h2></div>
@@ -29,6 +57,10 @@
       <div class="status-row"><span class="muted">Фоновая синхронизация</span><span>{% if sync_overview.background_sync_enabled %}да{% else %}нет{% endif %}</span></div>
       <div class="status-row"><span class="muted">Стартовый прогон</span><span>{% if sync_overview.sync_on_startup %}да{% else %}нет{% endif %}</span></div>
       <div class="status-row"><span class="muted">Интервал</span><span>{{ sync_overview.sync_interval_seconds }} сек</span></div>
+      <div class="status-row"><span class="muted">Режим Tuya API</span><span>{{ runtime.tuya_api_mode_label if runtime else "Стандартный" }}</span></div>
+      <div class="status-row"><span class="muted">Полный cloud refresh</span><span>раз в {{ runtime.tuya_full_sync_interval_minutes if runtime else 15 }} мин</span></div>
+      <div class="status-row"><span class="muted">TTL кэша спецификаций</span><span>{{ runtime.tuya_spec_cache_hours if runtime else 24 }} ч</span></div>
+      <div class="status-row"><span class="muted">Последний полный refresh</span><span>{{ runtime.tuya_last_full_sync_at if runtime and runtime.tuya_last_full_sync_at else "—" }}</span></div>
       <div class="status-row"><span class="muted">Health</span><span><a href="/health">/health</a></span></div>
       <div class="status-row"><span class="muted">Активный тариф</span><span>{{ runtime.tariff_mode_label if runtime else "Единый" }} · {{ runtime.tariff_display if runtime else "0.00 ₽/kWh" }}</span></div>
       <div class="status-row"><span class="muted">Действует с</span><span>{{ runtime.tariff_effective_from_label if runtime else '—' }}</span></div>

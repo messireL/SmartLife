@@ -58,7 +58,7 @@ def run_sync_job(*, trigger: SyncRunTrigger = SyncRunTrigger.MANUAL, fail_if_run
             db.refresh(sync_run)
 
             try:
-                result = sync_from_provider(db)
+                result = sync_from_provider(db, trigger=trigger)
                 finished_at = utc_now_naive()
                 duration_ms = int((time.perf_counter() - start_perf) * 1000)
                 sync_run.status = SyncRunStatus.SUCCESS
