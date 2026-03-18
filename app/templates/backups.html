@@ -2,7 +2,7 @@
 {% block content %}
 <section class="card page-hero">
   <h1>Резервные копии</h1>
-  <div class="muted">Перед restart и up --build теперь делается автобэкап БД. Автовосстановление не включал специально — оно любит откатывать жизнь назад в самый неподходящий момент.</div>
+  <div class="muted">Перед restart и up --build теперь делается автобэкап БД. Автовосстановление не включал специально — оно любит откатывать жизнь назад в самый неподходящий момент. Удаление лишних `.dump` не ломает статистику SmartLife: графики, снапшоты и тарифные расчёты живут в PostgreSQL, а не в каталоге бэкапов.</div>
 </section>
 
 <section class="card">
@@ -13,22 +13,63 @@
 </section>
 
 <section class="card">
-  <div class="section-header"><h2>Файлы бэкапов</h2><div class="muted">{{ backups|length }} шт.</div></div>
+  <div class="section-header">
+    <h2>Файлы бэкапов</h2>
+    <div class="muted">{{ backup_start_index }}–{{ backup_end_index }} из {{ backups_total }} шт.</div>
+  </div>
+
+  <form class="inline-actions" method="get" action="/backups" style="margin-bottom:16px;">
+    <label>
+      <span class="muted tiny">На странице</span>
+      <select class="input input-small" name="per_page" onchange="this.form.submit()">
+        {% for option in [10, 20, 50, 100] %}
+          <option value="{{ option }}" {% if backup_per_page == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <input type="hidden" name="page" value="1">
+    <noscript><button class="button-secondary" type="submit">Применить</button></noscript>
+  </form>
+
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Файл</th><th>Размер</th><th>mtime (unix)</th></tr></thead>
+      <thead><tr><th>Файл</th><th>Размер</th><th>Изменён</th><th></th></tr></thead>
       <tbody>
         {% for item in backups %}
           <tr>
             <td><code>{{ item.name }}</code></td>
             <td>{{ item.size_mb }} MB</td>
             <td>{{ item.modified_at|localdt }}</td>
+            <td>
+              <form method="post" action="/backups/delete" onsubmit="return confirm('Удалить бэкап {{ item.name }}? Это уберёт только dump-файл, статистику SmartLife не тронет.');">
+                <input type="hidden" name="backup_name" value="{{ item.name }}">
+                <input type="hidden" name="page" value="{{ backup_page }}">
+                <input type="hidden" name="per_page" value="{{ backup_per_page }}">
+                <button type="submit" class="button-danger">Удалить</button>
+              </form>
+            </td>
           </tr>
         {% else %}
-          <tr><td colspan="3" class="muted">Пока нет ни одной резервной копии.</td></tr>
+          <tr><td colspan="4" class="muted">Пока нет ни одной резервной копии.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+
+  {% if backup_total_pages > 1 %}
+    <div class="pager" style="margin-top:16px;">
+      <div class="muted">Страница {{ backup_page }} из {{ backup_total_pages }}</div>
+      <div class="inline-actions">
+        {% if backup_page > 1 %}
+          <a class="tab-link" href="/backups?page=1&per_page={{ backup_per_page }}">« Первая</a>
+          <a class="tab-link" href="/backups?page={{ backup_page - 1 }}&per_page={{ backup_per_page }}">‹ Назад</a>
+        {% endif %}
+        {% if backup_page < backup_total_pages %}
+          <a class="tab-link" href="/backups?page={{ backup_page + 1 }}&per_page={{ backup_per_page }}">Вперёд ›</a>
+          <a class="tab-link" href="/backups?page={{ backup_total_pages }}&per_page={{ backup_per_page }}">Последняя »</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
 </section>
 {% endblock %}

@@ -6,6 +6,17 @@ from pathlib import Path
 BACKUP_DIR = Path('/app/backups/db')
 
 
+def _resolve_backup_path(name: str) -> Path:
+    raw = (name or '').strip()
+    if not raw:
+        raise ValueError('Имя файла бэкапа не указано.')
+    if Path(raw).name != raw:
+        raise ValueError('Некорректное имя файла бэкапа.')
+    if not raw.endswith('.dump'):
+        raise ValueError('Удалять можно только .dump файлы из каталога бэкапов.')
+    return BACKUP_DIR / raw
+
+
 def list_backups() -> list[dict]:
     items: list[dict] = []
     if not BACKUP_DIR.exists():
@@ -21,3 +32,11 @@ def list_backups() -> list[dict]:
             }
         )
     return items
+
+
+def delete_backup(name: str) -> bool:
+    path = _resolve_backup_path(name)
+    if not path.exists() or not path.is_file():
+        return False
+    path.unlink()
+    return True

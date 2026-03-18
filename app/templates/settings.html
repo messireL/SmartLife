@@ -5,6 +5,16 @@
   <div class="muted">Тут собраны ключевые параметры runtime, чтобы не вспоминать потом, на каком IP всё это счастье висит и почему синк идёт каждые 60 секунд.</div>
 </section>
 
+<nav class="tabs" id="settings-tabs" data-settings-default="{{ 'tariff' if tariff_profile_edit else 'general' }}">
+  <button type="button" class="tab-link" data-settings-tab="general">Общее</button>
+  <button type="button" class="tab-link" data-settings-tab="cloud">Облако Tuya</button>
+  <button type="button" class="tab-link" data-settings-tab="tariff">Тарифы</button>
+  <button type="button" class="tab-link" data-settings-tab="diagnostics">Диагностика</button>
+</nav>
+
+<div class="settings-pane-group">
+<div class="settings-pane" data-settings-pane="general">
+
 <section class="card">
   <div class="section-header"><h2>Экономичный режим Tuya API</h2></div>
   <div class="muted" style="margin-bottom:16px;">Экономичный режим не режет live-статусы существующих устройств: SmartLife по-прежнему опрашивает их каждый цикл, но полный refresh списка устройств и облачных спецификаций делает реже. Это снижает расход Tuya API, а цена — новые устройства, новые коды и онлайн-статусы могут подтягиваться не мгновенно, а к следующему полному refresh.</div>
@@ -71,7 +81,9 @@
   </article>
 </section>
 
+</div>
 
+<div class="settings-pane" data-settings-pane="diagnostics">
 <section class="card">
   <div class="section-header"><h2>Диагностика runtime и БД</h2><a class="text-link" href="/api/runtime/diagnostics">/api/runtime/diagnostics</a></div>
   <div class="status-stack">
@@ -107,6 +119,9 @@
   {% endif %}
 </section>
 
+</div>
+
+<div class="settings-pane" data-settings-pane="cloud">
 <section class="grid-2">
 
   <article class="card">
@@ -167,6 +182,9 @@
   </form>
 </section>
 
+</div>
+
+<div class="settings-pane" data-settings-pane="tariff">
 <section class="card">
   <div class="section-header"><h2>Тариф электроэнергии</h2></div>
   <div class="status-stack" style="margin-bottom:16px;">
@@ -378,7 +396,53 @@
 ./scripts/manage.sh restore-db backups/db/&lt;file&gt;.dump</pre>
 </section>
 
+</div>
+</div>
+
 <script>
+(function () {
+  const settingTabs = Array.from(document.querySelectorAll('[data-settings-tab]'));
+  const settingPanes = Array.from(document.querySelectorAll('[data-settings-pane]'));
+  const settingsNav = document.getElementById('settings-tabs');
+  if (settingTabs.length && settingPanes.length && settingsNav) {
+    const storageKey = "smartlife.settings.activeTab";
+    const defaultTab = settingsNav.dataset.settingsDefault || "general";
+
+    function applySettingsTab(tabName) {
+      const normalized = settingPanes.some((pane) => pane.dataset.settingsPane === tabName) ? tabName : defaultTab;
+      settingTabs.forEach((tab) => {
+        const active = tab.dataset.settingsTab === normalized;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      settingPanes.forEach((pane) => {
+        pane.hidden = pane.dataset.settingsPane !== normalized;
+      });
+      try {
+        window.localStorage.setItem(storageKey, normalized);
+      } catch (err) {
+        // ignore storage issues
+      }
+    }
+
+    settingTabs.forEach((tab) => {
+      tab.addEventListener('click', function () {
+        applySettingsTab(tab.dataset.settingsTab || defaultTab);
+      });
+    });
+
+    let initialTab = defaultTab;
+    if (defaultTab === "general") {
+      try {
+        initialTab = window.localStorage.getItem(storageKey) || defaultTab;
+      } catch (err) {
+        initialTab = defaultTab;
+      }
+    }
+    applySettingsTab(initialTab);
+  }
+})();
+
 (function () {
   const tabs = Array.from(document.querySelectorAll('[data-tariff-tab]'));
   const panes = Array.from(document.querySelectorAll('[data-tariff-pane]'));

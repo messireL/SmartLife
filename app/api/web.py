@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, Query, Request
@@ -13,7 +14,7 @@ from app.core.config import get_settings
 from app.core.timeutils import format_local_date, format_local_datetime
 from app.db.models import Device, DeviceBadge, SyncRun, SyncRunTrigger
 from app.db.session import get_db
-from app.services.backup_service import list_backups
+from app.services.backup_service import delete_backup, list_backups
 from app.services.dashboard_service import (
     get_dashboard_panels,
     get_dashboard_summary,
@@ -120,6 +121,21 @@ def _normalize_time(raw: str, label: str) -> str:
         return parsed.strftime("%H:%M")
     except Exception:
         raise ValueError(f"Поле «{label}» должно быть в формате ЧЧ:ММ, например 23:00")
+
+
+def _normalize_positive_int(raw: str | int, label: str, *, minimum: int = 1, maximum: int = 100000) -> int:
+    value_raw = str(raw or '').strip()
+    try:
+        value = int(value_raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"Поле «{label}» должно быть целым числом.")
+    if value < minimum or value > maximum:
+        raise ValueError(f"Поле «{label}» должно быть в диапазоне {minimum}..{maximum}.")
+    return value
+
+
+def _clamp_int(value: int, *, minimum: int, maximum: int) -> int:
+    return max(minimum, min(maximum, value))
 
 
 def _parse_tariff_form_payload(
@@ -979,16 +995,66 @@ def delete_tariff_profile_settings(profile_key: str = Form(default=""), db: Sess
 
 
 @router.get("/backups", response_class=HTMLResponse)
-def backups_page(request: Request, db: Session = Depends(get_db)):
+def backups_page(
+    request: Request,
+    page: int = Query(default=1),
+    per_page: int = Query(default=20),
+    db: Session = Depends(get_db),
+):
     runtime = get_runtime_config(db)
+    all_backups = list_backups()
+    per_page = _clamp_int(per_page, minimum=10, maximum=100)
+    total = len(all_backups)
+    total_pages = max(1, math.ceil(total / per_page)) if total else 1
+    page = _clamp_int(page, minimum=1, maximum=total_pages)
+    start_index = (page - 1) * per_page
+    end_index = start_index + per_page
+    page_items = all_backups[start_index:end_index]
     context = _base_context(request=request, active_nav="backups", page_title="Резервные копии", runtime=runtime)
     context.update(
         {
             "summary": get_dashboard_summary(db),
-            "backups": list_backups(),
+            "backups": page_items,
+            "backups_total": total,
+            "backup_page": page,
+            "backup_per_page": per_page,
+            "backup_total_pages": total_pages,
+            "backup_start_index": (start_index + 1) if total else 0,
+            "backup_end_index": min(end_index, total),
         }
     )
     return templates.TemplateResponse(request, "backups.html", context)
+
+
+@router.post("/backups/delete")
+def delete_backup_file(
+    backup_name: str = Form(default=""),
+    page: str = Form(default="1"),
+    per_page: str = Form(default="20"),
+    db: Session = Depends(get_db),
+):
+    try:
+        page_value = _normalize_positive_int(page, "Страница", minimum=1, maximum=100000)
+    except ValueError:
+        page_value = 1
+    try:
+        per_page_value = _normalize_positive_int(per_page, "Размер страницы", minimum=10, maximum=100)
+    except ValueError:
+        per_page_value = 20
+
+    try:
+        deleted = delete_backup(backup_name)
+        flash = f"Бэкап {backup_name} удалён. Это не влияет на статистику SmartLife: графики, snapshots и тарифные расчёты живут в PostgreSQL." if deleted else "Файл бэкапа не найден. Возможно, его уже убрали раньше."
+    except ValueError as exc:
+        flash = str(exc)
+
+    total = len(list_backups())
+    total_pages = max(1, math.ceil(total / per_page_value)) if total else 1
+    page_value = min(page_value, total_pages)
+    return RedirectResponse(
+        url=f"/backups?page={page_value}&per_page={per_page_value}&flash={quote_plus(flash)}",
+        status_code=303,
+    )
 
 
 @router.get("/devices/{device_id}", response_class=HTMLResponse)
