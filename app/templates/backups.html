@@ -5,29 +5,17 @@
   <div class="muted">Перед restart и up --build SmartLife делает автобэкап БД. Удаление лишних <code>.dump</code> не ломает статистику приложения: графики, снапшоты и тарифные расчёты продолжают жить в PostgreSQL. То есть можно спокойно подметать каталог, не боясь амнезии.</div>
 </section>
 
-<section class="card grid-two backup-meta-grid">
-  <div>
-    <div class="section-header"><h2>Команды</h2></div>
-    <pre class="command-block">./scripts/manage.sh backup-db
-./scripts/manage.sh backup-list
-./scripts/manage.sh backup-prune
-./scripts/manage.sh restore-db backups/db/&lt;file&gt;.dump</pre>
-  </div>
-  <div>
-    <div class="section-header"><h2>Итог по каталогу</h2></div>
-    <div class="status-list compact-status-list">
-      <div class="status-row"><span class="muted">Всего dump-файлов</span><strong>{{ backups_total_all }}</strong></div>
-      <div class="status-row"><span class="muted">Общий объём</span><strong>{{ backups_total_mb_all }} MB</strong></div>
-      <div class="status-row"><span class="muted">Под фильтром</span><strong>{{ backups_total }} шт. / {{ backups_total_mb }} MB</strong></div>
-      <div class="status-row"><span class="muted">Можно убрать по политике</span><strong>{{ backup_prunable_count }} шт. / {{ backup_prunable_mb }} MB</strong></div>
-    </div>
-  </div>
-</section>
-
-<section class="card">
+<section class="card backup-policy-card">
   <div class="section-header">
-    <h2>Политика хранения</h2>
-    <div class="muted">Держим только последние N dump-файлов. Статистику SmartLife это не затрагивает.</div>
+    <div>
+      <h2>Политика хранения</h2>
+      <div class="muted">Этот блок теперь лежит наверху страницы, чтобы не искать его по подвалам интерфейса. SmartLife удаляет только dump-файлы, а не исторические данные из PostgreSQL.</div>
+    </div>
+    <div class="status-pills">
+      <span class="badge soft-badge">Храним: {{ backup_keep_last if backup_keep_last > 0 else 'без автоудаления' }}</span>
+      <span class="badge {% if backup_auto_prune_enabled %}online{% else %}warning{% endif %}">Автоочистка: {% if backup_auto_prune_enabled %}вкл{% else %}выкл{% endif %}</span>
+      <span class="badge soft-badge">Можно убрать: {{ backup_prunable_count }} шт. / {{ backup_prunable_mb }} MB</span>
+    </div>
   </div>
   <div class="backup-policy-layout">
     <form class="stack-form" method="post" action="/backups/settings">
@@ -52,6 +40,25 @@
       <input type="hidden" name="q" value="{{ backup_query }}">
       <button class="button-secondary" type="submit" {% if backup_keep_last <= 0 %}disabled{% endif %}>Очистить сейчас</button>
     </form>
+  </div>
+</section>
+
+<section class="card grid-two backup-meta-grid">
+  <div>
+    <div class="section-header"><h2>Команды</h2></div>
+    <pre class="command-block">./scripts/manage.sh backup-db
+./scripts/manage.sh backup-list
+./scripts/manage.sh backup-prune
+./scripts/manage.sh restore-db backups/db/&lt;file&gt;.dump</pre>
+  </div>
+  <div>
+    <div class="section-header"><h2>Итог по каталогу</h2></div>
+    <div class="status-list compact-status-list">
+      <div class="status-row"><span class="muted">Всего dump-файлов</span><strong>{{ backups_total_all }}</strong></div>
+      <div class="status-row"><span class="muted">Общий объём</span><strong>{{ backups_total_mb_all }} MB</strong></div>
+      <div class="status-row"><span class="muted">Под фильтром</span><strong>{{ backups_total }} шт. / {{ backups_total_mb }} MB</strong></div>
+      <div class="status-row"><span class="muted">Можно убрать по политике</span><strong>{{ backup_prunable_count }} шт. / {{ backup_prunable_mb }} MB</strong></div>
+    </div>
   </div>
 </section>
 

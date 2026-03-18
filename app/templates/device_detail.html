@@ -416,6 +416,16 @@
     <article class="card">
       <div class="section-header"><h2>Управление</h2></div>
       <div class="muted">Управление доступно по тем командам, которые Tuya Cloud реально отдаёт для этого устройства: питание, отдельные каналы, режим и целевая температура.</div>
+      {% set controls_locked = tuya_quota_state and tuya_quota_state.exhausted and device.provider.value == 'tuya_cloud' %}
+      {% if controls_locked %}
+        <div class="warning-banner inline-warning" style="margin-top:16px; margin-bottom:16px;">
+          <div>
+            <div class="warning-title">Команды временно заблокированы</div>
+            <div class="muted">Tuya Trial quota сейчас исчерпана, поэтому кнопки управления переведены в read-only. После продления лимита нажми «Синхронизировать сейчас», и SmartLife снова откроет команды.</div>
+          </div>
+        </div>
+      {% endif %}
+      <fieldset class="control-lockset" {% if controls_locked %}disabled{% endif %}>
 
       {% if device_view.controls.supports_multi_switch %}
       <div class="control-group">
@@ -653,6 +663,7 @@
       {% if not device_view.controls.supports_switch and not device_view.controls.supports_mode and not device_view.controls.supports_target_temperature and not device_view.controls.supports_multi_switch and not device_view.controls.supports_relay_status and not device_view.controls.supports_light_mode and not device_view.controls.supports_child_lock and not device_view.controls.supports_countdowns %}
       <div class="empty-state">Для этого устройства в Tuya Cloud пока не обнаружены поддерживаемые команды управления.</div>
       {% endif %}
+      </fieldset>
     </article>
     <article class="card">
       <div class="section-header"><h2>Последние команды</h2></div>

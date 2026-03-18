@@ -8,12 +8,51 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.timeutils import utc_now_naive
-from app.db.models import Device, DeviceCommandLog, DeviceCommandStatus, SyncRunTrigger
+from app.db.models import Device, DeviceCommandLog, DeviceCommandStatus, ProviderType, SyncRunTrigger
 from app.integrations.registry import get_provider
+from app.services.runtime_config_service import get_runtime_config
+from app.services.tuya_quota_service import detect_tuya_quota_state, is_tuya_quota_error_message
 
 
 class DeviceControlError(RuntimeError):
     pass
+
+
+def _friendly_tuya_quota_control_message(raw_message: str | None = None) -> str:
+    base = (
+        "Квота Tuya Trial Edition исчерпана. Продли Extended Trial или подключи официальный ресурс-пак, "
+        "затем запусти синхронизацию SmartLife, чтобы снять блокировку управления."
+    )
+    raw = (raw_message or "").strip()
+    if raw and raw not in base:
+        return f"{base} Tuya says: {raw}"
+    return base
+
+
+def _log_device_command_error(
+    db: Session,
+    *,
+    device: Device,
+    command_code: str,
+    command_value: Any,
+    requested_at,
+    trigger: str,
+    error_message: str,
+) -> None:
+    db.add(
+        DeviceCommandLog(
+            device_id=device.id,
+            command_code=command_code,
+            command_value=str(command_value),
+            status=DeviceCommandStatus.ERROR,
+            provider=device.provider.value,
+            requested_at=requested_at,
+            finished_at=utc_now_naive(),
+            error_message=error_message,
+            result_summary=f'trigger={trigger}',
+        )
+    )
+    db.commit()
 
 
 
@@ -36,33 +75,6 @@ def set_device_switch_state(db: Session, device_id: int, desired_state: bool, *,
     return set_device_switch_code_state(db, device_id, switch_code, desired_state, trigger=trigger)
 
 
-def set_device_switch_code_state(db: Session, device_id: int, command_code: str, desired_state: bool, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
-    device = _get_active_device(db, device_id)
-    provider = _get_matching_provider(db, device)
-    command_code = (command_code or "").strip()
-    if not command_code:
-        raise DeviceControlError('код канала не должен быть пустым')
-    if command_code not in set(device.control_codes):
-        raise DeviceControlError(f'устройство не поддерживает канал {command_code}')
-    if not _is_switch_like_code(command_code):
-        raise DeviceControlError(f'команда {command_code} не является выключателем')
-    success_updates = {
-        'last_status_at': utc_now_naive(),
-    }
-    if command_code in {'switch', 'switch_1'}:
-        success_updates['switch_on'] = desired_state
-    result = _execute_device_command(
-        db,
-        device=device,
-        provider=provider,
-        command_code=command_code,
-        command_value=bool(desired_state),
-        trigger=trigger,
-        success_updates=success_updates,
-    )
-    result['switch_on'] = desired_state
-    result['command_code'] = command_code
-    return result
 def set_device_switch_code_state(db: Session, device_id: int, command_code: str, desired_state: bool, *, trigger: str = SyncRunTrigger.MANUAL.value) -> dict[str, Any]:
     device = _get_active_device(db, device_id)
     provider = _get_matching_provider(db, device)
@@ -356,6 +368,22 @@ def _execute_device_command(
         raise DeviceControlError(f'устройство не поддерживает команду {command_code}')
 
     requested_at = utc_now_naive()
+    runtime = get_runtime_config(db)
+    if device.provider == ProviderType.TUYA_CLOUD:
+        quota_state = detect_tuya_quota_state(db, runtime=runtime)
+        if quota_state.exhausted:
+            message = _friendly_tuya_quota_control_message(quota_state.message)
+            _log_device_command_error(
+                db,
+                device=device,
+                command_code=command_code,
+                command_value=command_value,
+                requested_at=requested_at,
+                trigger=trigger,
+                error_message=message,
+            )
+            raise DeviceControlError(message)
+
     try:
         result = provider.send_device_command(device.external_id, command_code, command_value)
         for field_name, value in (success_updates or {}).items():
@@ -382,18 +410,16 @@ def _execute_device_command(
         }
     except Exception as exc:  # noqa: BLE001
         db.rollback()
-        db.add(
-            DeviceCommandLog(
-                device_id=device.id,
-                command_code=command_code,
-                command_value=str(command_value),
-                status=DeviceCommandStatus.ERROR,
-                provider=device.provider.value,
-                requested_at=requested_at,
-                finished_at=utc_now_naive(),
-                error_message=str(exc),
-                result_summary=f'trigger={trigger}',
-            )
+        message = str(exc)
+        if device.provider == ProviderType.TUYA_CLOUD and is_tuya_quota_error_message(message):
+            message = _friendly_tuya_quota_control_message(message)
+        _log_device_command_error(
+            db,
+            device=device,
+            command_code=command_code,
+            command_value=command_value,
+            requested_at=requested_at,
+            trigger=trigger,
+            error_message=message,
         )
-        db.commit()
-        raise DeviceControlError(str(exc)) from exc
+        raise DeviceControlError(message) from exc

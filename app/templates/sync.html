@@ -17,9 +17,20 @@
   <article class="card sync-card"><div class="muted">Последний запуск</div><div class="tiny">{{ sync_overview.last_run.started_at|localdt if sync_overview.last_run else '—' }}</div></article>
 </section>
 
+{% if tuya_quota_state and tuya_quota_state.exhausted %}
+<section class="warning-banner">
+  <div class="warning-title">Tuya сейчас упёрлась в trial quota</div>
+  <div class="muted">Синхронизация может падать на cloud API, а управление устройствами уже переведено в read-only. После продления лимита запусти sync ещё раз — SmartLife сам увидит, что облако ожило.</div>
+</section>
+{% endif %}
+
 <section class="card">
   <div class="status-stack">
     <div class="status-row"><span class="muted">Режим Tuya API</span><span>{{ sync_overview.tuya_api_mode_label }}</span></div>
+    <div class="status-row"><span class="muted">Квота Tuya Trial</span><span>{% if tuya_quota_state and tuya_quota_state.exhausted %}исчерпана{% else %}ok{% endif %}</span></div>
+    {% if tuya_quota_state and tuya_quota_state.exhausted %}
+    <div class="status-row"><span class="muted">Последний сигнал квоты</span><span>{{ tuya_quota_state.detected_at|localdt if tuya_quota_state.detected_at else '—' }} · {{ tuya_quota_state.source or 'unknown' }}</span></div>
+    {% endif %}
     <div class="status-row"><span class="muted">Полный cloud refresh</span><span>раз в {{ sync_overview.tuya_full_sync_interval_minutes }} мин</span></div>
     <div class="status-row"><span class="muted">TTL кэша спецификаций</span><span>{{ sync_overview.tuya_spec_cache_hours }} ч</span></div>
     <div class="status-row"><span class="muted">Последний полный refresh</span><span>{{ sync_overview.tuya_last_full_sync_at or '—' }}</span></div>

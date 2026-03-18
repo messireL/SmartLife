@@ -48,6 +48,15 @@
         {% if flash %}
           <div class="flash">{{ flash }}</div>
         {% endif %}
+        {% if tuya_quota_state and tuya_quota_state.exhausted %}
+          <section class="warning-banner quota-banner">
+            <div>
+              <div class="warning-title">{{ tuya_quota_state.banner_title }}</div>
+              <div class="muted">{{ tuya_quota_state.banner_message }}</div>
+              {% if tuya_quota_state.detected_at %}<div class="muted tiny">Последний сигнал: {{ tuya_quota_state.detected_at|localdt }} · источник {{ tuya_quota_state.source or 'unknown' }}</div>{% endif %}
+            </div>
+          </section>
+        {% endif %}
         {% block content %}{% endblock %}
       </main>
     </div>

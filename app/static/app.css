@@ -356,6 +356,50 @@ p { margin: 0; }
   margin-bottom: 18px;
 }
 
+.warning-banner {
+  background: rgba(239, 111, 82, 0.12);
+  border: 1px solid rgba(255, 143, 112, 0.28);
+  color: #ffe1d7;
+  padding: 16px 18px;
+  border-radius: 18px;
+  margin-bottom: 18px;
+}
+
+.warning-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.status-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup-policy-card {
+  border-color: rgba(94, 174, 255, 0.28);
+}
+
+.control-lockset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.control-lockset[disabled] {
+  opacity: 0.72;
+}
+
+.control-lockset[disabled] button,
+.control-lockset[disabled] input,
+.control-lockset[disabled] select,
+.control-lockset[disabled] textarea {
+  cursor: not-allowed;
+}
+
+
 button {
   appearance: none;
   background: linear-gradient(135deg, #2392ff 0%, #2b6ef4 100%);

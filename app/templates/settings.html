@@ -71,6 +71,10 @@
       <div class="status-row"><span class="muted">Полный cloud refresh</span><span>раз в {{ runtime.tuya_full_sync_interval_minutes if runtime else 15 }} мин</span></div>
       <div class="status-row"><span class="muted">TTL кэша спецификаций</span><span>{{ runtime.tuya_spec_cache_hours if runtime else 24 }} ч</span></div>
       <div class="status-row"><span class="muted">Последний полный refresh</span><span>{{ runtime.tuya_last_full_sync_at if runtime and runtime.tuya_last_full_sync_at else "—" }}</span></div>
+      <div class="status-row"><span class="muted">Квота Tuya Trial</span><span>{% if tuya_quota_state and tuya_quota_state.exhausted %}исчерпана{% else %}ok{% endif %}</span></div>
+      {% if tuya_quota_state and tuya_quota_state.exhausted %}
+      <div class="status-row"><span class="muted">Последний сигнал квоты</span><span>{{ tuya_quota_state.detected_at|localdt if tuya_quota_state.detected_at else '—' }} · {{ tuya_quota_state.source or 'unknown' }}</span></div>
+      {% endif %}
       <div class="status-row"><span class="muted">Health</span><span><a href="/health">/health</a></span></div>
       <div class="status-row"><span class="muted">Активный тариф</span><span>{{ runtime.tariff_mode_label if runtime else "Единый" }} · {{ runtime.tariff_display if runtime else "0.00 ₽/kWh" }}</span></div>
       <div class="status-row"><span class="muted">Действует с</span><span>{{ runtime.tariff_effective_from_label if runtime else '—' }}</span></div>

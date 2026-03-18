@@ -14,6 +14,7 @@ from app.services.runtime_config_service import (
     get_runtime_config,
     get_tariff_change_target_month,
 )
+from app.services.tuya_quota_service import detect_tuya_quota_state
 
 REQUIRED_SCHEMA: dict[str, tuple[str, ...]] = {
     "app_settings": ("id", "key", "value", "created_at", "updated_at"),
@@ -97,6 +98,10 @@ class RuntimeDiagnostics:
     tuya_last_full_sync_at: str
     backup_keep_last: int
     backup_auto_prune_enabled: bool
+    tuya_quota_exhausted: bool
+    tuya_quota_detected_at: str | None
+    tuya_quota_source: str | None
+    tuya_quota_message: str | None
     tariff_mode: str
     tariff_effective_from: str
     tariff_history_count: int
@@ -147,6 +152,7 @@ def get_runtime_diagnostics(db: Session) -> RuntimeDiagnostics:
     runtime = get_runtime_config(db)
     missing_tables, missing_columns, schema_issues = _inspect_schema(db)
 
+    quota_state = detect_tuya_quota_state(db, runtime=runtime)
     history = tuple(sorted(runtime.tariff_plan_history, key=lambda item: item.effective_from_date))
     active_plan = next((plan for plan in history if plan.effective_from == runtime.tariff_effective_from), history[-1] if history else None)
     today_local = datetime.now(get_app_timezone()).date()
@@ -162,6 +168,8 @@ def get_runtime_diagnostics(db: Session) -> RuntimeDiagnostics:
         warnings.append(f"tuya economy mode включён: полный cloud refresh каждые {runtime.tuya_full_sync_interval_minutes} мин, cached spec до {runtime.tuya_spec_cache_hours} ч")
     if runtime.backup_auto_prune_enabled and runtime.backup_keep_last > 0:
         warnings.append(f"backup auto-prune включён: храним последние {runtime.backup_keep_last} dump-файлов")
+    if quota_state.exhausted:
+        warnings.append("Tuya Trial quota exhausted: cloud-команды и часть sync сейчас будут упираться в лимит API")
     if not history:
         warnings.append("история тарифов пуста; будет использован fallback из legacy-значений")
     if runtime.tariff_effective_from != active_month_start.isoformat():
@@ -191,6 +199,10 @@ def get_runtime_diagnostics(db: Session) -> RuntimeDiagnostics:
         tuya_last_full_sync_at=runtime.tuya_last_full_sync_at,
         backup_keep_last=runtime.backup_keep_last,
         backup_auto_prune_enabled=runtime.backup_auto_prune_enabled,
+        tuya_quota_exhausted=quota_state.exhausted,
+        tuya_quota_detected_at=quota_state.detected_at.isoformat() if quota_state.detected_at else None,
+        tuya_quota_source=quota_state.source,
+        tuya_quota_message=quota_state.message,
         tariff_mode=runtime.tariff_mode,
         tariff_effective_from=runtime.tariff_effective_from,
         tariff_history_count=len(history),

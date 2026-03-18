@@ -69,6 +69,7 @@ from app.services.runtime_config_service import (
     get_tariff_editor_plan,
 )
 from app.services.runtime_diagnostics_service import get_runtime_diagnostics
+from app.services.tuya_quota_service import detect_tuya_quota_state, is_tuya_quota_error_message
 from app.services.tariff_profile_service import (
     SYSTEM_TARIFF_PROFILE_KEY,
     delete_tariff_profile,
@@ -139,6 +140,23 @@ def _clamp_int(value: int, *, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
 
 
+def _friendly_tuya_quota_message(message: str) -> str:
+    if is_tuya_quota_error_message(message):
+        return (
+            "Квота Trial Edition в Tuya исчерпана. Продли Extended Trial или подключи официальный ресурс-пак, "
+            "затем нажми «Синхронизировать сейчас», чтобы SmartLife увидел, что облако снова живо."
+        )
+    return message
+
+
+def _friendly_device_control_flash(exc: Exception) -> str:
+    return f"Команда не выполнена: {_friendly_tuya_quota_message(str(exc))}"
+
+
+def _friendly_sync_flash(exc: Exception) -> str:
+    return f"Sync failed: {_friendly_tuya_quota_message(str(exc))}"
+
+
 def _parse_tariff_form_payload(
     *,
     tariff_mode: str,
@@ -181,7 +199,13 @@ def _parse_tariff_form_payload(
     }
 
 
-def _base_context(*, request: Request, active_nav: str, page_title: str, flash: str | None = None, refresh_seconds: int | None = None, auto_refresh: bool = False, runtime: object | None = None) -> dict:
+def _base_context(*, request: Request, active_nav: str, page_title: str, flash: str | None = None, refresh_seconds: int | None = None, auto_refresh: bool = False, runtime: object | None = None, db: Session | None = None) -> dict:
+    runtime_obj = runtime
+    tuya_quota_state = None
+    if db is not None:
+        if runtime_obj is None:
+            runtime_obj = get_runtime_config(db)
+        tuya_quota_state = detect_tuya_quota_state(db, runtime=runtime_obj)
     return {
         "request": request,
         "settings": settings,
@@ -192,7 +216,8 @@ def _base_context(*, request: Request, active_nav: str, page_title: str, flash: 
         "flash": flash or request.query_params.get("flash"),
         "refresh_seconds": refresh_seconds,
         "auto_refresh": auto_refresh,
-        "runtime": runtime,
+        "runtime": runtime_obj,
+        "tuya_quota_state": tuya_quota_state,
     }
 
 
@@ -200,7 +225,7 @@ def _base_context(*, request: Request, active_nav: str, page_title: str, flash: 
 def dashboard(request: Request, auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
     runtime = get_runtime_config(db)
-    context = _base_context(request=request, active_nav="overview", page_title="Главная", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
+    context = _base_context(request=request, active_nav="overview", page_title="Главная", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime, db=db)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -241,7 +266,7 @@ def devices_page(
     hidden_total = db.execute(select(Device).where(Device.is_hidden.is_(True), Device.is_deleted.is_(False))).scalars().all()
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
     runtime = get_runtime_config(db)
-    context = _base_context(request=request, active_nav="devices", page_title="Устройства", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
+    context = _base_context(request=request, active_nav="devices", page_title="Устройства", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime, db=db)
     context.update(
         {
             "devices": devices,
@@ -269,7 +294,7 @@ def devices_page(
 @router.get("/badges", response_class=HTMLResponse)
 def badges_page(request: Request, db: Session = Depends(get_db)):
     runtime = get_runtime_config(db)
-    context = _base_context(request=request, active_nav="badges", page_title="Плашки", runtime=runtime)
+    context = _base_context(request=request, active_nav="badges", page_title="Плашки", runtime=runtime, db=db)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -510,7 +535,7 @@ def scenarios_page(
     formatted_runs = format_automation_runs(list_recent_automation_runs(db, limit=40))
     filtered_runs = _filter_automation_runs_for_ui(formatted_runs, search=scenario_search, status_filter=log_status)
 
-    context = _base_context(request=request, active_nav="scenarios", page_title="Сценарии", runtime=runtime)
+    context = _base_context(request=request, active_nav="scenarios", page_title="Сценарии", runtime=runtime, db=db)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -707,7 +732,7 @@ def delete_scenario_action(rule_id: int, db: Session = Depends(get_db)):
 def rooms_page(request: Request, auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
     runtime = get_runtime_config(db)
-    context = _base_context(request=request, active_nav="rooms", page_title="Комнаты", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
+    context = _base_context(request=request, active_nav="rooms", page_title="Комнаты", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime, db=db)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -721,7 +746,7 @@ def rooms_page(request: Request, auto_refresh: bool = Query(default=True), db: S
 def consumption_page(request: Request, auto_refresh: bool = Query(default=True), db: Session = Depends(get_db)):
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
     runtime = get_runtime_config(db)
-    context = _base_context(request=request, active_nav="consumption", page_title="Потребление", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
+    context = _base_context(request=request, active_nav="consumption", page_title="Потребление", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime, db=db)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -738,7 +763,7 @@ def sync_page(request: Request, auto_refresh: bool = Query(default=True), db: Se
     ).scalars().all()
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
     runtime = get_runtime_config(db)
-    context = _base_context(request=request, active_nav="sync", page_title="Синхронизация", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
+    context = _base_context(request=request, active_nav="sync", page_title="Синхронизация", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime, db=db)
     context.update(
         {
             "sync_overview": get_sync_overview(db),
@@ -756,7 +781,7 @@ def settings_page(request: Request, profile_key: str = Query(default=""), db: Se
     next_tariff_plan = get_next_scheduled_tariff_plan(db)
     change_target_month = get_tariff_change_target_month()
     diagnostics = get_runtime_diagnostics(db)
-    context = _base_context(request=request, active_nav="settings", page_title="Настройки", runtime=runtime)
+    context = _base_context(request=request, active_nav="settings", page_title="Настройки", runtime=runtime, db=db)
     tariff_profiles = list_tariff_profiles(db, runtime)
     tariff_profile_edit = get_tariff_profile(db, profile_key, runtime)
     context.update(
@@ -1025,7 +1050,7 @@ def backups_page(
     all_summary = summarize_backups(all_backups)
     filtered_summary = summarize_backups(filtered_backups)
     prunable_backups = get_prunable_backups(all_backups, keep_last=runtime.backup_keep_last)
-    context = _base_context(request=request, active_nav="backups", page_title="Резервные копии", runtime=runtime)
+    context = _base_context(request=request, active_nav="backups", page_title="Резервные копии", runtime=runtime, db=db)
     context.update(
         {
             "summary": get_dashboard_summary(db),
@@ -1139,7 +1164,7 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
     device = db.get(Device, device_id)
     if device is None or device.is_deleted:
         runtime = get_runtime_config(db)
-        return templates.TemplateResponse(request, "not_found.html", _base_context(request=request, active_nav="devices", page_title="Не найдено", runtime=runtime), status_code=404)
+        return templates.TemplateResponse(request, "not_found.html", _base_context(request=request, active_nav="devices", page_title="Не найдено", runtime=runtime, db=db), status_code=404)
 
     if tab not in {"overview", "charts", "history", "control", "local"}:
         tab = "overview"
@@ -1149,7 +1174,7 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
     view_model = get_device_dashboard(db, device)
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
     runtime = get_runtime_config(db)
-    context = _base_context(request=request, active_nav="devices", page_title=device.display_name, refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime)
+    context = _base_context(request=request, active_nav="devices", page_title=device.display_name, refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime, db=db)
     context.update(
         {
             "device": device,
@@ -1186,7 +1211,7 @@ def sync_provider_action():
     except SyncAlreadyRunningError:
         flash = "Синхронизация уже выполняется в фоне. Подожди завершения текущего цикла."
     except Exception as exc:  # noqa: BLE001
-        flash = f"Sync failed: {exc}"
+        flash = _friendly_sync_flash(exc)
     return RedirectResponse(url=f"/sync?flash={quote_plus(flash)}", status_code=303)
 
 
@@ -1349,7 +1374,7 @@ def toggle_device_action(
             f"{'вкл' if desired_bool else 'выкл'}."
         )
     except DeviceControlError as exc:
-        flash = f"Команда не выполнена: {exc}"
+        flash = _friendly_device_control_flash(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 
@@ -1368,7 +1393,7 @@ def toggle_device_channel_action(
         result = set_device_switch_code_state(db, device_id, command_code, desired_bool, trigger=SyncRunTrigger.MANUAL.value)
         flash = f"Канал {result['command_code']} переведён в состояние {'вкл' if desired_bool else 'выкл'}."
     except DeviceControlError as exc:
-        flash = f"Команда не выполнена: {exc}"
+        flash = _friendly_device_control_flash(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 
@@ -1397,7 +1422,7 @@ def toggle_device_channel_group_action(
                 f"{'вкл' if desired_bool else 'выкл'}."
             )
     except DeviceControlError as exc:
-        flash = f"Команда не выполнена: {exc}"
+        flash = _friendly_device_control_flash(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 
@@ -1414,7 +1439,7 @@ def set_device_boolean_code_action(
         result = set_device_boolean_code_state(db, device_id, command_code, desired_bool, trigger=SyncRunTrigger.MANUAL.value)
         flash = f"Параметр {result['command_code']} обновлён: {'вкл' if desired_bool else 'выкл'}."
     except DeviceControlError as exc:
-        flash = f"Команда не выполнена: {exc}"
+        flash = _friendly_device_control_flash(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 
@@ -1432,7 +1457,7 @@ def set_device_enum_code_action(
         result = set_device_enum_code_value(db, device_id, command_code, desired_value, allowed_values=allowed, trigger=SyncRunTrigger.MANUAL.value)
         flash = f"Параметр {result['command_code']} обновлён: {result['value']}."
     except DeviceControlError as exc:
-        flash = f"Команда не выполнена: {exc}"
+        flash = _friendly_device_control_flash(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 
@@ -1463,7 +1488,7 @@ def set_device_integer_code_action(
         )
         flash = f"Параметр {result['command_code']} обновлён: {result['value']}."
     except DeviceControlError as exc:
-        flash = f"Команда не выполнена: {exc}"
+        flash = _friendly_device_control_flash(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 @router.post("/devices/{device_id}/set-mode")
@@ -1477,7 +1502,7 @@ def set_device_mode_action(
         result = set_device_mode(db, device_id, desired_mode, trigger=SyncRunTrigger.MANUAL.value)
         flash = f"Режим обновлён: устройство #{result['device_id']} переведено в {result['operation_mode']}."
     except DeviceControlError as exc:
-        flash = f"Команда не выполнена: {exc}"
+        flash = _friendly_device_control_flash(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 
@@ -1492,5 +1517,5 @@ def set_device_temperature_action(
         result = set_device_target_temperature(db, device_id, desired_temperature, trigger=SyncRunTrigger.MANUAL.value)
         flash = f"Целевая температура обновлена: устройство #{result['device_id']} теперь держит {result['target_temperature_c']} °C."
     except DeviceControlError as exc:
-        flash = f"Команда не выполнена: {exc}"
+        flash = _friendly_device_control_flash(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)

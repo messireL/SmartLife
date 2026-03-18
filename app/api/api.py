@@ -179,6 +179,7 @@ def runtime_diagnostics(db: Session = Depends(get_db)):
 def sync_status(db: Session = Depends(get_db)):
     overview = get_sync_overview(db)
     summary = get_dashboard_summary(db)
+    diagnostics = get_runtime_diagnostics(db)
     last_run = overview["last_run"]
     return {
         "background_sync_enabled": overview["background_sync_enabled"],
@@ -191,6 +192,10 @@ def sync_status(db: Session = Depends(get_db)):
         "tuya_last_full_sync_at": overview["tuya_last_full_sync_at"],
         "backup_keep_last": overview["backup_keep_last"],
         "backup_auto_prune_enabled": overview["backup_auto_prune_enabled"],
+        "tuya_quota_exhausted": diagnostics.tuya_quota_exhausted,
+        "tuya_quota_detected_at": diagnostics.tuya_quota_detected_at,
+        "tuya_quota_source": diagnostics.tuya_quota_source,
+        "tuya_quota_message": diagnostics.tuya_quota_message,
         "is_running_now": overview["is_running_now"],
         "success_total": overview["success_total"],
         "error_total": overview["error_total"],
@@ -236,6 +241,7 @@ def health(db: Session = Depends(get_db)):
     runtime = get_runtime_config(db)
     overview = get_sync_overview(db)
     summary = get_dashboard_summary(db)
+    diagnostics = get_runtime_diagnostics(db)
     last_run = overview["last_run"]
     return {
         "status": "ok",
@@ -251,6 +257,10 @@ def health(db: Session = Depends(get_db)):
         "tuya_full_sync_interval_minutes": runtime.tuya_full_sync_interval_minutes,
         "tuya_spec_cache_hours": runtime.tuya_spec_cache_hours,
         "tuya_last_full_sync_at": runtime.tuya_last_full_sync_at or None,
+        "tuya_quota_exhausted": diagnostics.tuya_quota_exhausted,
+        "tuya_quota_detected_at": diagnostics.tuya_quota_detected_at,
+        "tuya_quota_source": diagnostics.tuya_quota_source,
+        "tuya_quota_message": diagnostics.tuya_quota_message,
         "backup_keep_last": runtime.backup_keep_last,
         "backup_auto_prune_enabled": runtime.backup_auto_prune_enabled,
         "sync_on_startup": settings.smartlife_sync_on_startup,
