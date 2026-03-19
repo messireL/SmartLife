@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -22,6 +23,12 @@ class DeviceLanConfig:
     local_key: str
     local_enabled: bool
     prefer_local: bool
+    cloud_ip: str
+    key_source: str
+    key_refreshed_at: datetime | None
+    last_probe_at: datetime | None
+    last_probe_status: str
+    last_probe_message: str
 
     @property
     def has_local_key(self) -> bool:
@@ -57,6 +64,23 @@ class DeviceLanConfig:
         return "LAN как fallback"
 
     @property
+    def key_source_label(self) -> str:
+        if self.key_source == "tuya_cloud":
+            return "Tuya Cloud"
+        if self.key_source:
+            return self.key_source
+        return "—"
+
+    @property
+    def probe_status_label(self) -> str:
+        mapping = {
+            "success": "Успешно",
+            "error": "Ошибка",
+            "skipped": "Пропущено",
+        }
+        return mapping.get((self.last_probe_status or "").strip().lower(), "—")
+
+    @property
     def can_switch_locally(self) -> bool:
         return self.local_enabled and self.is_complete
 
@@ -68,6 +92,12 @@ DEFAULT_DEVICE_LAN_CONFIG = DeviceLanConfig(
     local_key="",
     local_enabled=False,
     prefer_local=False,
+    cloud_ip="",
+    key_source="",
+    key_refreshed_at=None,
+    last_probe_at=None,
+    last_probe_status="",
+    last_probe_message="",
 )
 
 
@@ -79,6 +109,12 @@ def get_device_lan_config(db: Session, device_id: int) -> DeviceLanConfig:
         local_key=get_setting_value(db, _device_lan_key(device_id, "key"), "").strip(),
         local_enabled=_parse_bool(get_setting_value(db, _device_lan_key(device_id, "enabled"), "no")),
         prefer_local=_parse_bool(get_setting_value(db, _device_lan_key(device_id, "prefer_local"), "no")),
+        cloud_ip=get_setting_value(db, _device_lan_key(device_id, "cloud_ip"), "").strip(),
+        key_source=get_setting_value(db, _device_lan_key(device_id, "key_source"), "").strip(),
+        key_refreshed_at=_parse_datetime(get_setting_value(db, _device_lan_key(device_id, "key_refreshed_at"), "").strip()),
+        last_probe_at=_parse_datetime(get_setting_value(db, _device_lan_key(device_id, "last_probe_at"), "").strip()),
+        last_probe_status=get_setting_value(db, _device_lan_key(device_id, "last_probe_status"), "").strip(),
+        last_probe_message=get_setting_value(db, _device_lan_key(device_id, "last_probe_message"), "").strip(),
     )
 
 
@@ -122,6 +158,35 @@ def save_device_lan_config(
     set_setting_value(db, _device_lan_key(device_id, "prefer_local"), "yes" if prefer_local else "no")
     db.commit()
     return get_device_lan_config(db, device_id)
+
+
+def record_device_lan_fetch(db: Session, device_id: int, *, source: str, cloud_ip: str = "") -> DeviceLanConfig:
+    now = datetime.utcnow().replace(microsecond=0)
+    set_setting_value(db, _device_lan_key(device_id, "key_source"), (source or "").strip())
+    set_setting_value(db, _device_lan_key(device_id, "key_refreshed_at"), now.isoformat())
+    if cloud_ip:
+        set_setting_value(db, _device_lan_key(device_id, "cloud_ip"), cloud_ip.strip())
+    db.commit()
+    return get_device_lan_config(db, device_id)
+
+
+def record_device_lan_probe(db: Session, device_id: int, *, status: str, message: str) -> DeviceLanConfig:
+    now = datetime.utcnow().replace(microsecond=0)
+    set_setting_value(db, _device_lan_key(device_id, "last_probe_at"), now.isoformat())
+    set_setting_value(db, _device_lan_key(device_id, "last_probe_status"), (status or "").strip())
+    set_setting_value(db, _device_lan_key(device_id, "last_probe_message"), (message or "").strip())
+    db.commit()
+    return get_device_lan_config(db, device_id)
+
+
+def _parse_datetime(raw: str | None) -> datetime | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def has_local_switch_bridge(db: Session, device: Device | None) -> bool:

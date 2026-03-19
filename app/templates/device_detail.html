@@ -302,7 +302,16 @@
           <div class="status-row"><span class="muted">Статус</span><span>{{ device_lan.status_label }}</span></div>
           <div class="status-row"><span class="muted">Режим</span><span>{{ device_lan.local_mode_label }}</span></div>
           <div class="status-row"><span class="muted">Local key</span><span>{{ device_lan.local_key_masked }}</span></div>
+          <div class="status-row"><span class="muted">Источник key</span><span>{{ device_lan.key_source_label }}</span></div>
+          <div class="status-row"><span class="muted">Последнее обновление key</span><span>{{ device_lan.key_refreshed_at|localdt if device_lan.key_refreshed_at else '—' }}</span></div>
+          <div class="status-row"><span class="muted">IP от Tuya</span><span>{{ device_lan.cloud_ip or '—' }}</span></div>
+          <div class="status-row"><span class="muted">Последний LAN-probe</span><span>{{ device_lan.last_probe_at|localdt if device_lan.last_probe_at else '—' }}{% if device_lan.last_probe_status %} · {{ device_lan.probe_status_label }}{% endif %}</span></div>
           <div class="status-row"><span class="muted">Device ID</span><span>{{ device.external_id }}</span></div>
+        </div>
+        {% if device_lan.last_probe_message %}<div class="empty-state tiny">{{ device_lan.last_probe_message }}</div>{% endif %}
+        <div class="form-actions">
+          <button type="submit" formaction="/devices/{{ device.id }}/fetch-lan-key">Получить key из Tuya и проверить LAN</button>
+          <button type="submit" formaction="/devices/{{ device.id }}/probe-lan" class="button-secondary">Проверить LAN с текущими данными</button>
         </div>
         <label class="checkbox-row">
           <input type="checkbox" name="local_enabled" value="yes" {% if device_lan.local_enabled %}checked{% endif %}>
@@ -327,12 +336,14 @@
         <label>Local key
           <input class="input" type="password" name="local_key" value="" autocomplete="new-password" placeholder="Оставь пустым, чтобы сохранить текущий key">
         </label>
-        <label class="checkbox-row">
-          <input type="checkbox" name="clear_local_key" value="yes">
-          <span>Очистить сохранённый local key</span>
-        </label>
-        <div class="muted tiny">Сейчас SmartLife v0.11.17 через LAN умеет только switch-команды: обычные розетки, бойлер с <code>switch_1</code> и каналы удлинителя. Температура, режимы и экзотика пока ещё облачные.</div>
-        <div class="muted tiny">Если local key достанешь руками из Tuya Developer Portal, ждать discovery уже не нужно: внеси IP, версию и key сюда, а дальше SmartLife сможет использовать LAN как fallback.</div>
+        <div class="checkbox-panel">
+          <label class="checkbox-row">
+            <input type="checkbox" name="clear_local_key" value="yes">
+            <span>Очистить сохранённый local key</span>
+          </label>
+        </div>
+        <div class="muted tiny">Сейчас SmartLife v0.11.18 через LAN умеет только switch-команды: обычные розетки, бойлер с <code>switch_1</code> и каналы удлинителя. Температура, режимы и экзотика пока ещё облачные.</div>
+        <div class="muted tiny">Новая схема простая: один ручной запрос за key в Tuya, затем SmartLife хранит ключ у себя и использует локальный контур без постоянного cloud-sync ради switch-команд.</div>
         <button type="submit">Сохранить LAN-профиль</button>
       </form>
     </article>
@@ -473,7 +484,7 @@
         <div class="warning-banner inline-warning" style="margin-top:16px; margin-bottom:16px;">
           <div>
             <div class="warning-title">Облако Tuya лежит, но switch-команды можно слать по LAN</div>
-            <div class="muted">Для этого устройства настроен локальный IP, версия протокола и local key. В v0.11.17 SmartLife умеет через LAN включать и выключать только switch-каналы; режимы и температуры пока всё ещё завязаны на облако.</div>
+            <div class="muted">Для этого устройства настроен локальный IP, версия протокола и local key. В v0.11.18 SmartLife умеет через LAN включать и выключать только switch-каналы; режимы и температуры пока всё ещё завязаны на облако.</div>
           </div>
         </div>
       {% endif %}

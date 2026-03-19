@@ -394,6 +394,15 @@ class TuyaOpenApiClient:
         payload = self._request_json("PUT", f"/v1.0/homes/{quote(str(home_id), safe='')}/automations/{quote(str(automation_id), safe='')}/actions/{action}")
         return {"success": payload.get("success") is True, "result": payload.get("result")}
 
+    def get_device_details(self, device_id: str) -> dict[str, Any]:
+        payload = self._request_json("GET", f"/v1.1/iot-03/devices/{quote(device_id, safe='')}")
+        result = payload.get("result")
+        while isinstance(result, dict) and "result" in result and len(result) == 1:
+            result = result.get("result")
+        if not isinstance(result, dict):
+            raise TuyaApiError(f"Unexpected device details payload for device {device_id}.")
+        return result
+
     def get_device_specification(self, device_id: str) -> dict[str, Any]:
         payload = self._request_json("GET", f"/v1.0/iot-03/devices/{quote(device_id, safe='')}/specification")
         result = payload.get("result")

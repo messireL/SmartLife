@@ -38,6 +38,47 @@
   </div>
 </section>
 
+<section class="summary-grid sync-grid">
+  <article class="card sync-card"><div class="muted">LAN профили</div><div class="stat-value compact">{{ lan_overview.configured_total }}</div></article>
+  <article class="card sync-card"><div class="muted">Готовы к LAN</div><div class="stat-value compact">{{ lan_overview.complete_total }}</div></article>
+  <article class="card sync-card"><div class="muted">LAN включён</div><div class="stat-value compact">{{ lan_overview.enabled_total }}</div></article>
+  <article class="card sync-card"><div class="muted">Prefer LAN</div><div class="stat-value compact">{{ lan_overview.prefer_local_total }}</div></article>
+  <article class="card sync-card"><div class="muted">Последний probe ok</div><div class="stat-value compact">{{ lan_overview.probe_success_total }}</div></article>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <div class="section-header"><h2>Импорт LAN-полей из CSV</h2></div>
+    <div class="muted" style="margin-bottom:12px;">Возьми devices-lan-seed или devices-lan-enriched, дополни <code>local_ip</code>, <code>protocol_version</code>, <code>local_key</code> и загрузи файл сюда. SmartLife свяжет строки по <code>external_id</code> и обновит LAN-профили пачкой.</div>
+    <form class="stack-form" method="post" action="/sync/lan-import" enctype="multipart/form-data">
+      <label>CSV-файл
+        <input class="input" type="file" name="csv_file" accept=".csv,text/csv" required>
+      </label>
+      <div class="muted tiny">Пустой <code>local_key</code> не затирает уже сохранённый ключ. Для явной очистки можно добавить колонку <code>clear_local_key</code> со значением <code>true</code>.</div>
+      <div class="form-actions">
+        <button class="button-primary" type="submit">Импортировать LAN CSV</button>
+      </div>
+    </form>
+  </article>
+
+  <article class="card">
+    <div class="section-header"><h2>Пакетный LAN probe / status-check</h2></div>
+    <div class="muted" style="margin-bottom:12px;">Проверяет локальную доступность устройств, обновляет рабочую версию протокола и пишет результат в карточки устройств. Полезно после массового импорта или если железки решили поменять настроение.</div>
+    <form class="stack-form" method="post" action="/sync/lan-probe-batch">
+      <label>Кого проверять
+        <select name="scope">
+          <option value="enabled_ready">Только включённые LAN-профили</option>
+          <option value="complete_any">Все полные LAN-профили, даже если LAN пока выключен</option>
+        </select>
+      </label>
+      <div class="muted tiny">Под «полным профилем» SmartLife понимает IP, protocol version и local key. Без этого probe не из чего собирать — даже если очень хочется.</div>
+      <div class="form-actions">
+        <button type="submit">Запустить batch LAN-check</button>
+      </div>
+    </form>
+  </article>
+</section>
+
 <section class="card">
   <div class="table-wrap">
     <table>

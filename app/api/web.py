@@ -4,7 +4,7 @@ import json
 import math
 from urllib.parse import quote_plus
 
-from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -34,7 +34,9 @@ from app.services.device_control_service import (
     set_device_target_temperature,
 )
 from app.services.badge_service import ALLOWED_BADGE_COLORS, assign_badge_to_devices, create_badge, delete_badge, get_badge_choices as get_badge_choices_service, list_badges, update_badge
+from app.services.device_lan_key_service import DeviceLanKeyError, refresh_device_lan_key_from_tuya, reprobe_device_lan_profile
 from app.services.device_lan_service import get_device_lan_config, save_device_lan_config
+from app.services.device_lan_batch_service import batch_probe_local_devices, get_device_lan_inventory_overview, import_device_lan_csv
 from app.services.channel_style_service import get_channel_icon_choices, get_channel_role_choices, normalize_channel_icon_key, normalize_channel_role_key
 from app.services.device_query_service import get_badge_choices, get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
@@ -770,9 +772,52 @@ def sync_page(request: Request, auto_refresh: bool = Query(default=True), db: Se
             "sync_overview": get_sync_overview(db),
             "recent_sync_runs": recent_sync_runs,
             "summary": get_dashboard_summary(db),
+            "lan_overview": get_device_lan_inventory_overview(db),
         }
     )
     return templates.TemplateResponse(request, "sync.html", context)
+
+
+@router.post("/sync/lan-import")
+async def import_device_lan_csv_action(
+    csv_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        filename = csv_file.filename or "devices-lan-import.csv"
+        payload = await csv_file.read()
+        result = import_device_lan_csv(db, filename=filename, content=payload)
+        flash = (
+            f"LAN CSV импортирован: строк={result.rows_total}, совпало={result.matched_total}, изменено={result.changed_total}, "
+            f"без изменений={result.unchanged_total}, не найдено={result.unmatched_total}."
+        )
+        if result.key_updates_total:
+            flash += f" Ключей обновлено: {result.key_updates_total}."
+        if result.errors:
+            flash += " Ошибки: " + " | ".join(result.errors[:3])
+        if result.unmatched_external_ids:
+            flash += " Не найдены: " + ", ".join(result.unmatched_external_ids[:5])
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/sync?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/sync/lan-probe-batch")
+def batch_probe_device_lan_action(
+    scope: str = Form(default="enabled_ready"),
+    db: Session = Depends(get_db),
+):
+    result = batch_probe_local_devices(db, scope=scope)
+    scope_label = "только включённые LAN-профили" if result.scope == "enabled_ready" else "все полные LAN-профили"
+    flash = (
+        f"LAN batch-check завершён ({scope_label}): success={result.success_total}, error={result.error_total}, "
+        f"skipped={result.skipped_total}, кандидатов={result.candidates_total}."
+    )
+    if result.items:
+        flash += " Примеры: " + " | ".join(
+            f"{item.display_name}: {item.status} ({item.protocol_version} @ {item.local_ip or '—'})" for item in result.items[:3]
+        )
+    return RedirectResponse(url=f"/sync?flash={quote_plus(flash)}", status_code=303)
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -796,6 +841,7 @@ def settings_page(request: Request, profile_key: str = Query(default=""), db: Se
             "tariff_profiles": tariff_profiles,
             "tariff_profile_edit": tariff_profile_edit,
             "tuya_scene_bridge": _safe_tuya_scene_bridge_overview(db),
+            "lan_overview": get_device_lan_inventory_overview(db),
         }
     )
     return templates.TemplateResponse(request, "settings.html", context)
@@ -1402,6 +1448,49 @@ def save_device_lan_action(
             details.append(f"v{config.protocol_version}")
         details_text = " · ".join(details) if details else config.status_label
         flash = f"LAN-настройки для «{device.display_name}» сохранены: {details_text}."
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/devices/{device_id}/fetch-lan-key")
+def fetch_device_lan_key_action(
+    device_id: int,
+    source_tab: str = Form(default="local"),
+    db: Session = Depends(get_db),
+):
+    device = db.get(Device, device_id)
+    flash = "Устройство не найдено."
+    if device is not None and not device.is_deleted:
+        try:
+            result = refresh_device_lan_key_from_tuya(db, device)
+            if result.probe_success:
+                flash = (
+                    f"SmartLife получил local key для «{device.display_name}», проверил LAN и включил prefer-LAN: "
+                    f"{result.config.local_ip} · v{result.config.protocol_version}."
+                )
+            else:
+                flash = (
+                    f"SmartLife получил local key для «{device.display_name}», но LAN-probe пока не добил устройство: "
+                    f"{result.probe_message}"
+                )
+        except DeviceLanKeyError as exc:
+            flash = str(exc)
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/devices/{device_id}/probe-lan")
+def probe_device_lan_action(
+    device_id: int,
+    source_tab: str = Form(default="local"),
+    db: Session = Depends(get_db),
+):
+    device = db.get(Device, device_id)
+    flash = "Устройство не найдено."
+    if device is not None and not device.is_deleted:
+        try:
+            result = reprobe_device_lan_profile(db, device)
+            flash = f"LAN-probe для «{device.display_name}» успешен: {result.config.local_ip} · v{result.config.protocol_version}."
+        except DeviceLanKeyError as exc:
+            flash = str(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 
