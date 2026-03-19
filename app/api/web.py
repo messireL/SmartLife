@@ -34,6 +34,7 @@ from app.services.device_control_service import (
     set_device_target_temperature,
 )
 from app.services.badge_service import ALLOWED_BADGE_COLORS, assign_badge_to_devices, create_badge, delete_badge, get_badge_choices as get_badge_choices_service, list_badges, update_badge
+from app.services.device_lan_service import get_device_lan_config, save_device_lan_config
 from app.services.channel_style_service import get_channel_icon_choices, get_channel_role_choices, normalize_channel_icon_key, normalize_channel_role_key
 from app.services.device_query_service import get_badge_choices, get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
@@ -1192,6 +1193,7 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
             "system_tariff_profile_key": SYSTEM_TARIFF_PROFILE_KEY,
             "channel_role_choices": get_channel_role_choices(),
             "channel_icon_choices": get_channel_icon_choices(),
+            "device_lan": get_device_lan_config(db, device.id),
         }
     )
     return templates.TemplateResponse(request, "device_detail.html", context)
@@ -1202,12 +1204,18 @@ def sync_provider_action():
     try:
         outcome = run_sync_job(trigger=SyncRunTrigger.MANUAL, fail_if_running=True)
         result = outcome["result"]
-        flash = (
-            f"Синхронизация завершена: provider={result['provider']} devices={result['devices_total']} "
-            f"daily={result['daily_samples_total']} monthly={result['monthly_samples_total']} "
-            f"snapshots={result['snapshots_total']} pruned={result.get('pruned_devices_total', 0)} "
-            f"aggregated={result['aggregated_energy_updates']} за {outcome['duration_ms']} ms"
-        )
+        if outcome.get("status") == "skipped":
+            flash = (
+                "Синхронизация переведена в degraded-режим: Tuya Trial quota исчерпана, поэтому SmartLife не дёргал cloud API и "
+                f"оставил в кэше {result.get('devices_total', 0)} устройств. После обновления лимита запусти sync ещё раз."
+            )
+        else:
+            flash = (
+                f"Синхронизация завершена: provider={result['provider']} devices={result['devices_total']} "
+                f"daily={result['daily_samples_total']} monthly={result['monthly_samples_total']} "
+                f"snapshots={result['snapshots_total']} pruned={result.get('pruned_devices_total', 0)} "
+                f"aggregated={result['aggregated_energy_updates']} за {outcome['duration_ms']} ms"
+            )
     except SyncAlreadyRunningError:
         flash = "Синхронизация уже выполняется в фоне. Подожди завершения текущего цикла."
     except Exception as exc:  # noqa: BLE001
@@ -1356,6 +1364,44 @@ async def save_device_meta_action(
             device.channel_icons_json = json.dumps(channel_icons, ensure_ascii=False, sort_keys=True) if channel_icons else None
         db.commit()
         flash = f"Карточка устройства «{device.display_name}» обновлена."
+    return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/devices/{device_id}/save-lan")
+def save_device_lan_action(
+    device_id: int,
+    local_ip: str = Form(default=""),
+    protocol_version: str = Form(default="3.3"),
+    local_key: str = Form(default=""),
+    local_enabled: str = Form(default=""),
+    prefer_local: str = Form(default=""),
+    clear_local_key: str = Form(default=""),
+    source_tab: str = Form(default="local"),
+    db: Session = Depends(get_db),
+):
+    device = db.get(Device, device_id)
+    flash = "Устройство не найдено."
+    if device is not None and not device.is_deleted:
+        config = save_device_lan_config(
+            db,
+            device_id=device.id,
+            local_ip=local_ip,
+            protocol_version=protocol_version,
+            local_key=local_key,
+            local_enabled=str(local_enabled or "").strip().lower() in {"1", "true", "yes", "on"},
+            prefer_local=str(prefer_local or "").strip().lower() in {"1", "true", "yes", "on"},
+            clear_local_key=str(clear_local_key or "").strip().lower() in {"1", "true", "yes", "on"},
+            preserve_existing_key=True,
+        )
+        details: list[str] = []
+        if config.local_enabled:
+            details.append(config.local_mode_label.lower())
+        if config.local_ip:
+            details.append(config.local_ip)
+        if config.protocol_version:
+            details.append(f"v{config.protocol_version}")
+        details_text = " · ".join(details) if details else config.status_label
+        flash = f"LAN-настройки для «{device.display_name}» сохранены: {details_text}."
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
 
 

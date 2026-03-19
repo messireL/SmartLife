@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from app.core.timeutils import utc_now_naive
 from app.db.models import Device, DeviceCommandLog, DeviceCommandStatus, ProviderType, SyncRunTrigger
 from app.integrations.registry import get_provider
+from app.services.device_lan_service import get_device_lan_config
 from app.services.runtime_config_service import get_runtime_config
+from app.services.tuya_local_service import TuyaLocalError, can_handle_locally, send_local_command
 from app.services.tuya_quota_service import detect_tuya_quota_state, is_tuya_quota_error_message
 
 
@@ -369,20 +371,82 @@ def _execute_device_command(
 
     requested_at = utc_now_naive()
     runtime = get_runtime_config(db)
-    if device.provider == ProviderType.TUYA_CLOUD:
-        quota_state = detect_tuya_quota_state(db, runtime=runtime)
-        if quota_state.exhausted:
-            message = _friendly_tuya_quota_control_message(quota_state.message)
-            _log_device_command_error(
-                db,
-                device=device,
+    quota_state = detect_tuya_quota_state(db, runtime=runtime) if device.provider == ProviderType.TUYA_CLOUD else None
+    lan_config = get_device_lan_config(db, device.id) if device.provider == ProviderType.TUYA_CLOUD else None
+    local_command_supported = bool(lan_config and lan_config.can_switch_locally and can_handle_locally(command_code))
+    local_transport_forced = bool(
+        device.provider == ProviderType.TUYA_CLOUD
+        and quota_state is not None
+        and quota_state.exhausted
+        and local_command_supported
+    )
+    local_transport_preferred = bool(
+        device.provider == ProviderType.TUYA_CLOUD
+        and lan_config is not None
+        and lan_config.can_switch_locally
+        and lan_config.prefer_local
+        and local_command_supported
+    )
+
+    if device.provider == ProviderType.TUYA_CLOUD and quota_state is not None and quota_state.exhausted and not local_command_supported:
+        message = _friendly_tuya_quota_control_message(quota_state.message)
+        _log_device_command_error(
+            db,
+            device=device,
+            command_code=command_code,
+            command_value=command_value,
+            requested_at=requested_at,
+            trigger=trigger,
+            error_message=message,
+        )
+        raise DeviceControlError(message)
+
+    last_local_error: str | None = None
+    if lan_config is not None and (local_transport_forced or local_transport_preferred):
+        try:
+            result = send_local_command(
+                device_id=device.external_id,
+                config=lan_config,
                 command_code=command_code,
                 command_value=command_value,
-                requested_at=requested_at,
-                trigger=trigger,
-                error_message=message,
             )
-            raise DeviceControlError(message)
+            for field_name, value in (success_updates or {}).items():
+                setattr(device, field_name, value)
+            db.add(
+                DeviceCommandLog(
+                    device_id=device.id,
+                    command_code=command_code,
+                    command_value=str(command_value),
+                    status=DeviceCommandStatus.SUCCESS,
+                    provider='tuya_local',
+                    requested_at=requested_at,
+                    finished_at=utc_now_naive(),
+                    result_summary=json.dumps(result, ensure_ascii=False, default=str, sort_keys=True),
+                )
+            )
+            db.commit()
+            return {
+                'status': 'success',
+                'device_id': device.id,
+                'provider': 'tuya_local',
+                'command_code': command_code,
+                'result': result,
+                'transport': 'tuya_local',
+            }
+        except TuyaLocalError as exc:
+            db.rollback()
+            last_local_error = str(exc)
+            if local_transport_forced:
+                _log_device_command_error(
+                    db,
+                    device=device,
+                    command_code=command_code,
+                    command_value=command_value,
+                    requested_at=requested_at,
+                    trigger=trigger,
+                    error_message=last_local_error,
+                )
+                raise DeviceControlError(last_local_error) from exc
 
     try:
         result = provider.send_device_command(device.external_id, command_code, command_value)
@@ -401,18 +465,24 @@ def _execute_device_command(
             )
         )
         db.commit()
-        return {
+        response = {
             'status': 'success',
             'device_id': device.id,
             'provider': device.provider.value,
             'command_code': command_code,
             'result': result,
+            'transport': device.provider.value,
         }
+        if last_local_error:
+            response['local_fallback_warning'] = last_local_error
+        return response
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         message = str(exc)
         if device.provider == ProviderType.TUYA_CLOUD and is_tuya_quota_error_message(message):
             message = _friendly_tuya_quota_control_message(message)
+        if last_local_error and not message:
+            message = last_local_error
         _log_device_command_error(
             db,
             device=device,

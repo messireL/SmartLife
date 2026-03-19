@@ -14,6 +14,21 @@ chmod +x scripts/manage.sh
 
 `./scripts/manage.sh up` по умолчанию делает rebuild контейнеров. Если когда-нибудь понадобится запуск без rebuild, используй `./scripts/manage.sh up --no-build`.
 
+## Обновление v0.11.17
+```bash
+cd /opt/SmartLife
+git pull --ff-only
+chmod +x scripts/manage.sh
+./scripts/manage.sh up --build
+./scripts/manage.sh health
+./scripts/manage.sh runtime-info
+```
+
+После обновления:
+- открой карточку Tuya-устройства → вкладка `Локально` и при необходимости внеси `local_ip`, `protocol_version`, `local_key`;
+- если облачная квота мертва, `./scripts/manage.sh sync` теперь не должен валиться traceback'ом, а должен возвращать `skipped` / degraded-статус;
+- для розеток, бойлера и каналов удлинителя можно включить `Предпочитать LAN` и использовать локальное включение/выключение при заполненном LAN-профиле.
+
 ## Экономичный режим Tuya API
 ```bash
 cd /opt/SmartLife

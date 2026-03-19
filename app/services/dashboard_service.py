@@ -201,6 +201,7 @@ def get_sync_overview(db: Session) -> dict:
     last_run = db.execute(select(SyncRun).order_by(SyncRun.started_at.desc(), SyncRun.id.desc()).limit(1)).scalar_one_or_none()
     success_total = db.scalar(select(func.count()).select_from(SyncRun).where(SyncRun.status == SyncRunStatus.SUCCESS)) or 0
     error_total = db.scalar(select(func.count()).select_from(SyncRun).where(SyncRun.status == SyncRunStatus.ERROR)) or 0
+    skipped_total = db.scalar(select(func.count()).select_from(SyncRun).where(SyncRun.status == SyncRunStatus.SKIPPED)) or 0
     return {
         "background_sync_enabled": settings.smartlife_background_sync_enabled,
         "sync_on_startup": settings.smartlife_sync_on_startup,
@@ -209,6 +210,7 @@ def get_sync_overview(db: Session) -> dict:
         "last_run": last_run,
         "success_total": success_total,
         "error_total": error_total,
+        "skipped_total": skipped_total,
         "tuya_api_mode": runtime.tuya_api_mode,
         "tuya_api_mode_label": runtime.tuya_api_mode_label,
         "tuya_full_sync_interval_minutes": runtime.tuya_full_sync_interval_minutes,

@@ -5,16 +5,36 @@ import threading
 import time
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.config import get_settings
 from app.core.timeutils import utc_now_naive
 from app.db.init_db import init_db
-from app.db.models import SyncRun, SyncRunStatus, SyncRunTrigger
+from app.db.models import Device, ProviderType, SyncRun, SyncRunStatus, SyncRunTrigger
 from app.db.session import SessionLocal
 from app.services.sync_service import sync_from_provider
+from app.services.tuya_quota_service import is_tuya_quota_error_message
 
 _sync_lock = threading.Lock()
+
+
+def _build_quota_skipped_result(db) -> dict[str, Any]:
+    devices_total = db.scalar(
+        select(func.count()).select_from(Device).where(Device.provider == ProviderType.TUYA_CLOUD, Device.is_deleted.is_(False))
+    ) or 0
+    return {
+        "provider": ProviderType.TUYA_CLOUD.value,
+        "sync_mode": "degraded_skip",
+        "sync_reason": "tuya trial quota exhausted",
+        "refreshed_devices_from_cloud": False,
+        "used_cached_spec": True,
+        "devices_total": int(devices_total),
+        "daily_samples_total": 0,
+        "monthly_samples_total": 0,
+        "snapshots_total": 0,
+        "aggregated_energy_updates": 0,
+        "pruned_devices_total": 0,
+    }
 
 
 class SyncAlreadyRunningError(RuntimeError):
@@ -80,6 +100,22 @@ def run_sync_job(*, trigger: SyncRunTrigger = SyncRunTrigger.MANUAL, fail_if_run
                 finished_at = utc_now_naive()
                 duration_ms = int((time.perf_counter() - start_perf) * 1000)
                 sync_run = db.get(SyncRun, sync_run.id)
+                if sync_run is not None and is_tuya_quota_error_message(str(exc)):
+                    skipped_result = _build_quota_skipped_result(db)
+                    sync_run.status = SyncRunStatus.SKIPPED
+                    sync_run.finished_at = finished_at
+                    sync_run.duration_ms = duration_ms
+                    sync_run.result_summary = json.dumps(skipped_result, ensure_ascii=False, default=str, sort_keys=True)
+                    sync_run.error_message = str(exc)
+                    db.commit()
+                    return {
+                        "status": sync_run.status.value,
+                        "trigger": trigger.value,
+                        "provider": skipped_result["provider"],
+                        "duration_ms": duration_ms,
+                        "result": skipped_result,
+                        "sync_run_id": sync_run.id,
+                    }
                 if sync_run is not None:
                     sync_run.status = SyncRunStatus.ERROR
                     sync_run.finished_at = finished_at

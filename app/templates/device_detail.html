@@ -252,6 +252,7 @@
     </div>
     <nav class="tabs tabs-secondary">
       <a class="tab-link" href="#local-main">Устройство</a>
+      <a class="tab-link" href="#local-lan">LAN / Tuya Local</a>
       {% if device_view.channels.has_channels %}<a class="tab-link" href="#local-channels">Каналы</a>{% endif %}
     </nav>
   </section>
@@ -291,6 +292,49 @@
       <datalist id="room-choices">
         {% for item in room_choices %}<option value="{{ item }}">{% endfor %}
       </datalist>
+    </article>
+
+    <article class="card local-section-anchor" id="local-lan">
+      <div class="section-header"><h2>LAN / Tuya Local</h2><div class="muted tiny">Ручной профиль локального подключения. Discovery через WG — та ещё лотерея, поэтому здесь всё можно внести руками.</div></div>
+      <form class="form-stack" method="post" action="/devices/{{ device.id }}/save-lan">
+        <input type="hidden" name="source_tab" value="local">
+        <div class="status-stack">
+          <div class="status-row"><span class="muted">Статус</span><span>{{ device_lan.status_label }}</span></div>
+          <div class="status-row"><span class="muted">Режим</span><span>{{ device_lan.local_mode_label }}</span></div>
+          <div class="status-row"><span class="muted">Local key</span><span>{{ device_lan.local_key_masked }}</span></div>
+          <div class="status-row"><span class="muted">Device ID</span><span>{{ device.external_id }}</span></div>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" name="local_enabled" value="yes" {% if device_lan.local_enabled %}checked{% endif %}>
+          <span>Включить LAN-профиль для этого устройства</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" name="prefer_local" value="yes" {% if device_lan.prefer_local %}checked{% endif %}>
+          <span>Предпочитать LAN даже когда облако Tuya живо</span>
+        </label>
+        <div class="grid-2">
+          <label>Локальный IP
+            <input class="input" type="text" name="local_ip" value="{{ device_lan.local_ip }}" placeholder="Например: 192.168.0.57">
+          </label>
+          <label>Версия протокола
+            <select class="input" name="protocol_version">
+              {% for version in ['3.1', '3.2', '3.3', '3.4', '3.5'] %}
+                <option value="{{ version }}" {% if device_lan.protocol_version == version %}selected{% endif %}>{{ version }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <label>Local key
+          <input class="input" type="password" name="local_key" value="" autocomplete="new-password" placeholder="Оставь пустым, чтобы сохранить текущий key">
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" name="clear_local_key" value="yes">
+          <span>Очистить сохранённый local key</span>
+        </label>
+        <div class="muted tiny">Сейчас SmartLife v0.11.17 через LAN умеет только switch-команды: обычные розетки, бойлер с <code>switch_1</code> и каналы удлинителя. Температура, режимы и экзотика пока ещё облачные.</div>
+        <div class="muted tiny">Если local key достанешь руками из Tuya Developer Portal, ждать discovery уже не нужно: внеси IP, версию и key сюда, а дальше SmartLife сможет использовать LAN как fallback.</div>
+        <button type="submit">Сохранить LAN-профиль</button>
+      </form>
     </article>
 
     <article class="card local-section-anchor" id="local-channels">
@@ -416,12 +460,20 @@
     <article class="card">
       <div class="section-header"><h2>Управление</h2></div>
       <div class="muted">Управление доступно по тем командам, которые Tuya Cloud реально отдаёт для этого устройства: питание, отдельные каналы, режим и целевая температура.</div>
-      {% set controls_locked = tuya_quota_state and tuya_quota_state.exhausted and device.provider.value == 'tuya_cloud' %}
+      {% set controls_locked = tuya_quota_state and tuya_quota_state.exhausted and device.provider.value == 'tuya_cloud' and not device_lan.can_switch_locally %}
+      {% set local_switch_bridge = device.provider.value == 'tuya_cloud' and device_lan.can_switch_locally %}
       {% if controls_locked %}
         <div class="warning-banner inline-warning" style="margin-top:16px; margin-bottom:16px;">
           <div>
             <div class="warning-title">Команды временно заблокированы</div>
             <div class="muted">Tuya Trial quota сейчас исчерпана, поэтому кнопки управления переведены в read-only. После продления лимита нажми «Синхронизировать сейчас», и SmartLife снова откроет команды.</div>
+          </div>
+        </div>
+      {% elif local_switch_bridge and tuya_quota_state and tuya_quota_state.exhausted %}
+        <div class="warning-banner inline-warning" style="margin-top:16px; margin-bottom:16px;">
+          <div>
+            <div class="warning-title">Облако Tuya лежит, но switch-команды можно слать по LAN</div>
+            <div class="muted">Для этого устройства настроен локальный IP, версия протокола и local key. В v0.11.17 SmartLife умеет через LAN включать и выключать только switch-каналы; режимы и температуры пока всё ещё завязаны на облако.</div>
           </div>
         </div>
       {% endif %}

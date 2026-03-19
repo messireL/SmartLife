@@ -6,3 +6,4 @@ psycopg[binary]==3.2.9
 pydantic-settings==2.10.1
 python-multipart==0.0.20
 httpx==0.28.1
+tinytuya==1.17.6
