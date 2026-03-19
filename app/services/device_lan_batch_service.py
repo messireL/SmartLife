@@ -124,7 +124,8 @@ def import_device_lan_csv(db: Session, *, filename: str, content: bytes) -> Devi
         incoming_version = (row.get("protocol_version") or row.get("version") or "").strip() or existing.protocol_version
         incoming_key = (row.get("local_key") or row.get("key") or "").strip()
         local_enabled = _coalesce_bool(row.get("local_enabled") or row.get("enabled"), existing.local_enabled)
-        prefer_local = _coalesce_bool(row.get("prefer_local") or row.get("prefer_lan"), existing.prefer_local)
+        prefer_default = existing.prefer_local if existing.prefer_local_explicit else True
+        prefer_local = _coalesce_bool(row.get("prefer_local") or row.get("prefer_lan"), prefer_default)
         clear_local_key = _parse_bool(row.get("clear_local_key"))
 
         before = (

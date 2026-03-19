@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Device
+from app.db.models import AppSetting, Device
 from app.services.runtime_config_service import get_setting_value, set_setting_value
 
 _ALLOWED_PROTOCOL_VERSIONS = {"3.1", "3.2", "3.3", "3.4", "3.5"}
@@ -23,6 +24,7 @@ class DeviceLanConfig:
     local_key: str
     local_enabled: bool
     prefer_local: bool
+    prefer_local_explicit: bool
     cloud_ip: str
     key_source: str
     key_refreshed_at: datetime | None
@@ -54,6 +56,10 @@ class DeviceLanConfig:
         if self.is_complete:
             return "готов"
         return "неполная конфигурация"
+
+    @property
+    def prefer_local_form_checked(self) -> bool:
+        return self.prefer_local or not self.prefer_local_explicit
 
     @property
     def local_mode_label(self) -> str:
@@ -92,6 +98,7 @@ DEFAULT_DEVICE_LAN_CONFIG = DeviceLanConfig(
     local_key="",
     local_enabled=False,
     prefer_local=False,
+    prefer_local_explicit=False,
     cloud_ip="",
     key_source="",
     key_refreshed_at=None,
@@ -102,13 +109,16 @@ DEFAULT_DEVICE_LAN_CONFIG = DeviceLanConfig(
 
 
 def get_device_lan_config(db: Session, device_id: int) -> DeviceLanConfig:
+    prefer_local_key = _device_lan_key(device_id, "prefer_local")
+    prefer_local_explicit = _setting_exists(db, prefer_local_key)
     return DeviceLanConfig(
         device_id=int(device_id),
         local_ip=get_setting_value(db, _device_lan_key(device_id, "ip"), "").strip(),
         protocol_version=_normalize_protocol_version(get_setting_value(db, _device_lan_key(device_id, "version"), "3.3")),
         local_key=get_setting_value(db, _device_lan_key(device_id, "key"), "").strip(),
         local_enabled=_parse_bool(get_setting_value(db, _device_lan_key(device_id, "enabled"), "no")),
-        prefer_local=_parse_bool(get_setting_value(db, _device_lan_key(device_id, "prefer_local"), "no")),
+        prefer_local=_parse_bool(get_setting_value(db, prefer_local_key, "no")),
+        prefer_local_explicit=prefer_local_explicit,
         cloud_ip=get_setting_value(db, _device_lan_key(device_id, "cloud_ip"), "").strip(),
         key_source=get_setting_value(db, _device_lan_key(device_id, "key_source"), "").strip(),
         key_refreshed_at=_parse_datetime(get_setting_value(db, _device_lan_key(device_id, "key_refreshed_at"), "").strip()),
@@ -177,6 +187,10 @@ def record_device_lan_probe(db: Session, device_id: int, *, status: str, message
     set_setting_value(db, _device_lan_key(device_id, "last_probe_message"), (message or "").strip())
     db.commit()
     return get_device_lan_config(db, device_id)
+
+
+def _setting_exists(db: Session, key: str) -> bool:
+    return db.execute(select(AppSetting.id).where(AppSetting.key == key)).scalar_one_or_none() is not None
 
 
 def _parse_datetime(raw: str | None) -> datetime | None:
