@@ -4,7 +4,7 @@
   <div class="section-header">
     <div>
       <h1>Синхронизация</h1>
-      <div class="muted">Здесь видно, что фон живой, когда был последний цикл и не пошёл ли Tuya внезапно в театральную паузу. При автообновлении страница сама подтягивает свежий статус.</div>
+      <div class="muted">Здесь видно, что фон живой, когда был последний цикл и не пошёл ли Tuya внезапно в театральную паузу. При ручном Tuya-режиме фон не ест лимит: ключи и IP подтягиваются только по кнопке на нужном устройстве.</div>
     </div>
     <form method="post" action="/actions/sync-provider"><button type="submit">Запустить сейчас</button></form>
   </div>
@@ -22,6 +22,13 @@
 <section class="warning-banner">
   <div class="warning-title">Tuya сейчас упёрлась в trial quota</div>
   <div class="muted">Синхронизация может падать на cloud API, а управление устройствами уже переведено в read-only. После продления лимита запусти sync ещё раз — SmartLife сам увидит, что облако ожило.</div>
+</section>
+{% endif %}
+
+{% if sync_overview.tuya_api_mode == "manual" %}
+<section class="warning-banner">
+  <div class="warning-title">Tuya переведена в ручной режим</div>
+  <div class="muted">SmartLife не делает автоматический cloud sync и не тратит лимит на фоновый опрос. Когда облако оживёт, открывай нужное устройство → вкладка <strong>Локально</strong> → кнопка <strong>Получить key/IP из Tuya вручную</strong>. После сохранения ключа дальше живём через LAN.</div>
 </section>
 {% endif %}
 

@@ -13,11 +13,32 @@ from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
 from app.integrations.base import ProviderDevice, ProviderEnergySample, ProviderStatusSnapshot
 from app.integrations.registry import get_provider
 from app.integrations.tuya_provider import TuyaCloudProvider
-from app.services.runtime_config_service import mark_tuya_full_sync_completed
+from app.services.runtime_config_service import TUYA_API_MODE_MANUAL, mark_tuya_full_sync_completed
 from app.services.device_query_service import is_temp_device_name
 
+from sqlalchemy import func
 
 ZERO = Decimal("0.000")
+
+
+def _build_manual_cloud_skip_result(db: Session, *, trigger: SyncRunTrigger) -> dict:
+    devices_total = db.scalar(
+        select(func.count()).select_from(Device).where(Device.provider == ProviderType.TUYA_CLOUD, Device.is_deleted.is_(False))
+    ) or 0
+    return {
+        "provider": ProviderType.TUYA_CLOUD.value,
+        "sync_mode": "manual_skip",
+        "sync_reason": f"manual cloud mode blocks automatic sync for {trigger.value}",
+        "refreshed_devices_from_cloud": False,
+        "used_cached_spec": True,
+        "devices_total": int(devices_total),
+        "daily_samples_total": 0,
+        "monthly_samples_total": 0,
+        "snapshots_total": 0,
+        "aggregated_energy_updates": 0,
+        "pruned_devices_total": 0,
+    }
+
 
 
 def sync_from_provider(db: Session, *, trigger: SyncRunTrigger = SyncRunTrigger.MANUAL) -> dict:
@@ -28,6 +49,8 @@ def sync_from_provider(db: Session, *, trigger: SyncRunTrigger = SyncRunTrigger.
     use_cached_spec = False
 
     if isinstance(provider, TuyaCloudProvider):
+        if provider.runtime.tuya_api_mode == TUYA_API_MODE_MANUAL:
+            return _build_manual_cloud_skip_result(db, trigger=trigger)
         if trigger in {SyncRunTrigger.MANUAL, SyncRunTrigger.CLI, SyncRunTrigger.STARTUP}:
             sync_mode = "full"
             sync_reason = f"{trigger.value} trigger forces full sync"

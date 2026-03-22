@@ -310,7 +310,7 @@
         </div>
         {% if device_lan.last_probe_message %}<div class="empty-state tiny">{{ device_lan.last_probe_message }}</div>{% endif %}
         <div class="form-actions">
-          <button type="submit" formaction="/devices/{{ device.id }}/fetch-lan-key">Получить key из Tuya и проверить LAN</button>
+          <button type="submit" formaction="/devices/{{ device.id }}/fetch-lan-key">Получить key/IP из Tuya вручную и проверить LAN</button>
           <button type="submit" formaction="/devices/{{ device.id }}/probe-lan" class="button-secondary">Проверить LAN с текущими данными</button>
         </div>
         <label class="checkbox-row">
@@ -343,7 +343,7 @@
           </label>
         </div>
         <div class="muted tiny">Сейчас SmartLife v0.11.20 через LAN умеет только switch-команды: обычные розетки, бойлер с <code>switch_1</code> и каналы удлинителя. Температура, режимы и экзотика пока ещё облачные.</div>
-        <div class="muted tiny">Новая схема простая: один ручной запрос за key в Tuya, затем SmartLife хранит ключ у себя и использует локальный контур без постоянного cloud-sync ради switch-команд.</div>
+        <div class="muted tiny">Новая схема простая: один ручной запрос за key/IP в Tuya, затем SmartLife хранит их у себя и использует локальный контур без постоянного cloud-sync ради switch-команд.</div>
         <div class="muted tiny">Галочка <strong>«Предпочитать LAN»</strong> теперь по умолчанию включена для новых/ещё не настроенных профилей, чтобы локальный контур сразу был главным, а облако — только сервисной запаской.</div>
         <button type="submit">Сохранить LAN-профиль</button>
       </form>

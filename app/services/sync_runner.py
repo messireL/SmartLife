@@ -81,7 +81,7 @@ def run_sync_job(*, trigger: SyncRunTrigger = SyncRunTrigger.MANUAL, fail_if_run
                 result = sync_from_provider(db, trigger=trigger)
                 finished_at = utc_now_naive()
                 duration_ms = int((time.perf_counter() - start_perf) * 1000)
-                sync_run.status = SyncRunStatus.SUCCESS
+                sync_run.status = SyncRunStatus.SKIPPED if result.get("sync_mode") in {"manual_skip", "degraded_skip"} else SyncRunStatus.SUCCESS
                 sync_run.finished_at = finished_at
                 sync_run.duration_ms = duration_ms
                 sync_run.result_summary = json.dumps(result, ensure_ascii=False, default=str, sort_keys=True)

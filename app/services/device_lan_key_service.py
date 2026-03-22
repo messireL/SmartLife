@@ -69,7 +69,7 @@ def refresh_device_lan_key_from_tuya(db: Session, device: Device) -> DeviceLanKe
         prefer_local=existing.prefer_local,
         preserve_existing_key=False,
     )
-    record_device_lan_fetch(db, device.id, source="tuya_cloud", cloud_ip=fetched_ip)
+    record_device_lan_fetch(db, device.id, source="tuya_cloud_manual", cloud_ip=fetched_ip)
 
     probe_attempted = bool(config.local_ip and config.has_local_key)
     probe_success = False

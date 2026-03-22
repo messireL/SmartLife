@@ -166,6 +166,8 @@ def get_runtime_diagnostics(db: Session) -> RuntimeDiagnostics:
         warnings.append("provider=tuya_cloud, но Access ID / Secret в PostgreSQL не заданы полностью")
     if runtime.provider == ProviderType.TUYA_CLOUD.value and runtime.tuya_api_mode == "economy":
         warnings.append(f"tuya economy mode включён: полный cloud refresh каждые {runtime.tuya_full_sync_interval_minutes} мин, cached spec до {runtime.tuya_spec_cache_hours} ч")
+    if runtime.provider == ProviderType.TUYA_CLOUD.value and runtime.tuya_api_mode == "manual":
+        warnings.append("tuya manual mode включён: автоматический cloud sync выключен, ключи/IP подтягиваются только ручными запросами по устройству")
     if runtime.backup_auto_prune_enabled and runtime.backup_keep_last > 0:
         warnings.append(f"backup auto-prune включён: храним последние {runtime.backup_keep_last} dump-файлов")
     if quota_state.exhausted:

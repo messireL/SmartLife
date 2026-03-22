@@ -899,7 +899,7 @@ def update_tuya_api_runtime_settings(
 
     runtime = configure_tuya_api_runtime(
         db,
-        api_mode=(tuya_api_mode or "standard").strip(),
+        api_mode=(tuya_api_mode or "manual").strip(),
         full_sync_interval_minutes=full_minutes,
         spec_cache_hours=spec_hours,
     )
@@ -909,8 +909,13 @@ def update_tuya_api_runtime_settings(
             f"а полный cloud refresh теперь раз в {runtime.tuya_full_sync_interval_minutes} мин; "
             f"кэш спецификаций живёт до {runtime.tuya_spec_cache_hours} ч."
         )
+    elif runtime.tuya_api_mode == "manual":
+        flash = (
+            "Включён ручной режим Tuya: автоматический cloud sync отключён. "
+            "Когда лимит оживёт, запрашивай key/IP только по нужным устройствам вручную через вкладку Локально."
+        )
     else:
-        flash = "Экономичный режим Tuya выключен. Каждый цикл снова работает как полный cloud refresh."
+        flash = "Стандартный режим Tuya включён. Каждый цикл снова работает как полный cloud refresh."
     return RedirectResponse(url=f"/settings?flash={quote_plus(flash)}", status_code=303)
 
 

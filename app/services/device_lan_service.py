@@ -71,6 +71,8 @@ class DeviceLanConfig:
 
     @property
     def key_source_label(self) -> str:
+        if self.key_source == "tuya_cloud_manual":
+            return "Tuya Cloud · вручную"
         if self.key_source == "tuya_cloud":
             return "Tuya Cloud"
         if self.key_source:

@@ -17,6 +17,7 @@ from sqlalchemy import select
 from app.db.session import SessionLocal
 from app.services.runtime_config_service import (
     TUYA_API_MODE_ECONOMY,
+    TUYA_API_MODE_MANUAL,
     get_runtime_config,
     get_setting_value,
 )
@@ -97,6 +98,8 @@ class TuyaCloudProvider(DeviceProvider):
         self._spec_cache: dict[str, TuyaDeviceSpec] = {}
 
     def plan_sync(self) -> TuyaSyncPlan:
+        if self.runtime.tuya_api_mode == TUYA_API_MODE_MANUAL:
+            return TuyaSyncPlan(mode="manual_skip", refresh_devices_from_cloud=False, use_cached_spec=True, reason="manual cloud mode")
         if self.runtime.tuya_api_mode != TUYA_API_MODE_ECONOMY:
             return TuyaSyncPlan(mode="full", refresh_devices_from_cloud=True, use_cached_spec=False, reason="standard mode")
 

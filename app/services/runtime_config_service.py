@@ -27,6 +27,7 @@ RUNTIME_KEY_BACKUP_AUTO_PRUNE_ENABLED = "backup.auto_prune_enabled"
 
 TUYA_API_MODE_STANDARD = "standard"
 TUYA_API_MODE_ECONOMY = "economy"
+TUYA_API_MODE_MANUAL = "manual"
 
 LEGACY_RUNTIME_KEY_TARIFF_PRICE = "tariff.price_per_kwh"
 RUNTIME_KEY_TARIFF_MODE = "tariff.mode"
@@ -185,6 +186,8 @@ class RuntimeConfig:
 
     @property
     def tuya_api_mode_label(self) -> str:
+        if self.tuya_api_mode == TUYA_API_MODE_MANUAL:
+            return "Ручной"
         return "Экономичный" if self.tuya_api_mode == TUYA_API_MODE_ECONOMY else "Стандартный"
 
     @property
@@ -228,6 +231,14 @@ class RuntimeConfig:
     def tariff_effective_from_label(self) -> str:
         return format_local_date(date.fromisoformat(self.tariff_effective_from))
 
+
+
+
+def _normalize_tuya_api_mode(raw: str | None) -> str:
+    value = (raw or "").strip().lower()
+    if value in {TUYA_API_MODE_STANDARD, TUYA_API_MODE_ECONOMY, TUYA_API_MODE_MANUAL}:
+        return value
+    return TUYA_API_MODE_MANUAL
 
 def _get_setting_row(db: Session, key: str) -> AppSetting | None:
     return db.execute(select(AppSetting).where(AppSetting.key == key)).scalar_one_or_none()
@@ -464,7 +475,7 @@ def _build_runtime_config(db: Session) -> RuntimeConfig:
         tuya_access_id=get_setting_value(db, RUNTIME_KEY_TUYA_ACCESS_ID, settings.smartlife_tuya_access_id or ""),
         tuya_access_secret=get_setting_value(db, RUNTIME_KEY_TUYA_ACCESS_SECRET, settings.smartlife_tuya_access_secret or ""),
         tuya_project_code=get_setting_value(db, RUNTIME_KEY_TUYA_PROJECT_CODE, settings.smartlife_tuya_project_code or ""),
-        tuya_api_mode=get_setting_value(db, RUNTIME_KEY_TUYA_API_MODE, TUYA_API_MODE_STANDARD) or TUYA_API_MODE_STANDARD,
+        tuya_api_mode=_normalize_tuya_api_mode(get_setting_value(db, RUNTIME_KEY_TUYA_API_MODE, TUYA_API_MODE_STANDARD) or TUYA_API_MODE_STANDARD),
         tuya_full_sync_interval_minutes=get_setting_int_value(db, RUNTIME_KEY_TUYA_FULL_SYNC_INTERVAL_MINUTES, 15, minimum=5, maximum=1440),
         tuya_spec_cache_hours=get_setting_int_value(db, RUNTIME_KEY_TUYA_SPEC_CACHE_HOURS, 24, minimum=1, maximum=720),
         tuya_last_full_sync_at=get_setting_value(db, RUNTIME_KEY_TUYA_LAST_FULL_SYNC_AT, ""),
@@ -499,7 +510,7 @@ def bootstrap_runtime_settings(db: Session) -> RuntimeConfig:
         RUNTIME_KEY_TUYA_ACCESS_ID: settings.smartlife_tuya_access_id or "",
         RUNTIME_KEY_TUYA_ACCESS_SECRET: settings.smartlife_tuya_access_secret or "",
         RUNTIME_KEY_TUYA_PROJECT_CODE: settings.smartlife_tuya_project_code or "",
-        RUNTIME_KEY_TUYA_API_MODE: TUYA_API_MODE_STANDARD,
+        RUNTIME_KEY_TUYA_API_MODE: TUYA_API_MODE_MANUAL,
         RUNTIME_KEY_TUYA_FULL_SYNC_INTERVAL_MINUTES: "15",
         RUNTIME_KEY_TUYA_SPEC_CACHE_HOURS: "24",
         RUNTIME_KEY_TUYA_LAST_FULL_SYNC_AT: "",
@@ -552,9 +563,7 @@ def configure_tuya_cloud(db: Session, *, base_url: str, access_id: str, access_s
 
 
 def configure_tuya_api_runtime(db: Session, *, api_mode: str, full_sync_interval_minutes: int, spec_cache_hours: int) -> RuntimeConfig:
-    mode = (api_mode or TUYA_API_MODE_STANDARD).strip()
-    if mode not in {TUYA_API_MODE_STANDARD, TUYA_API_MODE_ECONOMY}:
-        mode = TUYA_API_MODE_STANDARD
+    mode = _normalize_tuya_api_mode((api_mode or TUYA_API_MODE_MANUAL).strip())
     set_runtime_values(
         db,
         {
