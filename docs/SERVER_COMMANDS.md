@@ -256,6 +256,7 @@ grep -n "APP_VERSION" app/core/version.py
 Для Portainer использовать:
 - compose file: `docker-compose.portainer.yml`
 - env template: `stack.env.portainer.example`
+- `SMARTLIFE_APP_IMAGE` больше не нужен: сервис `app` собирается из Git через `build`, чтобы не залипать на старом image tag
 - инструкция: `docs/PORTAINER.md`
 
 Через обычный SSH/git сценарий по-прежнему использовать `docker-compose.yml` и `./scripts/manage.sh`.

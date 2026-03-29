@@ -131,6 +131,7 @@ chmod +x scripts/manage.sh
 
 - использовать `docker-compose.portainer.yml`;
 - пример переменных среды лежит в `stack.env.portainer.example`;
+- `SMARTLIFE_APP_IMAGE` больше не нужен: Portainer-стек собирает `app` напрямую из Git через `build`, чтобы релизы не залипали на старом image tag;
 - отдельная инструкция лежит в `docs/PORTAINER.md`;
 - для Portainer приложение умеет читать `SMARTLIFE_APP_SECRET_KEY` и `SMARTLIFE_DB_PASSWORD` прямо из environment без файлов `secrets/`.
 

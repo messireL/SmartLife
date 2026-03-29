@@ -6,6 +6,7 @@
 
 - добавлен `docker-compose.portainer.yml`;
 - добавлен `stack.env.portainer.example`;
+- `SMARTLIFE_APP_IMAGE` больше не используется: Portainer собирает `app` напрямую из Git-репозитория, чтобы новые релизы не залипали на старом image tag;
 - приложение умеет читать ключ приложения и пароль БД не только из файлов в `secrets/`, но и из переменных окружения:
   - `SMARTLIFE_APP_SECRET_KEY`
   - `SMARTLIFE_DB_PASSWORD`
@@ -21,6 +22,8 @@
 - `SMARTLIFE_DB_PASSWORD`
 - `SMARTLIFE_APP_BASE_URL`
 - `SMARTLIFE_PUBLIC_PORT`
+
+Переменная `SMARTLIFE_APP_IMAGE` больше не нужна.
 
 Минимально рекомендуемые:
 
@@ -90,3 +93,10 @@ docker run --rm   -v smartlife_backups:/target   -v /opt/SmartLife/backups:/sour
 ```
 
 Если имя volume отличается, использовать фактическое имя `${SMARTLIFE_STACK_NAME}_backups`.
+
+
+## Что поменялось в v0.11.23
+
+- Portainer-стек больше не использует `SMARTLIFE_APP_IMAGE`;
+- сервис `app` собирается из Git через `build`, поэтому при redeploy stack подтягивается текущий код репозитория;
+- это уменьшает риск зависнуть на старом image tag после нового релиза.

@@ -19,7 +19,8 @@ services:
       - smartlife_network
 
   app:
-    image: ${SMARTLIFE_APP_IMAGE:-smartlife-app:0.11.22}
+    # Для Portainer-стека собираем приложение напрямую из Git-репозитория,
+    # чтобы не залипать на старом image tag между релизами.
     build:
       context: .
       dockerfile: Dockerfile
