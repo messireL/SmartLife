@@ -127,6 +127,14 @@ chmod +x scripts/manage.sh
 ./scripts/manage.sh url
 ```
 
+### Развёртывание через Portainer
+
+- использовать `docker-compose.portainer.yml`;
+- пример переменных среды лежит в `stack.env.portainer.example`;
+- отдельная инструкция лежит в `docs/PORTAINER.md`;
+- для Portainer приложение умеет читать `SMARTLIFE_APP_SECRET_KEY` и `SMARTLIFE_DB_PASSWORD` прямо из environment без файлов `secrets/`.
+
+
 ## Подключение Tuya Cloud
 
 ```bash

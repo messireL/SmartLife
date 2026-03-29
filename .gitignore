@@ -18,3 +18,5 @@ secrets/*
 
 backups/*
 !backups/.gitkeep
+
+stack.env.portainer

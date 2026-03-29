@@ -249,3 +249,13 @@ grep -n "APP_VERSION" app/core/version.py
 ./scripts/manage.sh health
 ./scripts/manage.sh runtime-info
 ```
+
+
+## Portainer
+
+Для Portainer использовать:
+- compose file: `docker-compose.portainer.yml`
+- env template: `stack.env.portainer.example`
+- инструкция: `docs/PORTAINER.md`
+
+Через обычный SSH/git сценарий по-прежнему использовать `docker-compose.yml` и `./scripts/manage.sh`.

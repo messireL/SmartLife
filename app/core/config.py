@@ -52,37 +52,46 @@ class Settings(BaseSettings):
     smartlife_db_host: str = Field(default="db", validation_alias="SMARTLIFE_DB_HOST")
     smartlife_db_port: int = Field(default=5432, validation_alias="SMARTLIFE_DB_PORT")
 
+    app_secret_key_env: str = Field(default="", validation_alias="SMARTLIFE_APP_SECRET_KEY")
+    smartlife_tuya_access_id_env: str = Field(default="", validation_alias="SMARTLIFE_TUYA_ACCESS_ID")
+    smartlife_tuya_access_secret_env: str = Field(default="", validation_alias="SMARTLIFE_TUYA_ACCESS_SECRET")
+    smartlife_tuya_project_code_env: str = Field(default="", validation_alias="SMARTLIFE_TUYA_PROJECT_CODE")
+    smartlife_xiaomi_username_env: str = Field(default="", validation_alias="SMARTLIFE_XIAOMI_USERNAME")
+    smartlife_xiaomi_password_env: str = Field(default="", validation_alias="SMARTLIFE_XIAOMI_PASSWORD")
+    smartlife_xiaomi_device_token_env: str = Field(default="", validation_alias="SMARTLIFE_XIAOMI_DEVICE_TOKEN")
+    database_password_env: str = Field(default="", validation_alias="SMARTLIFE_DB_PASSWORD")
+
     @property
     def app_secret_key(self) -> str:
-        return _read_secret("app_secret_key", "change-me")
+        return self.app_secret_key_env or _read_secret("app_secret_key", "change-me")
 
     @property
     def smartlife_tuya_access_id(self) -> str:
-        return _read_secret("smartlife_tuya_access_id")
+        return self.smartlife_tuya_access_id_env or _read_secret("smartlife_tuya_access_id")
 
     @property
     def smartlife_tuya_access_secret(self) -> str:
-        return _read_secret("smartlife_tuya_access_secret")
+        return self.smartlife_tuya_access_secret_env or _read_secret("smartlife_tuya_access_secret")
 
     @property
     def smartlife_tuya_project_code(self) -> str:
-        return _read_secret("smartlife_tuya_project_code")
+        return self.smartlife_tuya_project_code_env or _read_secret("smartlife_tuya_project_code")
 
     @property
     def smartlife_xiaomi_username(self) -> str:
-        return _read_secret("smartlife_xiaomi_username")
+        return self.smartlife_xiaomi_username_env or _read_secret("smartlife_xiaomi_username")
 
     @property
     def smartlife_xiaomi_password(self) -> str:
-        return _read_secret("smartlife_xiaomi_password")
+        return self.smartlife_xiaomi_password_env or _read_secret("smartlife_xiaomi_password")
 
     @property
     def smartlife_xiaomi_device_token(self) -> str:
-        return _read_secret("smartlife_xiaomi_device_token")
+        return self.smartlife_xiaomi_device_token_env or _read_secret("smartlife_xiaomi_device_token")
 
     @property
     def database_password(self) -> str:
-        return _read_secret("db_password", "smartlife")
+        return self.database_password_env or _read_secret("db_password", "smartlife")
 
     @property
     def database_url(self) -> str:
