@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Device, ProviderType
 from app.services.device_lan_key_service import DeviceLanKeyError, reprobe_device_lan_profile
-from app.services.device_lan_service import get_device_lan_config, record_device_lan_fetch, save_device_lan_config
+from app.services.device_lan_service import get_device_lan_config, record_device_lan_fetch, save_device_lan_config, save_device_lan_metadata
 
 
 @dataclass(slots=True)
@@ -34,6 +34,7 @@ class DeviceLanImportResult:
     skipped_total: int = 0
     unmatched_total: int = 0
     key_updates_total: int = 0
+    mac_updates_total: int = 0
     errors: list[str] = field(default_factory=list)
     unmatched_external_ids: list[str] = field(default_factory=list)
 
@@ -91,7 +92,7 @@ def import_device_lan_csv(db: Session, *, filename: str, content: bytes) -> Devi
     text = _decode_csv_bytes(content)
     reader = csv.DictReader(io.StringIO(text), dialect=_detect_dialect(text))
     if not reader.fieldnames:
-        raise ValueError("CSV пустой или без заголовка. Нужны хотя бы колонки external_id, local_ip, protocol_version, local_key.")
+        raise ValueError("CSV пустой или без заголовка. Нужны хотя бы external_id и те поля, которые хочешь обновить: local_ip, protocol_version, local_key, local_mac.")
 
     normalized_fieldnames = {str(name or "").strip().lower() for name in reader.fieldnames}
     if "external_id" not in normalized_fieldnames:
@@ -123,6 +124,7 @@ def import_device_lan_csv(db: Session, *, filename: str, content: bytes) -> Devi
         incoming_ip = (row.get("local_ip") or row.get("ip") or "").strip()
         incoming_version = (row.get("protocol_version") or row.get("version") or "").strip() or existing.protocol_version
         incoming_key = (row.get("local_key") or row.get("key") or "").strip()
+        incoming_mac = (row.get("local_mac") or row.get("mac") or "").strip()
         local_enabled = _coalesce_bool(row.get("local_enabled") or row.get("enabled"), existing.local_enabled)
         prefer_default = existing.prefer_local if existing.prefer_local_explicit else True
         prefer_local = _coalesce_bool(row.get("prefer_local") or row.get("prefer_lan"), prefer_default)
@@ -134,8 +136,9 @@ def import_device_lan_csv(db: Session, *, filename: str, content: bytes) -> Devi
             existing.local_key,
             existing.local_enabled,
             existing.prefer_local,
+            existing.local_mac,
         )
-        config = save_device_lan_config(
+        updated = save_device_lan_config(
             db,
             device_id=device.id,
             local_ip=incoming_ip or existing.local_ip,
@@ -146,12 +149,15 @@ def import_device_lan_csv(db: Session, *, filename: str, content: bytes) -> Devi
             preserve_existing_key=True,
             clear_local_key=clear_local_key,
         )
+        if incoming_mac:
+            updated = save_device_lan_metadata(db, device_id=device.id, mac=incoming_mac)
         after = (
-            config.local_ip,
-            config.protocol_version,
-            config.local_key,
-            config.local_enabled,
-            config.prefer_local,
+            updated.local_ip,
+            updated.protocol_version,
+            updated.local_key,
+            updated.local_enabled,
+            updated.prefer_local,
+            updated.local_mac,
         )
         result.matched_total += 1
         if before == after:
@@ -161,12 +167,64 @@ def import_device_lan_csv(db: Session, *, filename: str, content: bytes) -> Devi
 
         if incoming_key or clear_local_key:
             source = (row.get("key_source") or row.get("source") or "csv_import").strip() or "csv_import"
-            record_device_lan_fetch(db, device.id, source=source, cloud_ip=config.local_ip)
+            record_device_lan_fetch(db, device.id, source=source, cloud_ip=updated.local_ip)
             if incoming_key:
                 result.key_updates_total += 1
+        if incoming_mac:
+            result.mac_updates_total += 1
 
     return result
 
+
+
+def dump_device_lan_inventory_csv(db: Session) -> tuple[str, bytes]:
+    devices = db.execute(
+        select(Device).where(Device.is_deleted.is_(False)).order_by(Device.name.asc(), Device.id.asc())
+    ).scalars().all()
+
+    output = io.StringIO()
+    fieldnames = [
+        "external_id",
+        "display_name",
+        "room_name",
+        "provider",
+        "model",
+        "local_ip",
+        "protocol_version",
+        "local_mac",
+        "local_enabled",
+        "prefer_local",
+        "last_probe_status",
+        "key_present",
+        "key_source",
+        "key_refreshed_at",
+    ]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for device in devices:
+        config = get_device_lan_config(db, device.id)
+        writer.writerow(
+            {
+                "external_id": device.external_id or "",
+                "display_name": device.display_name,
+                "room_name": device.display_room_name or "",
+                "provider": getattr(device.provider, "value", str(device.provider or "")),
+                "model": device.model or device.product_name or "",
+                "local_ip": config.local_ip,
+                "protocol_version": config.protocol_version,
+                "local_mac": config.local_mac,
+                "local_enabled": "yes" if config.local_enabled else "no",
+                "prefer_local": "yes" if config.prefer_local else "no",
+                "last_probe_status": config.last_probe_status,
+                "key_present": "yes" if config.has_local_key else "no",
+                "key_source": config.key_source,
+                "key_refreshed_at": config.key_refreshed_at.isoformat() if config.key_refreshed_at else "",
+            }
+        )
+
+    from datetime import datetime
+    filename = f"smartlife-device-lan-inventory-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
+    return filename, output.getvalue().encode("utf-8-sig")
 
 def batch_probe_local_devices(db: Session, *, scope: str = "enabled_ready") -> DeviceLanBatchProbeResult:
     normalized_scope = (scope or "enabled_ready").strip().lower()

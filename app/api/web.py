@@ -35,8 +35,8 @@ from app.services.device_control_service import (
 )
 from app.services.badge_service import ALLOWED_BADGE_COLORS, assign_badge_to_devices, create_badge, delete_badge, get_badge_choices as get_badge_choices_service, list_badges, update_badge
 from app.services.device_lan_key_service import DeviceLanKeyError, refresh_device_lan_key_from_tuya, reprobe_device_lan_profile
-from app.services.device_lan_service import get_device_lan_config, get_device_lan_configs_map, save_device_lan_config
-from app.services.device_lan_batch_service import batch_probe_local_devices, get_device_lan_inventory_overview, import_device_lan_csv
+from app.services.device_lan_service import get_device_lan_config, get_device_lan_configs_map, save_device_lan_config, save_device_lan_metadata
+from app.services.device_lan_batch_service import batch_probe_local_devices, dump_device_lan_inventory_csv, get_device_lan_inventory_overview, import_device_lan_csv
 from app.services.device_lan_backup_service import dump_device_lan_backup_json, import_device_lan_backup_json, save_device_lan_backup_snapshot
 from app.services.channel_style_service import get_channel_icon_choices, get_channel_role_choices, normalize_channel_icon_key, normalize_channel_role_key
 from app.services.device_query_service import get_badge_choices, get_devices_for_ui, get_provider_choices, get_room_choices
@@ -796,6 +796,8 @@ async def import_device_lan_csv_action(
         )
         if result.key_updates_total:
             flash += f" Ключей обновлено: {result.key_updates_total}."
+        if result.mac_updates_total:
+            flash += f" MAC обновлено: {result.mac_updates_total}."
         if result.errors:
             flash += " Ошибки: " + " | ".join(result.errors[:3])
         if result.unmatched_external_ids:
@@ -803,6 +805,13 @@ async def import_device_lan_csv_action(
     except ValueError as exc:
         flash = str(exc)
     return RedirectResponse(url=f"/sync?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.get("/sync/lan-inventory.csv")
+def download_device_lan_inventory_csv(db: Session = Depends(get_db)):
+    filename, payload = dump_device_lan_inventory_csv(db)
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(iter([payload]), media_type="text/csv; charset=utf-8", headers=headers)
 
 
 @router.get("/sync/lan-backup.json")
@@ -1470,6 +1479,7 @@ def save_device_lan_action(
     local_ip: str = Form(default=""),
     protocol_version: str = Form(default="3.3"),
     local_key: str = Form(default=""),
+    local_mac: str = Form(default=""),
     local_enabled: str = Form(default=""),
     prefer_local: str = Form(default=""),
     clear_local_key: str = Form(default=""),
@@ -1490,6 +1500,8 @@ def save_device_lan_action(
             clear_local_key=str(clear_local_key or "").strip().lower() in {"1", "true", "yes", "on"},
             preserve_existing_key=True,
         )
+        if str(local_mac or "").strip():
+            config = save_device_lan_metadata(db, device_id=device.id, mac=local_mac)
         details: list[str] = []
         if config.local_enabled:
             details.append(config.local_mode_label.lower())
@@ -1497,6 +1509,8 @@ def save_device_lan_action(
             details.append(config.local_ip)
         if config.protocol_version:
             details.append(f"v{config.protocol_version}")
+        if config.local_mac:
+            details.append(config.local_mac)
         details_text = " · ".join(details) if details else config.status_label
         flash = f"LAN-настройки для «{device.display_name}» сохранены: {details_text}."
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)

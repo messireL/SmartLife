@@ -105,6 +105,7 @@
                     {% if lan and lan.local_enabled %}<span class="badge badge-blue">LAN-профиль</span>{% endif %}
                     {% if lan and lan.prefer_local %}<span class="badge badge-green">локальный режим</span>{% endif %}
                     {% if lan and lan.is_locally_verified %}<span class="badge online">LAN ok</span>{% endif %}
+                    {% if lan and lan.has_local_key and not lan.local_mac %}<span class="badge warning">MAC нужен</span>{% endif %}
                   </div>
                   <div class="tiny muted">IP: {{ lan.local_ip if lan and lan.local_ip else '—' }}</div>
                   <div class="tiny muted">MAC: {{ lan.local_mac if lan and lan.local_mac else '—' }}</div>

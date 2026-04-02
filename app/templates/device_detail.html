@@ -305,6 +305,7 @@
           <div class="status-row"><span class="muted">Источник key</span><span>{{ device_lan.key_source_label }}</span></div>
           <div class="status-row"><span class="muted">Последнее обновление key</span><span>{{ device_lan.key_refreshed_at|localdt if device_lan.key_refreshed_at else '—' }}</span></div>
           <div class="status-row"><span class="muted">IP от Tuya</span><span>{{ device_lan.cloud_ip or '—' }}</span></div>
+          <div class="status-row"><span class="muted">MAC</span><span>{{ device_lan.local_mac or '—' }}</span></div>
           <div class="status-row"><span class="muted">Последний LAN-probe</span><span>{{ device_lan.last_probe_at|localdt if device_lan.last_probe_at else '—' }}{% if device_lan.last_probe_status %} · {{ device_lan.probe_status_label }}{% endif %}</span></div>
           <div class="status-row"><span class="muted">Device ID</span><span>{{ device.external_id }}</span></div>
         </div>
@@ -336,6 +337,9 @@
         <label>Local key
           <input class="input" type="password" name="local_key" value="" autocomplete="new-password" placeholder="Оставь пустым, чтобы сохранить текущий key">
         </label>
+        <label>MAC адрес (необязательно)
+          <input class="input" type="text" name="local_mac" value="" autocomplete="off" placeholder="Оставь пустым, чтобы сохранить текущий MAC">
+        </label>
         <div class="checkbox-panel">
           <label class="checkbox-row">
             <input type="checkbox" name="clear_local_key" value="yes">
@@ -344,6 +348,7 @@
         </div>
         <div class="muted tiny">Сейчас SmartLife v0.11.20 через LAN умеет только switch-команды: обычные розетки, бойлер с <code>switch_1</code> и каналы удлинителя. Температура, режимы и экзотика пока ещё облачные.</div>
         <div class="muted tiny">Новая схема простая: один ручной запрос за key/IP в Tuya, затем SmartLife хранит их у себя и использует локальный контур без постоянного cloud-sync ради switch-команд.</div>
+        <div class="muted tiny">MAC можно внести вручную здесь или импортировать пачкой через CSV на странице <strong>Синхронизация</strong>. Пустое поле MAC не затирает уже сохранённое значение.</div>
         <div class="muted tiny">Галочка <strong>«Предпочитать LAN»</strong> теперь по умолчанию включена для новых/ещё не настроенных профилей, чтобы локальный контур сразу был главным, а облако — только сервисной запаской.</div>
         <button type="submit">Сохранить LAN-профиль</button>
       </form>
