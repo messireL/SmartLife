@@ -253,7 +253,7 @@
     <nav class="tabs tabs-secondary">
       <a class="tab-link" href="#local-main">Устройство</a>
       <a class="tab-link" href="#local-lan">LAN / Tuya Local</a>
-      {% if device_view.channels.has_channels %}<a class="tab-link" href="#local-channels">Каналы</a>{% endif %}
+      <a class="tab-link" href="#local-debug">LAN debug</a>{% if device_view.channels.has_channels %}<a class="tab-link" href="#local-channels">Каналы</a>{% endif %}
     </nav>
   </section>
 
@@ -346,12 +346,73 @@
             <span>Очистить сохранённый local key</span>
           </label>
         </div>
-        <div class="muted tiny">Сейчас SmartLife v0.11.20 через LAN умеет только switch-команды: обычные розетки, бойлер с <code>switch_1</code> и каналы удлинителя. Температура, режимы и экзотика пока ещё облачные.</div>
+        <div class="muted tiny">Сейчас SmartLife уже умеет читать базовую телеметрию по LAN и слать switch-команды локально. Для нестандартных DP-полей бойлера и другой экзотики ниже есть подробный debug-блок.</div>
         <div class="muted tiny">Новая схема простая: один ручной запрос за key/IP в Tuya, затем SmartLife хранит их у себя и использует локальный контур без постоянного cloud-sync ради switch-команд.</div>
         <div class="muted tiny">MAC можно внести вручную здесь или импортировать пачкой через CSV на странице <strong>Синхронизация</strong>. Пустое поле MAC не затирает уже сохранённое значение.</div>
         <div class="muted tiny">Галочка <strong>«Предпочитать LAN»</strong> теперь по умолчанию включена для новых/ещё не настроенных профилей, чтобы локальный контур сразу был главным, а облако — только сервисной запаской.</div>
+        <div class="muted tiny">Ниже есть блок <strong>«LAN debug / сырые DP»</strong>: он показывает последние сырые локальные поля и cloud definitions, чтобы можно было нормально разобрать бойлер и другие капризные устройства без новых запросов в Tuya.</div>
         <button type="submit">Сохранить LAN-профиль</button>
       </form>
+    </article>
+
+    <article class="card local-section-anchor" id="local-debug">
+      <div class="section-header"><h2>LAN debug / сырые DP</h2><div class="muted tiny">Последний локальный payload, расплющенные DP-поля и cloud definitions — чтобы не гадать, куда у бойлера улетела уставка температуры.</div></div>
+      {% if device_view.debug.hints %}
+      <div class="warning-banner inline-warning" style="margin-bottom:16px;">
+        <div>
+          <div class="warning-title">Подсказки по маппингу</div>
+          <ul class="tiny" style="margin:8px 0 0 18px;">
+            {% for hint in device_view.debug.hints %}<li>{{ hint }}</li>{% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endif %}
+      <div class="status-stack">
+        <div class="status-row"><span class="muted">Последний локальный снапшот</span><span>{{ device_view.debug.latest_local_snapshot_at|localdt if device_view.debug.latest_local_snapshot_at else '—' }}</span></div>
+        <div class="status-row"><span class="muted">Источник локального снапшота</span><span>{{ device_view.debug.latest_local_source_note or '—' }}</span></div>
+        <div class="status-row"><span class="muted">Сырых локальных полей</span><span>{{ device_view.debug.latest_local_total_rows }}</span></div>
+        <div class="status-row"><span class="muted">Cloud status rows</span><span>{{ device_view.debug.cloud_status_rows|length }}</span></div>
+        <div class="status-row"><span class="muted">Cloud definitions</span><span>{{ device_view.debug.definition_total_rows }}</span></div>
+      </div>
+
+      <div class="section-header" style="margin-top:18px;"><h3>Как SmartLife понял устройство сейчас</h3></div>
+      <div class="table-wrap"><table><thead><tr><th>Поле</th><th>Значение</th></tr></thead><tbody>
+        {% for item in device_view.debug.mapped_rows %}
+          <tr><td>{{ item.label }}</td><td><span class="json-snippet">{{ item.value }}</span></td></tr>
+        {% endfor %}
+      </tbody></table></div>
+
+      <div class="section-header" style="margin-top:18px;"><h3>Сырые локальные поля</h3></div>
+      {% if device_view.debug.latest_local_rows %}
+      <div class="table-wrap"><table><thead><tr><th>Path</th><th>Value</th></tr></thead><tbody>
+        {% for item in device_view.debug.latest_local_rows %}
+          <tr><td><code>{{ item.path }}</code></td><td><span class="debug-value">{{ item.value }}</span></td></tr>
+        {% endfor %}
+      </tbody></table></div>
+      <details class="debug-details"><summary>Показать pretty JSON локального payload</summary><pre class="debug-json">{{ device_view.debug.latest_local_json }}</pre></details>
+      {% else %}
+      <div class="empty-state">Локального raw payload пока нет. Сначала сделай local-only sync или «Проверить LAN с текущими данными».</div>
+      {% endif %}
+
+      <div class="section-header" style="margin-top:18px;"><h3>Cloud статусы и definitions</h3></div>
+      {% if device_view.debug.cloud_status_rows %}
+      <div class="table-wrap"><table><thead><tr><th>Code</th><th>Value</th></tr></thead><tbody>
+        {% for item in device_view.debug.cloud_status_rows %}
+          <tr><td><code>{{ item.code }}</code></td><td><span class="debug-value">{{ item.value }}</span></td></tr>
+        {% endfor %}
+      </tbody></table></div>
+      {% else %}
+      <div class="empty-state">Cloud status rows пока пусты.</div>
+      {% endif %}
+      {% if device_view.debug.cloud_control_codes %}<div class="muted tiny" style="margin-top:10px;">Команды из cloud profile: {{ device_view.debug.cloud_control_codes|join(', ') }}</div>{% endif %}
+      {% if device_view.debug.definition_rows %}
+      <div class="table-wrap" style="margin-top:14px;"><table><thead><tr><th>Scope</th><th>Code</th><th>Type</th><th>Scale</th><th>Unit</th></tr></thead><tbody>
+        {% for item in device_view.debug.definition_rows %}
+          <tr><td>{{ item.scope }}</td><td><code>{{ item.code }}</code></td><td>{{ item.type }}</td><td>{{ item.scale }}</td><td>{{ item.unit }}</td></tr>
+        {% endfor %}
+      </tbody></table></div>
+      <details class="debug-details"><summary>Показать pretty JSON cloud payload</summary><pre class="debug-json">{{ device_view.debug.cloud_payload_json }}</pre></details>
+      {% endif %}
     </article>
 
     <article class="card local-section-anchor" id="local-channels">

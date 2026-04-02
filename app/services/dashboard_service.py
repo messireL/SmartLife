@@ -4,6 +4,7 @@ from datetime import timedelta
 import json
 import re
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -24,6 +25,163 @@ from app.services.tariff_profile_service import (
 from app.services.tariff_service import calculate_tariff_costs
 
 ZERO = Decimal("0.000")
+
+
+def _debug_json_text(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True, default=str)
+    except Exception:
+        return str(value)
+
+
+def _debug_value_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float, Decimal)):
+        return str(value)
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    except Exception:
+        return str(value)
+
+
+def _flatten_debug_payload(value: Any, prefix: str = "$") -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+
+    def _walk(current: Any, path: str) -> None:
+        if isinstance(current, dict):
+            if not current:
+                rows.append({"path": path, "value": "{}", "raw": current})
+                return
+            for key, item in current.items():
+                key_text = str(key)
+                child_path = f"{path}.{key_text}" if path else key_text
+                _walk(item, child_path)
+            return
+        if isinstance(current, list):
+            if not current:
+                rows.append({"path": path, "value": "[]", "raw": current})
+                return
+            for index, item in enumerate(current):
+                child_path = f"{path}[{index}]"
+                _walk(item, child_path)
+            return
+        rows.append({"path": path, "value": _debug_value_text(current), "raw": current})
+
+    _walk(value, prefix)
+    return rows
+
+
+def _debug_decimal(value: Any) -> Decimal | None:
+    if value in (None, "", True, False):
+        return None
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return None
+
+
+def _build_local_debug_hints(device: Device, local_rows: list[dict[str, Any]]) -> list[str]:
+    hints: list[str] = []
+    if not local_rows:
+        return hints
+    if device.device_profile == 'boiler':
+        if device.target_temperature_c is None:
+            candidates: list[str] = []
+            seen: set[tuple[str, str]] = set()
+            for row in local_rows:
+                number = _debug_decimal(row.get('raw'))
+                if number is None:
+                    continue
+                path_text = str(row.get('path') or '')
+                path_lower = path_text.lower()
+                if not (Decimal('25') <= number <= Decimal('95')):
+                    continue
+                if not any(token in path_lower for token in ('dps', 'status', 'result', 'temp', 'fault')):
+                    continue
+                key = (path_text, str(number))
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(f"{path_text}={number}")
+                if len(candidates) >= 5:
+                    break
+            if candidates:
+                hints.append(
+                    'Для бойлера SmartLife пока не уверен в маппинге целевой температуры. '
+                    'Проверь кандидаты в сырых DP: ' + ', '.join(candidates) + '.'
+                )
+        fault_number = _debug_decimal(device.fault_code)
+        if fault_number is not None and Decimal('25') <= fault_number <= Decimal('95'):
+            hints.append(
+                f'Текущее значение fault={fault_number} похоже на температуру/уставку, а не на аварийный код. '
+                'Посмотри таблицу сырых DP ниже и уточни маппинг.'
+            )
+    return hints
+
+
+def _extract_device_debug(device: Device, snapshot_rows: list[DeviceStatusSnapshot]) -> dict[str, Any]:
+    latest_local_snapshot = next((row for row in snapshot_rows if row.raw_payload and 'tuya local' in str(row.source_note or '').lower()), None)
+    latest_local_payload = _load_status_payload(latest_local_snapshot.raw_payload if latest_local_snapshot else None)
+    latest_local_probe = latest_local_payload.get('probe_result') if isinstance(latest_local_payload.get('probe_result'), dict) else latest_local_payload
+    local_rows = _flatten_debug_payload(latest_local_probe, prefix='probe') if latest_local_probe else []
+
+    status_map, control_codes, cloud_payload = _parse_status_payload(device.last_status_payload)
+    status_definitions = _parse_definition_bundle(cloud_payload, 'status_definitions')
+    function_definitions = _parse_definition_bundle(cloud_payload, 'function_definitions')
+
+    cloud_status_rows = [
+        {"code": str(code), "value": _debug_value_text(value)}
+        for code, value in sorted(status_map.items(), key=lambda item: item[0])
+    ]
+    definition_rows = []
+    for code, definition in sorted(status_definitions.items(), key=lambda item: item[0]):
+        definition_rows.append({
+            "scope": 'status',
+            "code": code,
+            "type": str(definition.get('type') or '—'),
+            "scale": str(definition.get('scale') if definition.get('scale') not in (None, '') else '—'),
+            "unit": str(definition.get('unit') or '—'),
+        })
+    for code, definition in sorted(function_definitions.items(), key=lambda item: item[0]):
+        definition_rows.append({
+            "scope": 'function',
+            "code": code,
+            "type": str(definition.get('type') or '—'),
+            "scale": str(definition.get('scale') if definition.get('scale') not in (None, '') else '—'),
+            "unit": str(definition.get('unit') or '—'),
+        })
+
+    mapped_rows = [
+        {"label": 'Питание', "value": 'on' if device.switch_on is True else 'off' if device.switch_on is False else '—'},
+        {"label": 'Мощность', "value": _debug_value_text(device.current_power_w) if device.current_power_w is not None else '—'},
+        {"label": 'Напряжение', "value": _debug_value_text(device.current_voltage_v) if device.current_voltage_v is not None else '—'},
+        {"label": 'Ток', "value": _debug_value_text(device.current_a) if device.current_a is not None else '—'},
+        {"label": 'Энергия total', "value": _debug_value_text(device.energy_total_kwh) if device.energy_total_kwh is not None else '—'},
+        {"label": 'Температура текущая', "value": _debug_value_text(device.current_temperature_c) if device.current_temperature_c is not None else '—'},
+        {"label": 'Температура целевая', "value": _debug_value_text(device.target_temperature_c) if device.target_temperature_c is not None else '—'},
+        {"label": 'Режим', "value": device.operation_mode or '—'},
+        {"label": 'Fault', "value": device.fault_code or '0'},
+    ]
+
+    return {
+        'latest_local_snapshot_at': latest_local_snapshot.recorded_at if latest_local_snapshot else None,
+        'latest_local_source_note': latest_local_snapshot.source_note if latest_local_snapshot else None,
+        'latest_local_json': _debug_json_text(latest_local_probe) if latest_local_probe else '',
+        'latest_local_rows': local_rows[:160],
+        'latest_local_total_rows': len(local_rows),
+        'cloud_status_rows': cloud_status_rows,
+        'cloud_control_codes': sorted(control_codes),
+        'definition_rows': definition_rows[:120],
+        'definition_total_rows': len(definition_rows),
+        'cloud_payload_json': _debug_json_text(cloud_payload) if cloud_payload else '',
+        'mapped_rows': mapped_rows,
+        'hints': _build_local_debug_hints(device, local_rows),
+    }
 
 
 def _quantize(value: Decimal | None, places: str = "0.00") -> Decimal:
@@ -902,6 +1060,7 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
     status_map, _, payload = _parse_status_payload(device.last_status_payload)
     energy_capabilities = _build_energy_capabilities(payload, channels, status_map)
     advanced_controls = _build_advanced_controls(device, channels, status_map, payload, control_codes)
+    debug_info = _extract_device_debug(device, snapshot_rows)
 
     return {
         "daily": daily_rows,
@@ -959,6 +1118,7 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
         },
         "channels": channel_summary,
         "energy_capabilities": energy_capabilities,
+        "debug": debug_info,
         "controls": {
             "codes": sorted(control_codes),
             "supports_switch": ('switch' in control_codes) or (len([code for code in control_codes if _is_switch_like_code(code)]) == 1),

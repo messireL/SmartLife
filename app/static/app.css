@@ -1783,3 +1783,34 @@ button[disabled] {
     align-items: stretch;
   }
 }
+
+
+.debug-json {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.45);
+  color: rgba(226, 232, 240, 0.96);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.debug-details {
+  margin-top: 12px;
+}
+
+.debug-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.debug-value {
+  display: inline-block;
+  max-width: 640px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
