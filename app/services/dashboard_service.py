@@ -105,6 +105,16 @@ def _looks_like_boiler_payload(dps: dict[str, Any]) -> bool:
     return {"1", "2", "9", "10"}.issubset(keys)
 
 
+def _looks_like_cz_metering_payload(dps: dict[str, Any]) -> bool:
+    keys = {str(key) for key in dps.keys()}
+    return {"17", "18", "19", "20"}.issubset(keys)
+
+
+def _looks_like_tdq_metering_payload(dps: dict[str, Any]) -> bool:
+    keys = {str(key) for key in dps.keys()}
+    return {"20", "21", "22", "23"}.issubset(keys)
+
+
 def _build_device_display_overrides(device: Device) -> dict[str, Any]:
     _, probe_result, dps = _payload_probe_and_dps(device)
     overrides: dict[str, Any] = {}
@@ -133,13 +143,28 @@ def _build_device_display_overrides(device: Device) -> dict[str, Any]:
             overrides["fault_code"] = str(int(fault_value)) if fault_value == fault_value.to_integral_value() else str(fault_value)
         overrides["device_profile"] = "boiler"
 
-    metering_dps_present = any(str(key) in dps for key in ("17", "18", "19", "20")) or any(key in dps for key in (17, 18, 19, 20))
-    if device.device_profile in {"metering_plug", "power_strip"} or metering_dps_present:
-        voltage_raw = _raw_decimal_from_dps(dps, "20")
-        current_raw = _raw_decimal_from_dps(dps, "18")
-        power_raw = _raw_decimal_from_dps(dps, "19")
-        energy_raw = _raw_decimal_from_dps(dps, "17")
-        fault_raw = _raw_decimal_from_dps(dps, "26")
+    metering_variant = None
+    if not _looks_like_boiler_payload(dps):
+        if _looks_like_tdq_metering_payload(dps):
+            metering_variant = "tdq"
+        elif _looks_like_cz_metering_payload(dps):
+            metering_variant = "cz"
+        elif device.device_profile in {"metering_plug", "power_strip"}:
+            metering_variant = "cz"
+
+    if metering_variant is not None:
+        if metering_variant == "tdq":
+            voltage_raw = _raw_decimal_from_dps(dps, "23")
+            current_raw = _raw_decimal_from_dps(dps, "21")
+            power_raw = _raw_decimal_from_dps(dps, "22")
+            energy_raw = _raw_decimal_from_dps(dps, "20")
+            fault_raw = _raw_decimal_from_dps(dps, "29")
+        else:
+            voltage_raw = _raw_decimal_from_dps(dps, "20")
+            current_raw = _raw_decimal_from_dps(dps, "18")
+            power_raw = _raw_decimal_from_dps(dps, "19")
+            energy_raw = _raw_decimal_from_dps(dps, "17")
+            fault_raw = _raw_decimal_from_dps(dps, "26")
 
         if voltage_raw is not None:
             overrides["current_voltage_v"] = (voltage_raw / Decimal("10")).quantize(Decimal("0.1"))
@@ -153,8 +178,7 @@ def _build_device_display_overrides(device: Device) -> dict[str, Any]:
             overrides["fault_code"] = None
         elif fault_raw is not None:
             overrides["fault_code"] = str(int(fault_raw)) if fault_raw == fault_raw.to_integral_value() else str(fault_raw)
-        if device.device_profile != "metering_plug":
-            overrides["device_profile"] = "metering_plug"
+        overrides["device_profile"] = "metering_plug"
 
     return overrides
 
@@ -227,7 +251,7 @@ def _build_local_debug_hints(device: Device, local_rows: list[dict[str, Any]]) -
                 'Посмотри таблицу сырых DP ниже и уточни маппинг.'
             )
     if device.device_profile == 'metering_plug':
-        hints.append('Для измеряющей розетки SmartLife читает relay из dps[1], напряжение из dps[20] и пытается взять энергию/ток/мощность из dps[17]/[18]/[19]. Для точного маппинга мощности сними raw DP в состоянии под нагрузкой.')
+        hints.append('Для измеряющей розетки SmartLife читает relay из dps[1]. Для профиля cz используются dps[17]/[18]/[19]/[20]/[26], для профиля tdq — dps[20]/[21]/[22]/[23]/[29]. Для точного разбора мощности снимай raw DP под реальной нагрузкой.')
     return hints
 
 

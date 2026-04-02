@@ -105,14 +105,37 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
     profile_hint = (device.device_profile or '').strip().lower() or None
     if _looks_like_boiler_dps(dps):
         profile_hint = 'boiler'
-    if profile_hint in {'power_strip', 'metering_plug'} or _looks_like_metering_plug(payload, dps, spec):
+
+    metering_variant = None
+    if profile_hint != 'boiler':
+        if _looks_like_tdq_metering_plug(dps, spec):
+            metering_variant = 'tdq'
+        elif _looks_like_cz_metering_plug(dps, spec):
+            metering_variant = 'cz'
+        elif profile_hint in {'power_strip', 'metering_plug'}:
+            metering_variant = 'cz'
+
+    if metering_variant is not None:
         profile_hint = 'metering_plug'
 
     switch_on = _coalesce_bool(_first_value(payload, dps, ("switch", "switch_1"), ("1", 1)))
 
-    power_w = _local_metric_decimal(payload, dps, code="cur_power", dps_candidates=(("19", 1), (19, 1), ("5", 1), (5, 1)), definition=spec.definition("cur_power"))
-    voltage_v = _local_metric_decimal(payload, dps, code="cur_voltage", dps_candidates=(("20", 1), (20, 1), ("6", 1), (6, 1)), definition=spec.definition("cur_voltage"))
-    current_raw = _local_metric_decimal(payload, dps, code="cur_current", dps_candidates=(("18", 0), (18, 0), ("4", 0), (4, 0)), definition=spec.definition("cur_current"))
+    if metering_variant == 'tdq':
+        power_candidates = (("22", 1), (22, 1))
+        voltage_candidates = (("23", 1), (23, 1))
+        current_candidates = (("21", 0), (21, 0))
+        energy_candidates = (("20", 3), (20, 3))
+        fault_candidates = ("29", 29)
+    else:
+        power_candidates = (("19", 1), (19, 1), ("5", 1), (5, 1))
+        voltage_candidates = (("20", 1), (20, 1), ("6", 1), (6, 1))
+        current_candidates = (("18", 0), (18, 0), ("4", 0), (4, 0))
+        energy_candidates = (("17", 3), (17, 3))
+        fault_candidates = ("26", 26)
+
+    power_w = _local_metric_decimal(payload, dps, code="cur_power", dps_candidates=power_candidates, definition=spec.definition("cur_power"))
+    voltage_v = _local_metric_decimal(payload, dps, code="cur_voltage", dps_candidates=voltage_candidates, definition=spec.definition("cur_voltage"))
+    current_raw = _local_metric_decimal(payload, dps, code="cur_current", dps_candidates=current_candidates, definition=spec.definition("cur_current"))
     current_a = None
     if current_raw is not None:
         current_a = (current_raw / Decimal("1000")).quantize(Decimal("0.001"))
@@ -131,12 +154,12 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
     current_temperature_c = _local_temperature_decimal(payload, dps, code="temp_current", dps_candidates=current_temperature_candidates, definition=current_temp_definition)
     target_temperature_c = _local_temperature_decimal(payload, dps, code="temp_set", dps_candidates=target_temperature_candidates, definition=target_temp_definition)
     operation_mode = _normalize_mode(_first_value(payload, dps, ("mode",), mode_candidates))
-    energy_total_kwh = _local_metric_decimal(payload, dps, code="add_ele", dps_candidates=(("17", 3), (17, 3)), definition=spec.definition("add_ele"))
+    energy_total_kwh = _local_metric_decimal(payload, dps, code="add_ele", dps_candidates=energy_candidates, definition=spec.definition("add_ele"))
 
     if profile_hint == "boiler":
         fault_raw = _first_value(payload, dps, ("fault",), ("20", 20))
     else:
-        fault_raw = _first_value(payload, dps, ("fault",), ("26", 26, "9", 9))
+        fault_raw = _first_value(payload, dps, ("fault",), fault_candidates + ("9", 9) if isinstance(fault_candidates, tuple) else ("26", 26, "9", 9))
     fault_code = None if fault_raw in (None, "", 0, "0") else str(fault_raw)
 
     profile = profile_hint or _detect_device_profile(provider_device, spec, current_temperature_c, target_temperature_c)
@@ -192,12 +215,21 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
     )
 
 
-def _looks_like_metering_plug(payload: dict[str, Any], dps: dict[str, Any], spec: TuyaDeviceSpec) -> bool:
-    metering_codes = {'cur_power', 'cur_voltage', 'cur_current', 'add_ele'}
-    if any(code in spec.all_codes for code in metering_codes):
+def _looks_like_cz_metering_plug(dps: dict[str, Any], spec: TuyaDeviceSpec) -> bool:
+    if {'17', '18', '19', '20'}.issubset({str(key) for key in dps.keys()}):
         return True
-    metering_dps = {'17', '18', '19', '20', 17, 18, 19, 20}
-    return sum(1 for key in metering_dps if key in dps) >= 3
+    return all(code in spec.all_codes for code in ('add_ele', 'cur_current', 'cur_power', 'cur_voltage'))
+
+
+def _looks_like_tdq_metering_plug(dps: dict[str, Any], spec: TuyaDeviceSpec) -> bool:
+    keys = {str(key) for key in dps.keys()}
+    if {'20', '21', '22', '23'}.issubset(keys):
+        return True
+    return all(code in spec.all_codes for code in ('add_ele', 'cur_current', 'cur_power', 'cur_voltage')) and '29' in keys
+
+
+def _looks_like_metering_plug(payload: dict[str, Any], dps: dict[str, Any], spec: TuyaDeviceSpec) -> bool:
+    return _looks_like_cz_metering_plug(dps, spec) or _looks_like_tdq_metering_plug(dps, spec)
 
 
 def _spec_from_device(device: Device) -> TuyaDeviceSpec:
