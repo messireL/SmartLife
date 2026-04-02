@@ -148,9 +148,12 @@ def _next_plan_for_month(history: tuple[TariffPlan, ...], current_month_start: d
 
 
 
-def get_runtime_diagnostics(db: Session) -> RuntimeDiagnostics:
+def get_runtime_diagnostics(db: Session, *, include_schema_inspection: bool = True) -> RuntimeDiagnostics:
     runtime = get_runtime_config(db)
-    missing_tables, missing_columns, schema_issues = _inspect_schema(db)
+    if include_schema_inspection:
+        missing_tables, missing_columns, schema_issues = _inspect_schema(db)
+    else:
+        missing_tables, missing_columns, schema_issues = [], {}, []
 
     quota_state = detect_tuya_quota_state(db, runtime=runtime)
     history = tuple(sorted(runtime.tariff_plan_history, key=lambda item: item.effective_from_date))

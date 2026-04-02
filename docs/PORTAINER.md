@@ -100,3 +100,9 @@ docker run --rm   -v smartlife_backups:/target   -v /opt/SmartLife/backups:/sour
 - Portainer-стек больше не использует `SMARTLIFE_APP_IMAGE`;
 - сервис `app` собирается из Git через `build`, поэтому при redeploy stack подтягивается текущий код репозитория;
 - это уменьшает риск зависнуть на старом image tag после нового релиза.
+
+
+## Обновление v0.11.24
+
+- healthcheck для сервиса `app` переведён на лёгкий `GET /favicon.ico`, поэтому Portainer больше не должен дёргать тяжёлый `/health` во время ручного получения `local key` и `LAN-probe`;
+- после успешного `LAN-probe` SmartLife больше не включает молча `Предпочитать LAN`; финальную политику (`LAN-профиль`, `prefer LAN`) пользователь сохраняет сам.

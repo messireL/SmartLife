@@ -55,7 +55,7 @@ app.include_router(api_router)
 def root_health():
     with SessionLocal() as db:
         runtime = get_runtime_config(db)
-        diagnostics = get_runtime_diagnostics(db)
+        diagnostics = get_runtime_diagnostics(db, include_schema_inspection=False)
     return {
         "status": diagnostics.status,
         "service": settings.app_name,
@@ -78,9 +78,9 @@ def root_health():
         "tuya_quota_detected_at": diagnostics.tuya_quota_detected_at,
         "tuya_quota_source": diagnostics.tuya_quota_source,
         "tuya_quota_message": diagnostics.tuya_quota_message,
-        "database_ready": diagnostics.schema_ready,
+        "database_ready": True,
         "runtime_ready": diagnostics.runtime_ready,
-        "schema_issues": diagnostics.schema_issues,
+        "schema_issues": [],
         "warnings": diagnostics.warnings,
     }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from ipaddress import ip_address
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -19,6 +20,19 @@ from app.services.tuya_local_service import TuyaLocalError, probe_local_device
 
 class DeviceLanKeyError(RuntimeError):
     pass
+
+
+
+
+def _is_private_lan_ip(raw: str | None) -> bool:
+    value = str(raw or "").strip()
+    if not value:
+        return False
+    try:
+        parsed = ip_address(value)
+    except ValueError:
+        return False
+    return bool(parsed.is_private or parsed.is_loopback or parsed.is_link_local)
 
 
 @dataclass(slots=True)
@@ -58,7 +72,7 @@ def refresh_device_lan_key_from_tuya(db: Session, device: Device) -> DeviceLanKe
             "Tuya вернула карточку устройства, но без local_key. Проверь device details в облаке и повтори запрос позже."
         )
 
-    saved_ip = fetched_ip or existing.local_ip
+    saved_ip = fetched_ip if _is_private_lan_ip(fetched_ip) else existing.local_ip
     config = save_device_lan_config(
         db,
         device_id=device.id,
@@ -73,7 +87,7 @@ def refresh_device_lan_key_from_tuya(db: Session, device: Device) -> DeviceLanKe
 
     probe_attempted = bool(config.local_ip and config.has_local_key)
     probe_success = False
-    probe_message = "IP не получен из Tuya: local key сохранён, но адрес нужно внести или уточнить вручную."
+    probe_message = "Tuya не дала пригодный LAN-IP: local key сохранён, но локальный адрес нужно внести или уточнить вручную."
 
     if probe_attempted:
         try:
@@ -88,14 +102,14 @@ def refresh_device_lan_key_from_tuya(db: Session, device: Device) -> DeviceLanKe
                 local_ip=probe.ip,
                 protocol_version=probe.protocol_version,
                 local_key=fetched_key,
-                local_enabled=True,
-                prefer_local=True,
+                local_enabled=existing.local_enabled,
+                prefer_local=existing.prefer_local,
                 preserve_existing_key=False,
             )
             probe_success = True
             probe_message = (
                 f"LAN-probe успешен: {probe.ip} · v{probe.protocol_version}. "
-                "Для switch-команд устройство уже можно уводить с облака на локальный контур."
+                "SmartLife сохранил рабочие LAN-данные, но не менял флаги LAN-профиля и prefer-LAN автоматически."
             )
             record_device_lan_probe(db, device.id, status="success", message=probe_message)
         except TuyaLocalError as exc:
@@ -139,8 +153,8 @@ def reprobe_device_lan_profile(db: Session, device: Device) -> DeviceLanProbeRef
             local_ip=probe.ip,
             protocol_version=probe.protocol_version,
             local_key=config.local_key,
-            local_enabled=True,
-            prefer_local=True,
+            local_enabled=config.local_enabled,
+            prefer_local=config.prefer_local,
             preserve_existing_key=False,
         )
         message = f"LAN-probe успешен: {probe.ip} · v{probe.protocol_version}."

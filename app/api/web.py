@@ -1469,8 +1469,9 @@ def fetch_device_lan_key_action(
             result = refresh_device_lan_key_from_tuya(db, device)
             if result.probe_success:
                 flash = (
-                    f"SmartLife получил local key для «{device.display_name}», проверил LAN и включил prefer-LAN: "
-                    f"{result.config.local_ip} · v{result.config.protocol_version}."
+                    f"SmartLife получил local key для «{device.display_name}» и успешно добил LAN: "
+                    f"{result.config.local_ip} · v{result.config.protocol_version}. "
+                    "Флаги LAN-профиля и prefer-LAN оставлены как были."
                 )
             else:
                 flash = (
@@ -1493,7 +1494,10 @@ def probe_device_lan_action(
     if device is not None and not device.is_deleted:
         try:
             result = reprobe_device_lan_profile(db, device)
-            flash = f"LAN-probe для «{device.display_name}» успешен: {result.config.local_ip} · v{result.config.protocol_version}."
+            flash = (
+                f"LAN-probe для «{device.display_name}» успешен: {result.config.local_ip} · v{result.config.protocol_version}. "
+                "Флаги LAN-профиля и prefer-LAN не менялись автоматически."
+            )
         except DeviceLanKeyError as exc:
             flash = str(exc)
     return RedirectResponse(url=f"/devices/{device_id}?tab={quote_plus(source_tab)}&flash={quote_plus(flash)}", status_code=303)
