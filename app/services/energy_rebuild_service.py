@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.timeutils import local_day_start_from_utc, local_month_start_from_utc
 from app.db.models import BucketType, Device, DeviceStatusSnapshot, EnergySample
+from app.services.telemetry_energy_service import estimate_energy_delta
 
 ZERO = Decimal('0.000')
 
@@ -46,17 +47,24 @@ def rebuild_energy_aggregates_from_snapshots(db: Session) -> dict:
         latest_source = None
 
         for snapshot in snapshots:
-            if previous is not None and previous.energy_total_kwh is not None and snapshot.energy_total_kwh is not None:
-                delta = (Decimal(snapshot.energy_total_kwh) - Decimal(previous.energy_total_kwh)).quantize(Decimal('0.001'))
-                if delta > ZERO:
+            if previous is not None:
+                telemetry_delta = estimate_energy_delta(
+                    previous_recorded_at=previous.recorded_at,
+                    previous_energy_total_kwh=previous.energy_total_kwh,
+                    previous_power_w=previous.power_w,
+                    current_recorded_at=snapshot.recorded_at,
+                    current_energy_total_kwh=snapshot.energy_total_kwh,
+                    current_power_w=snapshot.power_w,
+                )
+                if telemetry_delta is not None and telemetry_delta.delta_kwh > ZERO:
                     day_key = local_day_start_from_utc(snapshot.recorded_at)
                     month_key = local_month_start_from_utc(snapshot.recorded_at)
-                    daily_buckets[day_key] = (daily_buckets[day_key] + delta).quantize(Decimal('0.001'))
-                    monthly_buckets[month_key] = (monthly_buckets[month_key] + delta).quantize(Decimal('0.001'))
+                    daily_buckets[day_key] = (daily_buckets[day_key] + telemetry_delta.delta_kwh).quantize(Decimal('0.001'))
+                    monthly_buckets[month_key] = (monthly_buckets[month_key] + telemetry_delta.delta_kwh).quantize(Decimal('0.001'))
                     latest_power = snapshot.power_w
                     latest_voltage = snapshot.voltage_v
                     latest_current = snapshot.current_a
-                    latest_source = snapshot.source_note or 'rebuild from snapshots'
+                    latest_source = snapshot.source_note or telemetry_delta.source_note or 'rebuild from snapshots'
             previous = snapshot
 
         for period_start, energy_kwh in sorted(daily_buckets.items()):

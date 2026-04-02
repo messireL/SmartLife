@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.db.models import Device, DeviceBadge
+from app.core.timeutils import local_today
+from app.db.models import BucketType, Device, DeviceBadge, EnergySample
 
 
 TEMP_NAME_PREFIXES = ("temp", "tmp", "temporary")
@@ -97,3 +98,63 @@ def get_provider_choices(db: Session) -> list[str]:
 
 def get_badge_choices(db: Session) -> list[DeviceBadge]:
     return db.execute(select(DeviceBadge).order_by(DeviceBadge.name.asc(), DeviceBadge.id.asc())).scalars().all()
+
+
+
+def get_device_energy_summary_map(db: Session, device_ids: list[int]) -> dict[int, dict]:
+    if not device_ids:
+        return {}
+    today = local_today()
+    month_start = today.replace(day=1)
+    rows = db.execute(
+        select(
+            EnergySample.device_id,
+            EnergySample.bucket_type,
+            EnergySample.period_start,
+            EnergySample.energy_kwh,
+            EnergySample.source_note,
+        ).where(
+            EnergySample.device_id.in_(device_ids),
+            or_(
+                and_(EnergySample.bucket_type == BucketType.DAY, EnergySample.period_start == today),
+                and_(EnergySample.bucket_type == BucketType.MONTH, EnergySample.period_start == month_start),
+            ),
+        )
+    ).all()
+
+    result: dict[int, dict] = {
+        device_id: {
+            'today_kwh': None,
+            'month_kwh': None,
+            'source_note': None,
+            'mode_label': 'нет телеметрии',
+            'is_estimated': False,
+        }
+        for device_id in device_ids
+    }
+
+    for device_id, bucket_type, period_start, energy_kwh, source_note in rows:
+        entry = result.setdefault(device_id, {
+            'today_kwh': None,
+            'month_kwh': None,
+            'source_note': None,
+            'mode_label': 'нет телеметрии',
+            'is_estimated': False,
+        })
+        if bucket_type == BucketType.DAY and period_start == today:
+            entry['today_kwh'] = energy_kwh
+            entry['source_note'] = source_note or entry['source_note']
+        elif bucket_type == BucketType.MONTH and period_start == month_start:
+            entry['month_kwh'] = energy_kwh
+            entry['source_note'] = source_note or entry['source_note']
+
+    for entry in result.values():
+        note = str(entry.get('source_note') or '').lower()
+        if 'power snapshots' in note:
+            entry['mode_label'] = 'расчёт по мощности'
+            entry['is_estimated'] = True
+        elif entry.get('today_kwh') is not None or entry.get('month_kwh') is not None:
+            entry['mode_label'] = 'счётчик устройства'
+        else:
+            entry['mode_label'] = 'нет телеметрии'
+    return result

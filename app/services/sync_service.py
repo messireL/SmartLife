@@ -16,6 +16,7 @@ from app.integrations.tuya_provider import TuyaCloudProvider
 from app.services.runtime_config_service import TUYA_API_MODE_MANUAL, mark_tuya_full_sync_completed
 from app.services.device_lan_status_service import collect_local_status_snapshots
 from app.services.device_query_service import is_temp_device_name
+from app.services.telemetry_energy_service import estimate_energy_delta
 
 from sqlalchemy import func
 
@@ -263,36 +264,45 @@ def _store_status_snapshots(
 
         inserted += 1
 
-        if not aggregate_energy:
-            continue
-        if item.energy_total_kwh is None or previous is None or previous.energy_total_kwh is None:
+        if not aggregate_energy or previous is None:
             continue
 
-        delta = (item.energy_total_kwh - previous.energy_total_kwh).quantize(Decimal("0.001"))
-        if delta <= ZERO:
+        telemetry_delta = estimate_energy_delta(
+            previous_recorded_at=previous.recorded_at,
+            previous_energy_total_kwh=previous.energy_total_kwh,
+            previous_power_w=previous.power_w,
+            current_recorded_at=item.recorded_at,
+            current_energy_total_kwh=item.energy_total_kwh,
+            current_power_w=effective_power_w,
+        )
+        if telemetry_delta is None:
             continue
+
+        aggregate_source_note = source_note or telemetry_delta.source_note
+        if telemetry_delta.method == "power_integration" and source_note:
+            aggregate_source_note = f"{source_note} · {telemetry_delta.source_note}"
 
         _increment_aggregate(
             db,
             device=device,
             bucket_type=BucketType.DAY,
             period_start=local_day_start_from_utc(item.recorded_at),
-            delta_kwh=delta,
+            delta_kwh=telemetry_delta.delta_kwh,
             power_w=effective_power_w,
             voltage_v=effective_voltage_v,
             current_a=effective_current_a,
-            source_note=source_note or "live energy delta",
+            source_note=aggregate_source_note,
         )
         _increment_aggregate(
             db,
             device=device,
             bucket_type=BucketType.MONTH,
             period_start=local_month_start_from_utc(item.recorded_at),
-            delta_kwh=delta,
+            delta_kwh=telemetry_delta.delta_kwh,
             power_w=effective_power_w,
             voltage_v=effective_voltage_v,
             current_a=effective_current_a,
-            source_note=source_note or "live energy delta",
+            source_note=aggregate_source_note,
         )
         aggregated += 2
 

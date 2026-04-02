@@ -39,7 +39,7 @@ from app.services.device_lan_service import get_device_lan_config, get_device_la
 from app.services.device_lan_batch_service import batch_probe_local_devices, dump_device_lan_inventory_csv, get_device_lan_inventory_overview, import_device_lan_csv
 from app.services.device_lan_backup_service import dump_device_lan_backup_json, import_device_lan_backup_json, save_device_lan_backup_snapshot
 from app.services.channel_style_service import get_channel_icon_choices, get_channel_role_choices, normalize_channel_icon_key, normalize_channel_role_key
-from app.services.device_query_service import get_badge_choices, get_devices_for_ui, get_provider_choices, get_room_choices
+from app.services.device_query_service import get_badge_choices, get_device_energy_summary_map, get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
 from app.services.automation_service import (
     WEEKDAY_CHOICES,
@@ -269,6 +269,7 @@ def devices_page(
     )
     hidden_total = db.execute(select(Device).where(Device.is_hidden.is_(True), Device.is_deleted.is_(False))).scalars().all()
     lan_map = get_device_lan_configs_map(db, [device.id for device in devices])
+    energy_map = get_device_energy_summary_map(db, [device.id for device in devices])
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
     runtime = get_runtime_config(db)
     context = _base_context(request=request, active_nav="devices", page_title="Устройства", refresh_seconds=refresh_seconds, auto_refresh=auto_refresh, runtime=runtime, db=db)
@@ -276,6 +277,7 @@ def devices_page(
         {
             "devices": devices,
             "device_lan_map": lan_map,
+            "device_energy_map": energy_map,
             "filters": {
                 "q": q,
                 "only_online": only_online,

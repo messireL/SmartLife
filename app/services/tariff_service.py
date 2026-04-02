@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.timeutils import get_app_timezone, to_local
+from app.services.telemetry_energy_service import estimate_energy_delta
 from app.db.models import DeviceStatusSnapshot
 
 ZERO = Decimal("0.000")
@@ -236,8 +237,16 @@ def calculate_tariff_costs(db: Session, runtime, *, device_ids: list[int] | None
     query_start = _period_start_utc_naive(month_start, tz) - timedelta(days=2)
 
     stmt = (
-        select(DeviceStatusSnapshot.device_id, DeviceStatusSnapshot.recorded_at, DeviceStatusSnapshot.energy_total_kwh)
-        .where(DeviceStatusSnapshot.recorded_at >= query_start, DeviceStatusSnapshot.energy_total_kwh.is_not(None))
+        select(
+            DeviceStatusSnapshot.device_id,
+            DeviceStatusSnapshot.recorded_at,
+            DeviceStatusSnapshot.energy_total_kwh,
+            DeviceStatusSnapshot.power_w,
+        )
+        .where(
+            DeviceStatusSnapshot.recorded_at >= query_start,
+            (DeviceStatusSnapshot.energy_total_kwh.is_not(None) | DeviceStatusSnapshot.power_w.is_not(None)),
+        )
         .order_by(DeviceStatusSnapshot.device_id.asc(), DeviceStatusSnapshot.recorded_at.asc(), DeviceStatusSnapshot.id.asc())
     )
     if device_ids:
@@ -254,18 +263,28 @@ def calculate_tariff_costs(db: Session, runtime, *, device_ids: list[int] | None
         item.key: _new_zone_aggregate(item.key, item.label) for item in get_tariff_zone_definitions(default_month_plan)
     }
     per_device: dict[int, dict] = {}
-    previous: dict[int, tuple[datetime, Decimal]] = {}
+    previous: dict[int, tuple[datetime, Decimal | None, Decimal | None]] = {}
     mode_set: set[str] = set()
     currency_set: set[str] = set()
 
-    for device_id, recorded_at, energy_total_kwh in rows:
-        current_total = _quantize_energy(energy_total_kwh)
+    for device_id, recorded_at, energy_total_kwh, power_w in rows:
+        current_total = _quantize_energy(energy_total_kwh) if energy_total_kwh is not None else None
         prev = previous.get(device_id)
-        previous[device_id] = (recorded_at, current_total)
+        previous[device_id] = (recorded_at, current_total, power_w)
         if prev is None:
             continue
-        _prev_dt, prev_total = prev
-        delta = _quantize_energy(current_total - prev_total)
+        prev_dt, prev_total, prev_power = prev
+        telemetry_delta = estimate_energy_delta(
+            previous_recorded_at=prev_dt,
+            previous_energy_total_kwh=prev_total,
+            previous_power_w=prev_power,
+            current_recorded_at=recorded_at,
+            current_energy_total_kwh=current_total,
+            current_power_w=power_w,
+        )
+        if telemetry_delta is None:
+            continue
+        delta = _quantize_energy(telemetry_delta.delta_kwh)
         if delta <= ZERO:
             continue
         local_dt = to_local(recorded_at)

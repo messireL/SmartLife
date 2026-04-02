@@ -79,6 +79,7 @@
         <tbody>
           {% for device in devices %}
             {% set lan = device_lan_map.get(device.id) %}
+            {% set energy = device_energy_map.get(device.id) %}
             <tr>
               <td><input class="bulk-device" type="checkbox" name="device_ids" value="{{ device.id }}"></td>
               <td>
@@ -132,7 +133,14 @@
                   <div class="tiny muted">источник: cloud</div>
                 {% endif %}
               </td>
-              <td><div class="metric-main">{{ device.energy_total_kwh or '—' }} kWh</div></td>
+              <td>
+                <div class="metric-main">{{ energy.today_kwh if energy and energy.today_kwh is not none else '—' }} kWh</div>
+                <div class="tiny muted">сегодня · месяц {{ energy.month_kwh if energy and energy.month_kwh is not none else '—' }} kWh</div>
+                <div class="device-tags">
+                  {% if device.energy_total_kwh is not none %}<span class="badge soft-badge">счётчик {{ device.energy_total_kwh }} kWh</span>{% endif %}
+                  {% if energy and energy.mode_label == 'расчёт по мощности' %}<span class="badge badge-blue">расчёт по мощности</span>{% elif energy and energy.mode_label == 'счётчик устройства' %}<span class="badge soft-badge">счётчик устройства</span>{% endif %}
+                </div>
+              </td>
               <td>
                 <div class="device-tags">
                   {% if device.is_hidden %}<span class="badge warning">скрыто</span>{% endif %}
