@@ -26,6 +26,7 @@ class DeviceLanConfig:
     prefer_local: bool
     prefer_local_explicit: bool
     cloud_ip: str
+    local_mac: str
     key_source: str
     key_refreshed_at: datetime | None
     last_probe_at: datetime | None
@@ -92,6 +93,30 @@ class DeviceLanConfig:
     def can_switch_locally(self) -> bool:
         return self.local_enabled and self.is_complete
 
+    @property
+    def has_local_profile(self) -> bool:
+        return bool(self.local_enabled and self.is_complete)
+
+    @property
+    def is_locally_verified(self) -> bool:
+        return (self.last_probe_status or "").strip().lower() == "success"
+
+    @property
+    def key_inventory_label(self) -> str:
+        return "Key получен" if self.has_local_key else "Без key"
+
+    @property
+    def local_inventory_label(self) -> str:
+        if self.local_enabled and self.prefer_local and self.is_locally_verified:
+            return "Локальный режим"
+        if self.local_enabled and self.is_locally_verified:
+            return "LAN готов"
+        if self.local_enabled:
+            return "LAN-профиль"
+        if self.has_local_key:
+            return "Ключ получен"
+        return "LAN не настроен"
+
 
 DEFAULT_DEVICE_LAN_CONFIG = DeviceLanConfig(
     device_id=0,
@@ -102,6 +127,7 @@ DEFAULT_DEVICE_LAN_CONFIG = DeviceLanConfig(
     prefer_local=False,
     prefer_local_explicit=False,
     cloud_ip="",
+    local_mac="",
     key_source="",
     key_refreshed_at=None,
     last_probe_at=None,
@@ -111,23 +137,53 @@ DEFAULT_DEVICE_LAN_CONFIG = DeviceLanConfig(
 
 
 def get_device_lan_config(db: Session, device_id: int) -> DeviceLanConfig:
+    raw = {
+        "ip": get_setting_value(db, _device_lan_key(device_id, "ip"), "").strip(),
+        "version": get_setting_value(db, _device_lan_key(device_id, "version"), "3.3").strip(),
+        "key": get_setting_value(db, _device_lan_key(device_id, "key"), "").strip(),
+        "enabled": get_setting_value(db, _device_lan_key(device_id, "enabled"), "no").strip(),
+        "prefer_local": get_setting_value(db, _device_lan_key(device_id, "prefer_local"), "no").strip(),
+        "cloud_ip": get_setting_value(db, _device_lan_key(device_id, "cloud_ip"), "").strip(),
+        "mac": get_setting_value(db, _device_lan_key(device_id, "mac"), "").strip(),
+        "key_source": get_setting_value(db, _device_lan_key(device_id, "key_source"), "").strip(),
+        "key_refreshed_at": get_setting_value(db, _device_lan_key(device_id, "key_refreshed_at"), "").strip(),
+        "last_probe_at": get_setting_value(db, _device_lan_key(device_id, "last_probe_at"), "").strip(),
+        "last_probe_status": get_setting_value(db, _device_lan_key(device_id, "last_probe_status"), "").strip(),
+        "last_probe_message": get_setting_value(db, _device_lan_key(device_id, "last_probe_message"), "").strip(),
+    }
     prefer_local_key = _device_lan_key(device_id, "prefer_local")
     prefer_local_explicit = _setting_exists(db, prefer_local_key)
-    return DeviceLanConfig(
-        device_id=int(device_id),
-        local_ip=get_setting_value(db, _device_lan_key(device_id, "ip"), "").strip(),
-        protocol_version=_normalize_protocol_version(get_setting_value(db, _device_lan_key(device_id, "version"), "3.3")),
-        local_key=get_setting_value(db, _device_lan_key(device_id, "key"), "").strip(),
-        local_enabled=_parse_bool(get_setting_value(db, _device_lan_key(device_id, "enabled"), "no")),
-        prefer_local=_parse_bool(get_setting_value(db, prefer_local_key, "no")),
-        prefer_local_explicit=prefer_local_explicit,
-        cloud_ip=get_setting_value(db, _device_lan_key(device_id, "cloud_ip"), "").strip(),
-        key_source=get_setting_value(db, _device_lan_key(device_id, "key_source"), "").strip(),
-        key_refreshed_at=_parse_datetime(get_setting_value(db, _device_lan_key(device_id, "key_refreshed_at"), "").strip()),
-        last_probe_at=_parse_datetime(get_setting_value(db, _device_lan_key(device_id, "last_probe_at"), "").strip()),
-        last_probe_status=get_setting_value(db, _device_lan_key(device_id, "last_probe_status"), "").strip(),
-        last_probe_message=get_setting_value(db, _device_lan_key(device_id, "last_probe_message"), "").strip(),
-    )
+    return _build_device_lan_config(device_id=device_id, raw=raw, prefer_local_explicit=prefer_local_explicit)
+
+
+def get_device_lan_configs_map(db: Session, device_ids: list[int] | tuple[int, ...]) -> dict[int, DeviceLanConfig]:
+    normalized_ids = [int(item) for item in device_ids if item is not None]
+    if not normalized_ids:
+        return {}
+
+    rows = db.execute(select(AppSetting.key, AppSetting.value).where(AppSetting.key.like("device.%.lan.%"))).all()
+    raw_map: dict[int, dict[str, str]] = {device_id: {} for device_id in normalized_ids}
+    explicit_prefer_ids: set[int] = set()
+    for key, value in rows:
+        key_text = str(key or "")
+        for device_id in normalized_ids:
+            prefix = f"device.{device_id}.lan."
+            if not key_text.startswith(prefix):
+                continue
+            suffix = key_text[len(prefix):]
+            raw_map.setdefault(device_id, {})[suffix] = str(value or "")
+            if suffix == "prefer_local":
+                explicit_prefer_ids.add(device_id)
+            break
+
+    return {
+        device_id: _build_device_lan_config(
+            device_id=device_id,
+            raw=raw_map.get(device_id, {}),
+            prefer_local_explicit=device_id in explicit_prefer_ids,
+        )
+        for device_id in normalized_ids
+    }
 
 
 def get_device_lan_config_for_device(db: Session, device: Device | None) -> DeviceLanConfig:
@@ -172,12 +228,15 @@ def save_device_lan_config(
     return get_device_lan_config(db, device_id)
 
 
-def record_device_lan_fetch(db: Session, device_id: int, *, source: str, cloud_ip: str = "") -> DeviceLanConfig:
+def record_device_lan_fetch(db: Session, device_id: int, *, source: str, cloud_ip: str = "", mac: str = "") -> DeviceLanConfig:
     now = datetime.utcnow().replace(microsecond=0)
     set_setting_value(db, _device_lan_key(device_id, "key_source"), (source or "").strip())
     set_setting_value(db, _device_lan_key(device_id, "key_refreshed_at"), now.isoformat())
     if cloud_ip:
         set_setting_value(db, _device_lan_key(device_id, "cloud_ip"), cloud_ip.strip())
+    normalized_mac = _normalize_mac(mac)
+    if normalized_mac:
+        set_setting_value(db, _device_lan_key(device_id, "mac"), normalized_mac)
     db.commit()
     return get_device_lan_config(db, device_id)
 
@@ -223,6 +282,39 @@ def _normalize_protocol_version(raw: str | None) -> str:
     if value not in _ALLOWED_PROTOCOL_VERSIONS:
         return "3.3"
     return value
+
+
+def _normalize_mac(raw: str | None) -> str:
+    value = str(raw or "").strip().replace("-", ":")
+    if not value:
+        return ""
+    parts = [part.zfill(2).upper() for part in value.split(":") if part.strip()]
+    if len(parts) == 6:
+        return ":".join(parts)
+    compact = ''.join(ch for ch in value if ch.isalnum())
+    if len(compact) == 12:
+        compact = compact.upper()
+        return ':'.join(compact[i:i+2] for i in range(0, 12, 2))
+    return value.upper()
+
+
+def _build_device_lan_config(*, device_id: int, raw: dict[str, str], prefer_local_explicit: bool) -> DeviceLanConfig:
+    return DeviceLanConfig(
+        device_id=int(device_id),
+        local_ip=str(raw.get("ip") or "").strip(),
+        protocol_version=_normalize_protocol_version(raw.get("version") or "3.3"),
+        local_key=str(raw.get("key") or "").strip(),
+        local_enabled=_parse_bool(raw.get("enabled") or "no"),
+        prefer_local=_parse_bool(raw.get("prefer_local") or "no"),
+        prefer_local_explicit=prefer_local_explicit,
+        cloud_ip=str(raw.get("cloud_ip") or "").strip(),
+        local_mac=_normalize_mac(raw.get("mac") or ""),
+        key_source=str(raw.get("key_source") or "").strip(),
+        key_refreshed_at=_parse_datetime(raw.get("key_refreshed_at") or ""),
+        last_probe_at=_parse_datetime(raw.get("last_probe_at") or ""),
+        last_probe_status=str(raw.get("last_probe_status") or "").strip(),
+        last_probe_message=str(raw.get("last_probe_message") or "").strip(),
+    )
 
 
 def _is_switch_like_code(code: str | None) -> bool:

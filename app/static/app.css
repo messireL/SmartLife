@@ -626,6 +626,16 @@ td {
   color: var(--text-strong);
 }
 
+.lan-cell {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.lan-cell .device-tags {
+  margin-top: 0;
+}
+
 .filters select.input,
 .filters input.input,
 .bulk-controls select.input,

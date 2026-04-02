@@ -54,6 +54,14 @@ class DeviceLanProbeRefreshResult:
 
 
 
+def _extract_tuya_mac(payload: dict[str, Any]) -> str:
+    for key in ("mac", "wifi_mac", "wifiMac", "gw_mac", "gateway_mac"):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def refresh_device_lan_key_from_tuya(db: Session, device: Device) -> DeviceLanKeyFetchResult:
     if device.provider != ProviderType.TUYA_CLOUD:
         raise DeviceLanKeyError("LAN-ключ из Tuya можно запросить только для Tuya Cloud устройств.")
@@ -83,7 +91,7 @@ def refresh_device_lan_key_from_tuya(db: Session, device: Device) -> DeviceLanKe
         prefer_local=existing.prefer_local,
         preserve_existing_key=False,
     )
-    record_device_lan_fetch(db, device.id, source="tuya_cloud_manual", cloud_ip=fetched_ip)
+    record_device_lan_fetch(db, device.id, source="tuya_cloud_manual", cloud_ip=fetched_ip, mac=_extract_tuya_mac(payload))
 
     probe_attempted = bool(config.local_ip and config.has_local_key)
     probe_success = False

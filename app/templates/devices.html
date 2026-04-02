@@ -69,6 +69,7 @@
             <th><input type="checkbox" onclick="document.querySelectorAll('.bulk-device').forEach(cb => cb.checked = this.checked)"></th>
             <th>Устройство</th>
             <th>Комната</th>
+            <th>LAN</th>
             <th>Сейчас</th>
             <th>Энергия</th>
             <th>Статус</th>
@@ -77,6 +78,7 @@
         </thead>
         <tbody>
           {% for device in devices %}
+            {% set lan = device_lan_map.get(device.id) %}
             <tr>
               <td><input class="bulk-device" type="checkbox" name="device_ids" value="{{ device.id }}"></td>
               <td>
@@ -96,6 +98,19 @@
                 </div>
               </td>
               <td>{{ device.display_room_name or '—' }}</td>
+              <td>
+                <div class="lan-cell">
+                  <div class="device-tags">
+                    {% if lan and lan.has_local_key %}<span class="badge soft-badge">key получен</span>{% endif %}
+                    {% if lan and lan.local_enabled %}<span class="badge badge-blue">LAN-профиль</span>{% endif %}
+                    {% if lan and lan.prefer_local %}<span class="badge badge-green">локальный режим</span>{% endif %}
+                    {% if lan and lan.is_locally_verified %}<span class="badge online">LAN ok</span>{% endif %}
+                  </div>
+                  <div class="tiny muted">IP: {{ lan.local_ip if lan and lan.local_ip else '—' }}</div>
+                  <div class="tiny muted">MAC: {{ lan.local_mac if lan and lan.local_mac else '—' }}</div>
+                  {% if lan and lan.key_refreshed_at %}<div class="tiny muted">key: {{ lan.key_refreshed_at|localdt }}</div>{% endif %}
+                </div>
+              </td>
               <td>
                 {% if device.current_power_w is not none %}
                   <div class="metric-main">{{ device.current_power_w }} W</div>
@@ -132,7 +147,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="7" class="muted">Под фильтры ничего не нашлось.</td></tr>
+            <tr><td colspan="8" class="muted">Под фильтры ничего не нашлось.</td></tr>
           {% endfor %}
         </tbody>
       </table>
