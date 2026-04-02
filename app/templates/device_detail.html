@@ -11,7 +11,7 @@
       {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
       {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% else %}<span class="badge warning">статус ?</span>{% endif %}
       {% if device_view.boiler.operation_mode_label %}<span class="badge soft-badge">{{ device_view.boiler.operation_mode_label }}</span>{% endif %}
-      {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
+      {% if device_view.boiler.fault_code and device_view.boiler.fault_code != '0' %}<span class="badge error">fault {{ device_view.boiler.fault_code }}</span>{% endif %}
     </div>
   </div>
   <nav class="tabs">
@@ -61,7 +61,7 @@
           <div class="climate-metric"><span class="muted">Текущая температура</span><strong>{{ device_view.boiler.current_temperature_c or '—' }} °C</strong></div>
           <div class="climate-metric"><span class="muted">Целевая температура</span><strong>{{ device_view.boiler.target_temperature_c or '—' }} °C</strong></div>
           <div class="climate-metric"><span class="muted">Режим</span><strong>{{ device_view.boiler.operation_mode_label or device_view.boiler.operation_mode or '—' }}</strong></div>
-          <div class="climate-metric"><span class="muted">Ошибка</span><strong>{% if device.fault_code and device.fault_code != '0' %}{{ device.fault_code }}{% else %}нет{% endif %}</strong></div>
+          <div class="climate-metric"><span class="muted">Ошибка</span><strong>{% if device_view.boiler.fault_code and device_view.boiler.fault_code != '0' %}{{ device_view.boiler.fault_code }}{% else %}нет{% endif %}</strong></div>
         </div>
         {% if device_view.boiler.temp_range_label %}<div class="muted tiny" style="margin-top:12px;">{{ device_view.boiler.temp_range_label }}</div>{% endif %}
       </article>
@@ -200,7 +200,7 @@
           <div class="climate-metric"><span class="muted">Текущая температура</span><strong>{{ device_view.boiler.current_temperature_c or '—' }} °C</strong></div>
           <div class="climate-metric"><span class="muted">Целевая температура</span><strong>{{ device_view.boiler.target_temperature_c or '—' }} °C</strong></div>
           <div class="climate-metric"><span class="muted">Режим</span><strong>{{ device_view.boiler.operation_mode_label or device_view.boiler.operation_mode or '—' }}</strong></div>
-          <div class="climate-metric"><span class="muted">Ошибка</span><strong>{% if device.fault_code and device.fault_code != '0' %}{{ device.fault_code }}{% else %}нет{% endif %}</strong></div>
+          <div class="climate-metric"><span class="muted">Ошибка</span><strong>{% if device_view.boiler.fault_code and device_view.boiler.fault_code != '0' %}{{ device_view.boiler.fault_code }}{% else %}нет{% endif %}</strong></div>
         </div>
         {% if device_view.boiler.temp_range_label %}<div class="muted tiny" style="margin-top:12px;">{{ device_view.boiler.temp_range_label }}</div>{% endif %}
       </article>

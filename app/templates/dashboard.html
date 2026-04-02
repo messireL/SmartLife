@@ -112,8 +112,8 @@
             <tr>
               <td><a href="/devices/{{ device.id }}">{{ device.display_name }}</a></td>
               <td>{{ device.display_room_name or '—' }}</td>
-              <td>{{ device.current_power_w or '—' }}</td>
-              <td>{{ device.current_a or '—' }}</td>
+              <td>{{ device.display_current_power_w or '—' }}</td>
+              <td>{{ device.display_current_a or '—' }}</td>
               <td>
                 {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
                 {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% endif %}

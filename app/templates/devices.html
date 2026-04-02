@@ -88,7 +88,7 @@
                   <div class="tiny muted">{{ device.model or device.product_name or 'Устройство без модели' }}</div>
                   <div class="device-tags">
                     {% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% endif %}
-                    {% if device.device_profile == "boiler" %}<span class="badge soft-badge">бойлер</span>{% elif device.device_profile == "power_strip" %}<span class="badge soft-badge">сетевой фильтр</span>{% elif device.device_profile == "metering_plug" %}<span class="badge soft-badge">розетка с измерением</span>{% elif device.current_temperature_c is not none or device.target_temperature_c is not none %}<span class="badge soft-badge">термоданные</span>{% endif %}
+                    {% if device.display_device_profile == "boiler" %}<span class="badge soft-badge">бойлер</span>{% elif device.display_device_profile == "power_strip" %}<span class="badge soft-badge">сетевой фильтр</span>{% elif device.display_device_profile == "metering_plug" %}<span class="badge soft-badge">розетка с измерением</span>{% elif device.display_current_temperature_c is not none or device.display_target_temperature_c is not none %}<span class="badge soft-badge">термоданные</span>{% endif %}
                     {% set codes = device.control_codes %}
                     {% set socket_ns = namespace(count=0, usb=0) %}
                     {% for code in codes %}{% if code.startswith("switch_") and not code.startswith("switch_usb") %}{% set socket_ns.count = socket_ns.count + 1 %}{% endif %}{% if code.startswith("switch_usb") or code == "switch_usb" %}{% set socket_ns.usb = socket_ns.usb + 1 %}{% endif %}{% endfor %}
@@ -114,16 +114,16 @@
                 </div>
               </td>
               <td>
-                {% set has_live_telemetry = device.current_power_w is not none or device.current_voltage_v is not none or device.current_a is not none or device.energy_total_kwh is not none or device.current_temperature_c is not none or device.target_temperature_c is not none %}
-                {% if device.current_power_w is not none %}
-                  <div class="metric-main">{{ device.current_power_w }} W</div>
-                  <div class="tiny muted">{{ device.current_a or '—' }} A · {{ device.current_voltage_v or '—' }} V</div>
-                  {% if device.current_temperature_c is not none or device.target_temperature_c is not none %}
-                    <div class="tiny muted">{{ device.current_temperature_c or '—' }} °C · цель {{ device.target_temperature_c or '—' }} °C</div>
+                {% set has_live_telemetry = device.display_has_live_telemetry %}
+                {% if device.display_current_power_w is not none %}
+                  <div class="metric-main">{{ device.display_current_power_w }} W</div>
+                  <div class="tiny muted">{{ device.display_current_a or '—' }} A · {{ device.display_current_voltage_v or '—' }} V</div>
+                  {% if device.display_current_temperature_c is not none or device.display_target_temperature_c is not none %}
+                    <div class="tiny muted">{{ device.display_current_temperature_c or '—' }} °C · цель {{ device.display_target_temperature_c or '—' }} °C</div>
                   {% endif %}
-                {% elif device.current_temperature_c is not none or device.target_temperature_c is not none %}
-                  <div class="metric-main">{{ device.current_temperature_c or '—' }} °C</div>
-                  <div class="tiny muted">цель {{ device.target_temperature_c or '—' }} °C</div>
+                {% elif device.display_current_temperature_c is not none or device.display_target_temperature_c is not none %}
+                  <div class="metric-main">{{ device.display_current_temperature_c or '—' }} °C</div>
+                  <div class="tiny muted">цель {{ device.display_target_temperature_c or '—' }} °C</div>
                 {% else %}
                   <div class="metric-main">—</div>
                   {% if device.last_status_payload and '"transport": "tuya_local"' in device.last_status_payload %}
@@ -151,9 +151,9 @@
                   {% if device.is_hidden %}<span class="badge warning">скрыто</span>{% endif %}
                   {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
                   {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% endif %}
-                  {% if device.operation_mode %}<span class="badge soft-badge">{{ device.operation_mode }}</span>{% endif %}
+                  {% if device.display_operation_mode %}<span class="badge soft-badge">{{ device.display_operation_mode }}</span>{% endif %}
                   {% if device.last_status_payload and 'status-only' in device.last_status_payload %}<span class="badge soft-badge">статус-only</span>{% endif %}
-                  {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
+                  {% if device.display_fault_code and device.display_fault_code != '0' %}<span class="badge error">fault {{ device.display_fault_code }}</span>{% endif %}
                 </div>
               </td>
               <td>

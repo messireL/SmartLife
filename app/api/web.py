@@ -16,6 +16,8 @@ from app.db.models import Device, DeviceBadge, SyncRun, SyncRunTrigger
 from app.db.session import get_db
 from app.services.backup_service import delete_backup, filter_backups, get_prunable_backups, list_backups, prune_backups, summarize_backups, write_backup_policy
 from app.services.dashboard_service import (
+    decorate_device_for_display,
+    decorate_devices_for_display,
     get_dashboard_panels,
     get_dashboard_summary,
     get_device_dashboard,
@@ -235,7 +237,7 @@ def dashboard(request: Request, auto_refresh: bool = Query(default=True), db: Se
             "summary": get_dashboard_summary(db),
             "sync_overview": get_sync_overview(db),
             "dashboard_panels": get_dashboard_panels(db),
-            "devices": get_devices_for_ui(db, query="", hide_temp=True)[:8],
+            "devices": decorate_devices_for_display(get_devices_for_ui(db, query="", hide_temp=True)[:8]),
             "rooms": get_rooms_overview(db)[:6],
         }
     )
@@ -256,7 +258,7 @@ def devices_page(
     auto_refresh: bool = Query(default=True),
     db: Session = Depends(get_db),
 ):
-    devices = get_devices_for_ui(
+    devices = decorate_devices_for_display(get_devices_for_ui(
         db,
         include_hidden=include_hidden,
         query=q,
@@ -266,7 +268,7 @@ def devices_page(
         provider_filter=provider_filter,
         room_filter=room_filter,
         badge_filter=badge_filter,
-    )
+    ))
     hidden_total = db.execute(select(Device).where(Device.is_hidden.is_(True), Device.is_deleted.is_(False))).scalars().all()
     lan_map = get_device_lan_configs_map(db, [device.id for device in devices])
     energy_map = get_device_energy_summary_map(db, [device.id for device in devices])
@@ -1280,6 +1282,7 @@ def device_detail(device_id: int, request: Request, tab: str = Query(default="ov
     if section not in {"summary", "channels", "energy", "passport", "snapshots"}:
         section = "summary"
 
+    decorate_device_for_display(device)
     view_model = get_device_dashboard(db, device)
     refresh_seconds = settings.smartlife_sync_interval_seconds if auto_refresh and settings.smartlife_background_sync_enabled else None
     runtime = get_runtime_config(db)

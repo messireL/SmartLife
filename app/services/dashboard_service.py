@@ -85,6 +85,93 @@ def _debug_decimal(value: Any) -> Decimal | None:
         return None
 
 
+
+def _payload_probe_and_dps(device: Device) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    payload = _load_status_payload(device.last_status_payload)
+    probe_result = payload.get("probe_result") if isinstance(payload.get("probe_result"), dict) else {}
+    dps = probe_result.get("dps") if isinstance(probe_result.get("dps"), dict) else {}
+    return payload, probe_result, dps
+
+
+def _raw_decimal_from_dps(dps: dict[str, Any], key: str | int) -> Decimal | None:
+    value = dps.get(key)
+    if value in (None, ""):
+        value = dps.get(str(key))
+    return _debug_decimal(value)
+
+
+def _build_device_display_overrides(device: Device) -> dict[str, Any]:
+    _, probe_result, dps = _payload_probe_and_dps(device)
+    overrides: dict[str, Any] = {}
+
+    if device.device_profile == "boiler":
+        current_temp = _raw_decimal_from_dps(dps, "10")
+        target_temp = _raw_decimal_from_dps(dps, "9")
+        mode_value = dps.get("2")
+        if mode_value in (None, ""):
+            mode_value = dps.get(2)
+
+        if current_temp is not None:
+            overrides["current_temperature_c"] = current_temp
+        if target_temp is not None:
+            overrides["target_temperature_c"] = target_temp
+        if mode_value not in (None, ""):
+            overrides["operation_mode"] = str(mode_value)
+
+        explicit_fault = probe_result.get("fault") if isinstance(probe_result, dict) else None
+        if explicit_fault in (None, "", 0, "0"):
+            overrides["fault_code"] = None
+        elif target_temp is not None and str(explicit_fault) == str(target_temp):
+            overrides["fault_code"] = None
+
+    metering_dps_present = any(str(key) in dps for key in ("17", "18", "19", "20")) or any(key in dps for key in (17, 18, 19, 20))
+    if device.device_profile in {"metering_plug", "power_strip"} or metering_dps_present:
+        voltage_raw = _raw_decimal_from_dps(dps, "20")
+        current_raw = _raw_decimal_from_dps(dps, "18")
+        power_raw = _raw_decimal_from_dps(dps, "19")
+
+        if voltage_raw is not None:
+            overrides["current_voltage_v"] = (voltage_raw / Decimal("10")).quantize(Decimal("0.1"))
+        if current_raw is not None:
+            overrides["current_a"] = (current_raw / Decimal("1000")).quantize(Decimal("0.001"))
+        if power_raw is not None:
+            overrides["current_power_w"] = power_raw.quantize(Decimal("0.01"))
+        if device.device_profile != "metering_plug":
+            overrides["device_profile"] = "metering_plug"
+
+    return overrides
+
+
+def decorate_device_for_display(device: Device) -> Device:
+    overrides = _build_device_display_overrides(device)
+    device.display_current_power_w = overrides.get("current_power_w", device.current_power_w)
+    device.display_current_voltage_v = overrides.get("current_voltage_v", device.current_voltage_v)
+    device.display_current_a = overrides.get("current_a", device.current_a)
+    device.display_current_temperature_c = overrides.get("current_temperature_c", device.current_temperature_c)
+    device.display_target_temperature_c = overrides.get("target_temperature_c", device.target_temperature_c)
+    device.display_operation_mode = overrides.get("operation_mode", device.operation_mode)
+    device.display_fault_code = overrides.get("fault_code", device.fault_code)
+    device.display_device_profile = overrides.get("device_profile", device.device_profile)
+    device.display_has_live_telemetry = any(
+        value is not None
+        for value in (
+            device.display_current_power_w,
+            device.display_current_voltage_v,
+            device.display_current_a,
+            device.energy_total_kwh,
+            device.display_current_temperature_c,
+            device.display_target_temperature_c,
+        )
+    )
+    return device
+
+
+def decorate_devices_for_display(devices: list[Device]) -> list[Device]:
+    for item in devices:
+        decorate_device_for_display(item)
+    return devices
+
+
 def _build_local_debug_hints(device: Device, local_rows: list[dict[str, Any]]) -> list[str]:
     hints: list[str] = []
     if not local_rows:
@@ -1065,6 +1152,15 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
     energy_capabilities = _build_energy_capabilities(payload, channels, status_map)
     advanced_controls = _build_advanced_controls(device, channels, status_map, payload, control_codes)
     debug_info = _extract_device_debug(device, snapshot_rows)
+    display_overrides = _build_device_display_overrides(device)
+    display_power_w = display_overrides.get("current_power_w", device.current_power_w)
+    display_voltage_v = display_overrides.get("current_voltage_v", device.current_voltage_v)
+    display_current_a = display_overrides.get("current_a", device.current_a)
+    display_current_temperature_c = display_overrides.get("current_temperature_c", device.current_temperature_c)
+    display_target_temperature_c = display_overrides.get("target_temperature_c", device.target_temperature_c)
+    display_operation_mode = display_overrides.get("operation_mode", device.operation_mode)
+    display_fault_code = display_overrides.get("fault_code", device.fault_code)
+    display_device_profile = display_overrides.get("device_profile", device.device_profile)
 
     return {
         "daily": daily_rows,
@@ -1085,14 +1181,14 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "tariff_display": tariff_runtime.tariff_display,
             "tariff_currency": tariff_runtime.tariff_currency,
             "tariff_mode_label": tariff_runtime.tariff_mode_label,
-            "latest_power_w": _quantize(device.current_power_w),
-            "latest_voltage_v": _quantize(device.current_voltage_v),
-            "latest_current_a": _amps(device.current_a),
+            "latest_power_w": _quantize(display_power_w),
+            "latest_voltage_v": _quantize(display_voltage_v),
+            "latest_current_a": _amps(display_current_a),
             "peak_power_w": _quantize(max(power_values) if power_values else Decimal("0.00")),
             "max_voltage_v": _quantize(max(voltage_values) if voltage_values else Decimal("0.00")),
-            "latest_temperature_c": _quantize(device.current_temperature_c) if device.current_temperature_c is not None else None,
-            "target_temperature_c": _quantize(device.target_temperature_c) if device.target_temperature_c is not None else None,
-            "peak_temperature_c": _quantize(max(temp_values) if temp_values else device.current_temperature_c) if (temp_values or device.current_temperature_c is not None) else None,
+            "latest_temperature_c": _quantize(display_current_temperature_c) if display_current_temperature_c is not None else None,
+            "target_temperature_c": _quantize(display_target_temperature_c) if display_target_temperature_c is not None else None,
+            "peak_temperature_c": _quantize(max(temp_values) if temp_values else display_current_temperature_c) if (temp_values or display_current_temperature_c is not None) else None,
             "snapshots_total": len(snapshot_rows),
         },
         "tariff_profile": {
@@ -1104,20 +1200,20 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "tariff_mode_label": tariff_runtime.tariff_mode_label,
         },
         "profile": {
-            "key": device.device_profile,
-            "label": _profile_label(device.device_profile),
-            "is_boiler": device.device_profile == 'boiler',
-            "is_temperature": device.current_temperature_c is not None or device.target_temperature_c is not None,
+            "key": display_device_profile,
+            "label": _profile_label(display_device_profile),
+            "is_boiler": display_device_profile == 'boiler',
+            "is_temperature": display_current_temperature_c is not None or display_target_temperature_c is not None,
             "badge_name": device.badge.name if device.badge is not None else None,
             "badge_color": device.badge.color if device.badge is not None else None,
         },
         "boiler": {
-            "has_temperature": device.current_temperature_c is not None or device.target_temperature_c is not None,
-            "current_temperature_c": _quantize(device.current_temperature_c) if device.current_temperature_c is not None else None,
-            "target_temperature_c": _quantize(device.target_temperature_c) if device.target_temperature_c is not None else None,
-            "operation_mode": device.operation_mode,
-            "operation_mode_label": _label_mode(device.operation_mode),
-            "fault_code": device.fault_code,
+            "has_temperature": display_current_temperature_c is not None or display_target_temperature_c is not None,
+            "current_temperature_c": _quantize(display_current_temperature_c) if display_current_temperature_c is not None else None,
+            "target_temperature_c": _quantize(display_target_temperature_c) if display_target_temperature_c is not None else None,
+            "operation_mode": display_operation_mode,
+            "operation_mode_label": _label_mode(display_operation_mode),
+            "fault_code": display_fault_code,
             "temp_range_label": f"{target_min}…{target_max} °C · шаг {target_step} °C" if target_min is not None and target_max is not None and target_step is not None else None,
         },
         "channels": channel_summary,
