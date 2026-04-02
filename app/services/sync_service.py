@@ -14,31 +14,12 @@ from app.integrations.base import ProviderDevice, ProviderEnergySample, Provider
 from app.integrations.registry import get_provider
 from app.integrations.tuya_provider import TuyaCloudProvider
 from app.services.runtime_config_service import TUYA_API_MODE_MANUAL, mark_tuya_full_sync_completed
+from app.services.device_lan_status_service import collect_local_status_snapshots
 from app.services.device_query_service import is_temp_device_name
 
 from sqlalchemy import func
 
 ZERO = Decimal("0.000")
-
-
-def _build_manual_cloud_skip_result(db: Session, *, trigger: SyncRunTrigger) -> dict:
-    devices_total = db.scalar(
-        select(func.count()).select_from(Device).where(Device.provider == ProviderType.TUYA_CLOUD, Device.is_deleted.is_(False))
-    ) or 0
-    return {
-        "provider": ProviderType.TUYA_CLOUD.value,
-        "sync_mode": "manual_skip",
-        "sync_reason": f"manual cloud mode blocks automatic sync for {trigger.value}",
-        "refreshed_devices_from_cloud": False,
-        "used_cached_spec": True,
-        "devices_total": int(devices_total),
-        "daily_samples_total": 0,
-        "monthly_samples_total": 0,
-        "snapshots_total": 0,
-        "aggregated_energy_updates": 0,
-        "pruned_devices_total": 0,
-    }
-
 
 
 def sync_from_provider(db: Session, *, trigger: SyncRunTrigger = SyncRunTrigger.MANUAL) -> dict:
@@ -50,8 +31,11 @@ def sync_from_provider(db: Session, *, trigger: SyncRunTrigger = SyncRunTrigger.
 
     if isinstance(provider, TuyaCloudProvider):
         if provider.runtime.tuya_api_mode == TUYA_API_MODE_MANUAL:
-            return _build_manual_cloud_skip_result(db, trigger=trigger)
-        if trigger in {SyncRunTrigger.MANUAL, SyncRunTrigger.CLI, SyncRunTrigger.STARTUP}:
+            sync_mode = "local_only"
+            sync_reason = f"manual cloud mode blocks cloud sync for {trigger.value}, local LAN status only"
+            refresh_devices_from_cloud = False
+            use_cached_spec = True
+        elif trigger in {SyncRunTrigger.MANUAL, SyncRunTrigger.CLI, SyncRunTrigger.STARTUP}:
             sync_mode = "full"
             sync_reason = f"{trigger.value} trigger forces full sync"
         else:
@@ -62,12 +46,29 @@ def sync_from_provider(db: Session, *, trigger: SyncRunTrigger = SyncRunTrigger.
             use_cached_spec = plan.use_cached_spec
 
     devices = provider.get_devices() if refresh_devices_from_cloud else provider.get_cached_devices()
-    daily_samples = provider.get_daily_energy_samples()
-    monthly_samples = provider.get_monthly_energy_samples()
-    snapshots = provider.get_status_snapshots(devices, use_cached_spec=use_cached_spec) if isinstance(provider, TuyaCloudProvider) else provider.get_status_snapshots(devices)
+    daily_samples = provider.get_daily_energy_samples() if refresh_devices_from_cloud else []
+    monthly_samples = provider.get_monthly_energy_samples() if refresh_devices_from_cloud else []
 
     pruned_devices = _prune_missing_provider_devices(db, provider.provider_name, devices) if refresh_devices_from_cloud else 0
     device_map = _upsert_devices(db, devices)
+
+    local_sync = collect_local_status_snapshots(
+        db,
+        provider_devices=devices,
+        device_map=device_map,
+        cloud_allowed=not (isinstance(provider, TuyaCloudProvider) and sync_mode == "local_only"),
+    ) if provider.provider_name == ProviderType.TUYA_CLOUD else None
+
+    if isinstance(provider, TuyaCloudProvider):
+        cloud_snapshot_devices = local_sync.cloud_fallback_devices if local_sync is not None else list(devices)
+        cloud_snapshots = provider.get_status_snapshots(cloud_snapshot_devices, use_cached_spec=use_cached_spec) if cloud_snapshot_devices else []
+    else:
+        cloud_snapshots = provider.get_status_snapshots(devices)
+
+    snapshots = list(cloud_snapshots)
+    if local_sync is not None:
+        snapshots.extend(local_sync.snapshots)
+
     inserted_daily = _upsert_energy_samples(db, BucketType.DAY, daily_samples, device_map)
     inserted_monthly = _upsert_energy_samples(db, BucketType.MONTH, monthly_samples, device_map)
     aggregate_from_snapshots = len(daily_samples) == 0 and len(monthly_samples) == 0
@@ -91,6 +92,10 @@ def sync_from_provider(db: Session, *, trigger: SyncRunTrigger = SyncRunTrigger.
         "daily_samples_total": inserted_daily,
         "monthly_samples_total": inserted_monthly,
         "snapshots_total": inserted_snapshots,
+        "cloud_snapshots_total": len(cloud_snapshots),
+        "local_snapshots_total": local_sync.local_success_total if local_sync is not None else 0,
+        "local_candidates_total": local_sync.local_candidates_total if local_sync is not None else 0,
+        "local_failed_total": local_sync.local_failed_total if local_sync is not None else 0,
         "aggregated_energy_updates": aggregated_deltas,
         "pruned_devices_total": pruned_devices,
     }
@@ -252,6 +257,7 @@ def _store_status_snapshots(
         device.target_temperature_step_c = item.target_temperature_step_c
         device.last_status_at = item.recorded_at
         device.last_status_payload = item.raw_payload
+        device.is_online = True
         if item.recorded_at:
             device.last_seen_at = item.recorded_at
 

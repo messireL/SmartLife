@@ -126,6 +126,11 @@
                   <div class="metric-main">—</div>
                   <div class="tiny muted">{{ device.provider.value }}</div>
                 {% endif %}
+                {% if device.last_status_payload and '"transport": "tuya_local"' in device.last_status_payload %}
+                  <div class="tiny muted">источник: LAN</div>
+                {% elif device.last_status_payload and 'tuya cloud status' in device.last_status_payload %}
+                  <div class="tiny muted">источник: cloud</div>
+                {% endif %}
               </td>
               <td><div class="metric-main">{{ device.energy_total_kwh or '—' }} kWh</div></td>
               <td>

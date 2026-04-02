@@ -1317,7 +1317,9 @@ def sync_provider_action():
             )
         else:
             flash = (
-                f"Синхронизация завершена: provider={result['provider']} devices={result['devices_total']} "
+                f"Синхронизация завершена: provider={result['provider']} mode={result.get('sync_mode')} devices={result['devices_total']} "
+                f"cloud_snapshots={result.get('cloud_snapshots_total', result['snapshots_total'])} "
+                f"local_snapshots={result.get('local_snapshots_total', 0)}/{result.get('local_candidates_total', 0)} "
                 f"daily={result['daily_samples_total']} monthly={result['monthly_samples_total']} "
                 f"snapshots={result['snapshots_total']} pruned={result.get('pruned_devices_total', 0)} "
                 f"aggregated={result['aggregated_energy_updates']} за {outcome['duration_ms']} ms"

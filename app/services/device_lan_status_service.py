@@ -1,0 +1,255 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+from typing import Any, Sequence
+
+from sqlalchemy.orm import Session
+
+from app.db.models import Device
+from app.integrations.base import ProviderDevice, ProviderStatusSnapshot
+from app.integrations.tuya_provider import (
+    TuyaCodeDefinition,
+    TuyaDeviceSpec,
+    _definition_from_serialized,
+    _detect_device_profile,
+    _normalize_mode,
+    _parse_json_object,
+    _scaled_decimal,
+)
+from app.services.device_lan_service import DeviceLanConfig, get_device_lan_configs_map
+from app.services.tuya_local_service import TuyaLocalError, probe_local_device
+
+
+@dataclass(slots=True)
+class LocalStatusSyncOutcome:
+    snapshots: list[ProviderStatusSnapshot]
+    cloud_fallback_devices: list[ProviderDevice]
+    local_candidates_total: int
+    local_success_total: int
+    local_failed_total: int
+    local_failed_devices: list[str]
+
+
+def collect_local_status_snapshots(
+    db: Session,
+    *,
+    provider_devices: Sequence[ProviderDevice],
+    device_map: dict[str, Device],
+    cloud_allowed: bool,
+) -> LocalStatusSyncOutcome:
+    if not provider_devices:
+        return LocalStatusSyncOutcome([], [], 0, 0, 0, [])
+
+    device_ids = [device.id for device in device_map.values()]
+    lan_map = get_device_lan_configs_map(db, device_ids)
+
+    snapshots: list[ProviderStatusSnapshot] = []
+    cloud_fallback_devices: list[ProviderDevice] = []
+    local_failed_devices: list[str] = []
+    local_candidates_total = 0
+
+    for provider_device in provider_devices:
+        device = device_map.get(provider_device.external_id)
+        if device is None:
+            if cloud_allowed:
+                cloud_fallback_devices.append(provider_device)
+            continue
+        config = lan_map.get(device.id)
+        if not _should_poll_locally(config):
+            if cloud_allowed:
+                cloud_fallback_devices.append(provider_device)
+            continue
+
+        local_candidates_total += 1
+        try:
+            snapshots.append(_build_local_snapshot(provider_device=provider_device, device=device, config=config))
+        except TuyaLocalError:
+            local_failed_devices.append(provider_device.external_id)
+            if cloud_allowed:
+                cloud_fallback_devices.append(provider_device)
+
+    return LocalStatusSyncOutcome(
+        snapshots=snapshots,
+        cloud_fallback_devices=cloud_fallback_devices,
+        local_candidates_total=local_candidates_total,
+        local_success_total=len(snapshots),
+        local_failed_total=len(local_failed_devices),
+        local_failed_devices=local_failed_devices,
+    )
+
+
+def _should_poll_locally(config: DeviceLanConfig | None) -> bool:
+    if config is None:
+        return False
+    return bool(config.local_enabled and config.is_complete and config.is_locally_verified)
+
+
+def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, config: DeviceLanConfig) -> ProviderStatusSnapshot:
+    probe = probe_local_device(
+        device_id=provider_device.external_id,
+        config=config,
+        candidate_versions=(config.protocol_version, "3.5", "3.4", "3.3", "3.2", "3.1"),
+    )
+    spec = _spec_from_device(device)
+    payload = probe.result if isinstance(probe.result, dict) else {}
+    dps = payload.get("dps") if isinstance(payload.get("dps"), dict) else {}
+
+    switch_on = _coalesce_bool(_first_value(payload, dps, ("switch", "switch_1"), ("1", 1)))
+
+    power_w = _local_metric_decimal(payload, dps, code="cur_power", dps_candidates=(("19", 1), (19, 1), ("5", 1), (5, 1)), definition=spec.definition("cur_power"))
+    voltage_v = _local_metric_decimal(payload, dps, code="cur_voltage", dps_candidates=(("20", 1), (20, 1), ("6", 1), (6, 1)), definition=spec.definition("cur_voltage"))
+    current_raw = _local_metric_decimal(payload, dps, code="cur_current", dps_candidates=(("18", 0), (18, 0), ("4", 0), (4, 0)), definition=spec.definition("cur_current"))
+    current_a = None
+    if current_raw is not None:
+        current_a = (current_raw / Decimal("1000")).quantize(Decimal("0.001"))
+
+    current_temperature_c = _local_temperature_decimal(payload, dps, code="temp_current", dps_candidates=("3", 3, "101", 101), definition=spec.definition("temp_current"))
+    target_temperature_c = _local_temperature_decimal(payload, dps, code="temp_set", dps_candidates=("2", 2, "102", 102), definition=spec.definition("temp_set"))
+    operation_mode = _normalize_mode(_first_value(payload, dps, ("mode",), ("4", 4)))
+    energy_total_kwh = _local_metric_decimal(payload, dps, code="add_ele", dps_candidates=(("17", 3), (17, 3)), definition=spec.definition("add_ele"))
+
+    fault_raw = _first_value(payload, dps, ("fault",), ("9", 9))
+    fault_code = None if fault_raw in (None, "", 0, "0") else str(fault_raw)
+
+    profile = device.device_profile or _detect_device_profile(provider_device, spec, current_temperature_c, target_temperature_c)
+    raw_payload = json.dumps(
+        {
+            "transport": "tuya_local",
+            "probe_result": payload,
+            "ip": probe.ip,
+            "version": probe.protocol_version,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    )
+
+    source_note = f"tuya local status · {probe.ip} · v{probe.protocol_version}"
+
+    return ProviderStatusSnapshot(
+        external_id=provider_device.external_id,
+        recorded_at=datetime.utcnow().replace(microsecond=0),
+        switch_on=switch_on,
+        power_w=power_w,
+        voltage_v=voltage_v,
+        current_a=current_a,
+        energy_total_kwh=energy_total_kwh,
+        fault_code=fault_code or "0",
+        current_temperature_c=current_temperature_c,
+        target_temperature_c=target_temperature_c,
+        operation_mode=operation_mode,
+        device_profile=profile,
+        control_codes=tuple(device.control_codes),
+        available_modes=tuple(device.available_modes),
+        target_temperature_min_c=device.target_temperature_min_c,
+        target_temperature_max_c=device.target_temperature_max_c,
+        target_temperature_step_c=device.target_temperature_step_c,
+        source_note=source_note,
+        raw_payload=raw_payload,
+    )
+
+
+def _spec_from_device(device: Device) -> TuyaDeviceSpec:
+    payload = _parse_json_object(device.last_status_payload)
+    status_definitions_raw = payload.get("status_definitions") if isinstance(payload.get("status_definitions"), dict) else {}
+    function_definitions_raw = payload.get("function_definitions") if isinstance(payload.get("function_definitions"), dict) else {}
+
+    status_map = {
+        str(code): _definition_from_serialized(raw)
+        for code, raw in status_definitions_raw.items()
+        if isinstance(raw, dict)
+    }
+    function_map = {
+        str(code): _definition_from_serialized(raw)
+        for code, raw in function_definitions_raw.items()
+        if isinstance(raw, dict)
+    }
+
+    # Minimal fallbacks for LAN-only devices that never stored cloud definitions.
+    for code, scale in (("cur_power", 1), ("cur_voltage", 1), ("cur_current", 0), ("add_ele", 3), ("temp_current", 1), ("temp_set", 1)):
+        if code not in status_map:
+            status_map[code] = TuyaCodeDefinition(code=code, scale=scale)
+    if "mode" not in function_map:
+        function_map["mode"] = TuyaCodeDefinition(code="mode", scale=0)
+
+    return TuyaDeviceSpec(status_map=status_map, function_map=function_map)
+
+
+def _first_value(payload: dict[str, Any], dps: dict[str, Any], code_candidates: Sequence[str], dps_candidates: Sequence[Any]) -> Any:
+    for code in code_candidates:
+        if code in payload:
+            value = payload.get(code)
+            if value not in (None, ""):
+                return value
+    for key in dps_candidates:
+        if key in dps:
+            value = dps.get(key)
+            if value not in (None, ""):
+                return value
+        key_text = str(key)
+        if key_text in dps:
+            value = dps.get(key_text)
+            if value not in (None, ""):
+                return value
+    return None
+
+
+def _coalesce_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if value in (None, ""):
+        return None
+    text = str(value).strip().lower()
+    if text in {"true", "on", "1", "yes"}:
+        return True
+    if text in {"false", "off", "0", "no"}:
+        return False
+    return None
+
+
+def _local_metric_decimal(
+    payload: dict[str, Any],
+    dps: dict[str, Any],
+    *,
+    code: str,
+    dps_candidates: Sequence[tuple[Any, int]],
+    definition: TuyaCodeDefinition | None,
+) -> Decimal | None:
+    if code in payload:
+        return _scaled_decimal(payload.get(code), definition)
+    for key, fallback_scale in dps_candidates:
+        value = dps.get(key)
+        if value in (None, ""):
+            value = dps.get(str(key))
+        if value in (None, ""):
+            continue
+        fallback_definition = definition or TuyaCodeDefinition(code=code, scale=fallback_scale)
+        return _scaled_decimal(value, fallback_definition)
+    return None
+
+
+def _local_temperature_decimal(
+    payload: dict[str, Any],
+    dps: dict[str, Any],
+    *,
+    code: str,
+    dps_candidates: Sequence[Any],
+    definition: TuyaCodeDefinition | None,
+) -> Decimal | None:
+    if code in payload:
+        return _scaled_decimal(payload.get(code), definition)
+    for key in dps_candidates:
+        value = dps.get(key)
+        if value in (None, ""):
+            value = dps.get(str(key))
+        if value in (None, ""):
+            continue
+        fallback = definition
+        if fallback is None:
+            scale = 1 if str(value).isdigit() and abs(int(value)) >= 100 else 0
+            fallback = TuyaCodeDefinition(code=code, scale=scale)
+        return _scaled_decimal(value, fallback)
+    return None
