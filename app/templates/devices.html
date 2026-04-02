@@ -114,21 +114,26 @@
                 </div>
               </td>
               <td>
+                {% set has_live_telemetry = device.current_power_w is not none or device.current_voltage_v is not none or device.current_a is not none or device.energy_total_kwh is not none or device.current_temperature_c is not none or device.target_temperature_c is not none %}
                 {% if device.current_power_w is not none %}
                   <div class="metric-main">{{ device.current_power_w }} W</div>
                   <div class="tiny muted">{{ device.current_a or '—' }} A · {{ device.current_voltage_v or '—' }} V</div>
                   {% if device.current_temperature_c is not none or device.target_temperature_c is not none %}
                     <div class="tiny muted">{{ device.current_temperature_c or '—' }} °C · цель {{ device.target_temperature_c or '—' }} °C</div>
                   {% endif %}
-                {% elif device.current_temperature_c is not none %}
-                  <div class="metric-main">{{ device.current_temperature_c }} °C</div>
+                {% elif device.current_temperature_c is not none or device.target_temperature_c is not none %}
+                  <div class="metric-main">{{ device.current_temperature_c or '—' }} °C</div>
                   <div class="tiny muted">цель {{ device.target_temperature_c or '—' }} °C</div>
                 {% else %}
                   <div class="metric-main">—</div>
-                  <div class="tiny muted">{{ device.provider.value }}</div>
+                  {% if device.last_status_payload and '"transport": "tuya_local"' in device.last_status_payload %}
+                    <div class="tiny muted">LAN: статус без показаний</div>
+                  {% else %}
+                    <div class="tiny muted">{{ device.provider.value }}</div>
+                  {% endif %}
                 {% endif %}
                 {% if device.last_status_payload and '"transport": "tuya_local"' in device.last_status_payload %}
-                  <div class="tiny muted">источник: LAN</div>
+                  <div class="tiny muted">источник: LAN{% if not has_live_telemetry %} · status-only{% endif %}</div>
                 {% elif device.last_status_payload and 'tuya cloud status' in device.last_status_payload %}
                   <div class="tiny muted">источник: cloud</div>
                 {% endif %}
@@ -138,7 +143,7 @@
                 <div class="tiny muted">сегодня · месяц {{ energy.month_kwh if energy and energy.month_kwh is not none else '—' }} kWh</div>
                 <div class="device-tags">
                   {% if device.energy_total_kwh is not none %}<span class="badge soft-badge">счётчик {{ device.energy_total_kwh }} kWh</span>{% endif %}
-                  {% if energy and energy.mode_label == 'расчёт по мощности' %}<span class="badge badge-blue">расчёт по мощности</span>{% elif energy and energy.mode_label == 'счётчик устройства' %}<span class="badge soft-badge">счётчик устройства</span>{% endif %}
+                  {% if energy and energy.mode_label == 'расчёт по мощности' %}<span class="badge badge-blue">расчёт по мощности</span>{% elif energy and energy.mode_label == 'счётчик устройства' %}<span class="badge soft-badge">счётчик устройства</span>{% elif energy and energy.mode_label == 'нет телеметрии' and lan and lan.is_locally_verified %}<span class="badge soft-badge">без показаний</span>{% endif %}
                 </div>
               </td>
               <td>
@@ -147,6 +152,7 @@
                   {% if device.is_online %}<span class="badge online">онлайн</span>{% else %}<span class="badge offline">офлайн</span>{% endif %}
                   {% if device.switch_on is sameas true %}<span class="badge on">вкл</span>{% elif device.switch_on is sameas false %}<span class="badge off">выкл</span>{% endif %}
                   {% if device.operation_mode %}<span class="badge soft-badge">{{ device.operation_mode }}</span>{% endif %}
+                  {% if device.last_status_payload and 'status-only' in device.last_status_payload %}<span class="badge soft-badge">статус-only</span>{% endif %}
                   {% if device.fault_code and device.fault_code != '0' %}<span class="badge error">fault {{ device.fault_code }}</span>{% endif %}
                 </div>
               </td>

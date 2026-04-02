@@ -97,6 +97,8 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
     payload = probe.result if isinstance(probe.result, dict) else {}
     dps = payload.get("dps") if isinstance(payload.get("dps"), dict) else {}
 
+    profile_hint = (device.device_profile or "").strip().lower() or None
+
     switch_on = _coalesce_bool(_first_value(payload, dps, ("switch", "switch_1"), ("1", 1)))
 
     power_w = _local_metric_decimal(payload, dps, code="cur_power", dps_candidates=(("19", 1), (19, 1), ("5", 1), (5, 1)), definition=spec.definition("cur_power"))
@@ -106,28 +108,55 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
     if current_raw is not None:
         current_a = (current_raw / Decimal("1000")).quantize(Decimal("0.001"))
 
-    current_temperature_c = _local_temperature_decimal(payload, dps, code="temp_current", dps_candidates=("3", 3, "101", 101), definition=spec.definition("temp_current"))
-    target_temperature_c = _local_temperature_decimal(payload, dps, code="temp_set", dps_candidates=("2", 2, "102", 102), definition=spec.definition("temp_set"))
-    operation_mode = _normalize_mode(_first_value(payload, dps, ("mode",), ("4", 4)))
+    current_temperature_candidates: tuple[Any, ...] = ("3", 3, "101", 101)
+    target_temperature_candidates: tuple[Any, ...] = ("2", 2, "102", 102)
+    mode_candidates: tuple[Any, ...] = ("4", 4)
+
+    if profile_hint == "boiler":
+        current_temperature_candidates = ("10", 10, "3", 3, "101", 101)
+        target_temperature_candidates = ("9", 9, "2", 2, "102", 102)
+        mode_candidates = ("2", 2, "4", 4)
+
+    current_temperature_c = _local_temperature_decimal(payload, dps, code="temp_current", dps_candidates=current_temperature_candidates, definition=spec.definition("temp_current"))
+    target_temperature_c = _local_temperature_decimal(payload, dps, code="temp_set", dps_candidates=target_temperature_candidates, definition=spec.definition("temp_set"))
+    operation_mode = _normalize_mode(_first_value(payload, dps, ("mode",), mode_candidates))
     energy_total_kwh = _local_metric_decimal(payload, dps, code="add_ele", dps_candidates=(("17", 3), (17, 3)), definition=spec.definition("add_ele"))
 
-    fault_raw = _first_value(payload, dps, ("fault",), ("9", 9))
+    if profile_hint == "boiler":
+        fault_raw = _first_value(payload, dps, ("fault",), ())
+    else:
+        fault_raw = _first_value(payload, dps, ("fault",), ("9", 9))
     fault_code = None if fault_raw in (None, "", 0, "0") else str(fault_raw)
 
     profile = device.device_profile or _detect_device_profile(provider_device, spec, current_temperature_c, target_temperature_c)
+    telemetry_flags = {
+        "switch": switch_on is not None,
+        "power": power_w is not None,
+        "voltage": voltage_v is not None,
+        "current": current_a is not None,
+        "energy_total": energy_total_kwh is not None,
+        "current_temperature": current_temperature_c is not None,
+        "target_temperature": target_temperature_c is not None,
+        "mode": operation_mode is not None,
+        "fault": fault_code not in (None, "0"),
+    }
     raw_payload = json.dumps(
         {
             "transport": "tuya_local",
             "probe_result": payload,
             "ip": probe.ip,
             "version": probe.protocol_version,
+            "telemetry_flags": telemetry_flags,
         },
         ensure_ascii=False,
         sort_keys=True,
         default=str,
     )
 
+    telemetry_present = any(telemetry_flags[key] for key in ("power", "voltage", "current", "energy_total", "current_temperature", "target_temperature"))
     source_note = f"tuya local status · {probe.ip} · v{probe.protocol_version}"
+    if not telemetry_present:
+        source_note += " · status-only"
 
     return ProviderStatusSnapshot(
         external_id=provider_device.external_id,
