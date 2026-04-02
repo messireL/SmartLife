@@ -48,6 +48,7 @@
       <article class="card stat-card"><div class="muted">Мощность сейчас</div><div class="stat-value">{{ device_view.stats.latest_power_w }}</div><div class="muted tiny">W</div></article>
       <article class="card stat-card"><div class="muted">Ток сейчас</div><div class="stat-value">{{ device_view.stats.latest_current_a }}</div><div class="muted tiny">A</div></article>
       <article class="card stat-card"><div class="muted">Напряжение</div><div class="stat-value">{{ device_view.stats.latest_voltage_v }}</div><div class="muted tiny">V</div></article>
+      {% if device_view.boiler.energy_total_kwh is not none %}<article class="card stat-card"><div class="muted">Счётчик</div><div class="stat-value">{{ device_view.boiler.energy_total_kwh }}</div><div class="muted tiny">kWh</div></article>{% endif %}
       {% if device_view.boiler.has_temperature %}
         <article class="card stat-card"><div class="muted">Температура</div><div class="stat-value">{{ device_view.boiler.current_temperature_c or '—' }} °C</div><div class="muted tiny">Цель: {{ device_view.boiler.target_temperature_c or '—' }} °C</div></article>
       {% endif %}

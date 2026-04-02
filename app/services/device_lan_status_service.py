@@ -87,6 +87,11 @@ def _should_poll_locally(config: DeviceLanConfig | None) -> bool:
     return bool(config.local_enabled and config.is_complete and config.is_locally_verified)
 
 
+def _looks_like_boiler_dps(dps: dict[str, Any]) -> bool:
+    keys = {str(key) for key in dps.keys()}
+    return {"1", "2", "9", "10"}.issubset(keys)
+
+
 def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, config: DeviceLanConfig) -> ProviderStatusSnapshot:
     probe = fetch_local_status(
         device_id=provider_device.external_id,
@@ -98,6 +103,8 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
     dps = payload.get("dps") if isinstance(payload.get("dps"), dict) else {}
 
     profile_hint = (device.device_profile or '').strip().lower() or None
+    if _looks_like_boiler_dps(dps):
+        profile_hint = 'boiler'
     if profile_hint in {'power_strip', 'metering_plug'} or _looks_like_metering_plug(payload, dps, spec):
         profile_hint = 'metering_plug'
 
@@ -127,9 +134,9 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
     energy_total_kwh = _local_metric_decimal(payload, dps, code="add_ele", dps_candidates=(("17", 3), (17, 3)), definition=spec.definition("add_ele"))
 
     if profile_hint == "boiler":
-        fault_raw = _first_value(payload, dps, ("fault",), ())
+        fault_raw = _first_value(payload, dps, ("fault",), ("20", 20))
     else:
-        fault_raw = _first_value(payload, dps, ("fault",), ("9", 9))
+        fault_raw = _first_value(payload, dps, ("fault",), ("26", 26, "9", 9))
     fault_code = None if fault_raw in (None, "", 0, "0") else str(fault_raw)
 
     profile = profile_hint or _detect_device_profile(provider_device, spec, current_temperature_c, target_temperature_c)

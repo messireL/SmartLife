@@ -100,16 +100,26 @@ def _raw_decimal_from_dps(dps: dict[str, Any], key: str | int) -> Decimal | None
     return _debug_decimal(value)
 
 
+def _looks_like_boiler_payload(dps: dict[str, Any]) -> bool:
+    keys = {str(key) for key in dps.keys()}
+    return {"1", "2", "9", "10"}.issubset(keys)
+
+
 def _build_device_display_overrides(device: Device) -> dict[str, Any]:
     _, probe_result, dps = _payload_probe_and_dps(device)
     overrides: dict[str, Any] = {}
 
-    if device.device_profile == "boiler":
+    profile_hint = (device.device_profile or '').strip().lower() or None
+    if _looks_like_boiler_payload(dps):
+        profile_hint = 'boiler'
+
+    if profile_hint == "boiler":
         current_temp = _raw_decimal_from_dps(dps, "10")
         target_temp = _raw_decimal_from_dps(dps, "9")
         mode_value = dps.get("2")
         if mode_value in (None, ""):
             mode_value = dps.get(2)
+        fault_value = _raw_decimal_from_dps(dps, "20")
 
         if current_temp is not None:
             overrides["current_temperature_c"] = current_temp
@@ -117,25 +127,32 @@ def _build_device_display_overrides(device: Device) -> dict[str, Any]:
             overrides["target_temperature_c"] = target_temp
         if mode_value not in (None, ""):
             overrides["operation_mode"] = str(mode_value)
-
-        explicit_fault = probe_result.get("fault") if isinstance(probe_result, dict) else None
-        if explicit_fault in (None, "", 0, "0"):
+        if fault_value in (None, Decimal("0")):
             overrides["fault_code"] = None
-        elif target_temp is not None and str(explicit_fault) == str(target_temp):
-            overrides["fault_code"] = None
+        else:
+            overrides["fault_code"] = str(int(fault_value)) if fault_value == fault_value.to_integral_value() else str(fault_value)
+        overrides["device_profile"] = "boiler"
 
     metering_dps_present = any(str(key) in dps for key in ("17", "18", "19", "20")) or any(key in dps for key in (17, 18, 19, 20))
     if device.device_profile in {"metering_plug", "power_strip"} or metering_dps_present:
         voltage_raw = _raw_decimal_from_dps(dps, "20")
         current_raw = _raw_decimal_from_dps(dps, "18")
         power_raw = _raw_decimal_from_dps(dps, "19")
+        energy_raw = _raw_decimal_from_dps(dps, "17")
+        fault_raw = _raw_decimal_from_dps(dps, "26")
 
         if voltage_raw is not None:
             overrides["current_voltage_v"] = (voltage_raw / Decimal("10")).quantize(Decimal("0.1"))
         if current_raw is not None:
             overrides["current_a"] = (current_raw / Decimal("1000")).quantize(Decimal("0.001"))
         if power_raw is not None:
-            overrides["current_power_w"] = power_raw.quantize(Decimal("0.01"))
+            overrides["current_power_w"] = (power_raw / Decimal("10")).quantize(Decimal("0.1"))
+        if energy_raw is not None:
+            overrides["energy_total_kwh"] = (energy_raw / Decimal("1000")).quantize(Decimal("0.001"))
+        if fault_raw in (None, Decimal("0")):
+            overrides["fault_code"] = None
+        elif fault_raw is not None:
+            overrides["fault_code"] = str(int(fault_raw)) if fault_raw == fault_raw.to_integral_value() else str(fault_raw)
         if device.device_profile != "metering_plug":
             overrides["device_profile"] = "metering_plug"
 
@@ -147,6 +164,7 @@ def decorate_device_for_display(device: Device) -> Device:
     device.display_current_power_w = overrides.get("current_power_w", device.current_power_w)
     device.display_current_voltage_v = overrides.get("current_voltage_v", device.current_voltage_v)
     device.display_current_a = overrides.get("current_a", device.current_a)
+    device.display_energy_total_kwh = overrides.get("energy_total_kwh", device.energy_total_kwh)
     device.display_current_temperature_c = overrides.get("current_temperature_c", device.current_temperature_c)
     device.display_target_temperature_c = overrides.get("target_temperature_c", device.target_temperature_c)
     device.display_operation_mode = overrides.get("operation_mode", device.operation_mode)
@@ -158,7 +176,7 @@ def decorate_device_for_display(device: Device) -> Device:
             device.display_current_power_w,
             device.display_current_voltage_v,
             device.display_current_a,
-            device.energy_total_kwh,
+            device.display_energy_total_kwh,
             device.display_current_temperature_c,
             device.display_target_temperature_c,
         )
@@ -245,16 +263,17 @@ def _extract_device_debug(device: Device, snapshot_rows: list[DeviceStatusSnapsh
             "unit": str(definition.get('unit') or '—'),
         })
 
+    display = _build_device_display_overrides(device)
     mapped_rows = [
         {"label": 'Питание', "value": 'on' if device.switch_on is True else 'off' if device.switch_on is False else '—'},
-        {"label": 'Мощность', "value": _debug_value_text(device.current_power_w) if device.current_power_w is not None else '—'},
-        {"label": 'Напряжение', "value": _debug_value_text(device.current_voltage_v) if device.current_voltage_v is not None else '—'},
-        {"label": 'Ток', "value": _debug_value_text(device.current_a) if device.current_a is not None else '—'},
-        {"label": 'Энергия total', "value": _debug_value_text(device.energy_total_kwh) if device.energy_total_kwh is not None else '—'},
-        {"label": 'Температура текущая', "value": _debug_value_text(device.current_temperature_c) if device.current_temperature_c is not None else '—'},
-        {"label": 'Температура целевая', "value": _debug_value_text(device.target_temperature_c) if device.target_temperature_c is not None else '—'},
-        {"label": 'Режим', "value": device.operation_mode or '—'},
-        {"label": 'Fault', "value": device.fault_code or '0'},
+        {"label": 'Мощность', "value": _debug_value_text(display.get('current_power_w', device.current_power_w)) if display.get('current_power_w', device.current_power_w) is not None else '—'},
+        {"label": 'Напряжение', "value": _debug_value_text(display.get('current_voltage_v', device.current_voltage_v)) if display.get('current_voltage_v', device.current_voltage_v) is not None else '—'},
+        {"label": 'Ток', "value": _debug_value_text(display.get('current_a', device.current_a)) if display.get('current_a', device.current_a) is not None else '—'},
+        {"label": 'Энергия total', "value": _debug_value_text(display.get('energy_total_kwh', device.energy_total_kwh)) if display.get('energy_total_kwh', device.energy_total_kwh) is not None else '—'},
+        {"label": 'Температура текущая', "value": _debug_value_text(display.get('current_temperature_c', device.current_temperature_c)) if display.get('current_temperature_c', device.current_temperature_c) is not None else '—'},
+        {"label": 'Температура целевая', "value": _debug_value_text(display.get('target_temperature_c', device.target_temperature_c)) if display.get('target_temperature_c', device.target_temperature_c) is not None else '—'},
+        {"label": 'Режим', "value": display.get('operation_mode', device.operation_mode) or '—'},
+        {"label": 'Fault', "value": display.get('fault_code', device.fault_code) or '0'},
     ]
 
     return {
@@ -1158,6 +1177,7 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
     display_current_a = display_overrides.get("current_a", device.current_a)
     display_current_temperature_c = display_overrides.get("current_temperature_c", device.current_temperature_c)
     display_target_temperature_c = display_overrides.get("target_temperature_c", device.target_temperature_c)
+    display_energy_total_kwh = display_overrides.get("energy_total_kwh", device.energy_total_kwh)
     display_operation_mode = display_overrides.get("operation_mode", device.operation_mode)
     display_fault_code = display_overrides.get("fault_code", device.fault_code)
     display_device_profile = display_overrides.get("device_profile", device.device_profile)
@@ -1214,6 +1234,7 @@ def get_device_dashboard(db: Session, device: Device) -> dict:
             "operation_mode": display_operation_mode,
             "operation_mode_label": _label_mode(display_operation_mode),
             "fault_code": display_fault_code,
+            "energy_total_kwh": _quantize(display_energy_total_kwh, "0.000") if display_energy_total_kwh is not None else None,
             "temp_range_label": f"{target_min}…{target_max} °C · шаг {target_step} °C" if target_min is not None and target_max is not None and target_step is not None else None,
         },
         "channels": channel_summary,

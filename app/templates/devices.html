@@ -124,6 +124,9 @@
                 {% elif device.display_current_temperature_c is not none or device.display_target_temperature_c is not none %}
                   <div class="metric-main">{{ device.display_current_temperature_c or '—' }} °C</div>
                   <div class="tiny muted">цель {{ device.display_target_temperature_c or '—' }} °C</div>
+                {% elif device.display_current_voltage_v is not none or device.display_current_a is not none or device.display_energy_total_kwh is not none %}
+                  <div class="metric-main">{{ device.display_current_voltage_v if device.display_current_voltage_v is not none else '—' }} V</div>
+                  <div class="tiny muted">{{ device.display_current_a or '—' }} A · счётчик {{ device.display_energy_total_kwh if device.display_energy_total_kwh is not none else '—' }} kWh</div>
                 {% else %}
                   <div class="metric-main">—</div>
                   {% if device.last_status_payload and '"transport": "tuya_local"' in device.last_status_payload %}
@@ -142,7 +145,7 @@
                 <div class="metric-main">{{ energy.today_kwh if energy and energy.today_kwh is not none else '—' }} kWh</div>
                 <div class="tiny muted">сегодня · месяц {{ energy.month_kwh if energy and energy.month_kwh is not none else '—' }} kWh</div>
                 <div class="device-tags">
-                  {% if device.energy_total_kwh is not none %}<span class="badge soft-badge">счётчик {{ device.energy_total_kwh }} kWh</span>{% endif %}
+                  {% if device.display_energy_total_kwh is not none %}<span class="badge soft-badge">счётчик {{ device.display_energy_total_kwh }} kWh</span>{% endif %}
                   {% if energy and energy.mode_label == 'расчёт по мощности' %}<span class="badge badge-blue">расчёт по мощности</span>{% elif energy and energy.mode_label == 'счётчик устройства' %}<span class="badge soft-badge">счётчик устройства</span>{% elif energy and energy.mode_label == 'нет телеметрии' and lan and lan.is_locally_verified %}<span class="badge soft-badge">без показаний</span>{% endif %}
                 </div>
               </td>
