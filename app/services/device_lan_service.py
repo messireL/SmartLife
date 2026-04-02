@@ -241,6 +241,37 @@ def record_device_lan_fetch(db: Session, device_id: int, *, source: str, cloud_i
     return get_device_lan_config(db, device_id)
 
 
+def save_device_lan_metadata(
+    db: Session,
+    *,
+    device_id: int,
+    cloud_ip: str = "",
+    mac: str = "",
+    key_source: str = "",
+    key_refreshed_at: str = "",
+    last_probe_at: str = "",
+    last_probe_status: str = "",
+    last_probe_message: str = "",
+) -> DeviceLanConfig:
+    if cloud_ip:
+        set_setting_value(db, _device_lan_key(device_id, "cloud_ip"), cloud_ip.strip())
+    normalized_mac = _normalize_mac(mac)
+    if normalized_mac:
+        set_setting_value(db, _device_lan_key(device_id, "mac"), normalized_mac)
+    if key_source:
+        set_setting_value(db, _device_lan_key(device_id, "key_source"), key_source.strip())
+    if key_refreshed_at:
+        set_setting_value(db, _device_lan_key(device_id, "key_refreshed_at"), key_refreshed_at.strip())
+    if last_probe_at:
+        set_setting_value(db, _device_lan_key(device_id, "last_probe_at"), last_probe_at.strip())
+    if last_probe_status:
+        set_setting_value(db, _device_lan_key(device_id, "last_probe_status"), last_probe_status.strip())
+    if last_probe_message:
+        set_setting_value(db, _device_lan_key(device_id, "last_probe_message"), last_probe_message.strip())
+    db.commit()
+    return get_device_lan_config(db, device_id)
+
+
 def record_device_lan_probe(db: Session, device_id: int, *, status: str, message: str) -> DeviceLanConfig:
     now = datetime.utcnow().replace(microsecond=0)
     set_setting_value(db, _device_lan_key(device_id, "last_probe_at"), now.isoformat())

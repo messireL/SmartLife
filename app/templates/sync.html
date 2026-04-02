@@ -55,13 +55,31 @@
 
 <section class="grid-2">
   <article class="card">
+    <div class="section-header"><h2>Резерв LAN-профилей и ключей</h2></div>
+    <div class="muted" style="margin-bottom:12px;">Сохраняет локальный контур целиком: <code>external_id</code>, IP, protocol version, <code>local_key</code>, MAC, статус последнего probe и флаги LAN. Это страховка, чтобы после переезда или новой БД не жечь лимит Tuya повторным запросом key по всем устройствам.</div>
+    <div class="form-actions" style="margin-bottom:14px;">
+      <a class="button-primary" href="/sync/lan-backup.json">Скачать LAN-резерв JSON</a>
+      <form method="post" action="/sync/lan-backup-save"><button type="submit" class="button-secondary">Сохранить LAN-резерв на сервере</button></form>
+    </div>
+    <form class="stack-form" method="post" action="/sync/lan-backup-import" enctype="multipart/form-data">
+      <label>Восстановить из JSON
+        <input class="input" type="file" name="json_file" accept=".json,application/json" required>
+      </label>
+      <div class="muted tiny">Импорт идёт по <code>external_id</code>. SmartLife восстановит local key, IP, MAC, рабочую версию протокола, флаги LAN и результат последнего probe — без нового cloud-запроса к Tuya.</div>
+      <div class="form-actions">
+        <button type="submit">Импортировать LAN JSON</button>
+      </div>
+    </form>
+  </article>
+
+  <article class="card">
     <div class="section-header"><h2>Импорт LAN-полей из CSV</h2></div>
     <div class="muted" style="margin-bottom:12px;">Возьми devices-lan-seed или devices-lan-enriched, дополни <code>local_ip</code>, <code>protocol_version</code>, <code>local_key</code> и загрузи файл сюда. SmartLife свяжет строки по <code>external_id</code> и обновит LAN-профили пачкой.</div>
     <form class="stack-form" method="post" action="/sync/lan-import" enctype="multipart/form-data">
       <label>CSV-файл
         <input class="input" type="file" name="csv_file" accept=".csv,text/csv" required>
       </label>
-      <div class="muted tiny">Пустой <code>local_key</code> не затирает уже сохранённый ключ. Для явной очистки можно добавить колонку <code>clear_local_key</code> со значением <code>true</code>. Если колонка <code>prefer_local</code> отсутствует или пустая, SmartLife теперь сам включает <strong>Prefer LAN</strong> по умолчанию.</div>
+      <div class="muted tiny">Пустой <code>local_key</code> не затирает уже сохранённый ключ. Для явной очистки можно добавить колонку <code>clear_local_key</code> со значением <code>true</code>. Если колонка <code>prefer_local</code> отсутствует или пустая, SmartLife оставляет текущее значение, чтобы импорт не включал prefer-LAN молча.</div>
       <div class="form-actions">
         <button class="button-primary" type="submit">Импортировать LAN CSV</button>
       </div>

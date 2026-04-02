@@ -16,6 +16,7 @@ from app.services.device_lan_service import (
     save_device_lan_config,
 )
 from app.services.tuya_local_service import TuyaLocalError, probe_local_device
+from app.services.device_lan_network_service import resolve_local_mac
 
 
 class DeviceLanKeyError(RuntimeError):
@@ -55,11 +56,26 @@ class DeviceLanProbeRefreshResult:
 
 
 def _extract_tuya_mac(payload: dict[str, Any]) -> str:
-    for key in ("mac", "wifi_mac", "wifiMac", "gw_mac", "gateway_mac"):
-        value = str(payload.get(key) or "").strip()
-        if value:
-            return value
-    return ""
+    preferred_keys = {"mac", "wifi_mac", "wifimac", "gw_mac", "gateway_mac", "lan_mac", "eth_mac"}
+
+    def walk(node: Any) -> str:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                key_text = str(key or "").strip().lower().replace("-", "_")
+                if key_text in preferred_keys and str(value or "").strip():
+                    return str(value or "").strip()
+                found = walk(value)
+                if found:
+                    return found
+            return ""
+        if isinstance(node, list):
+            for item in node:
+                found = walk(item)
+                if found:
+                    return found
+        return ""
+
+    return walk(payload)
 
 
 def refresh_device_lan_key_from_tuya(db: Session, device: Device) -> DeviceLanKeyFetchResult:
@@ -91,7 +107,10 @@ def refresh_device_lan_key_from_tuya(db: Session, device: Device) -> DeviceLanKe
         prefer_local=existing.prefer_local,
         preserve_existing_key=False,
     )
-    record_device_lan_fetch(db, device.id, source="tuya_cloud_manual", cloud_ip=fetched_ip, mac=_extract_tuya_mac(payload))
+    mac_value = _extract_tuya_mac(payload)
+    if not mac_value and saved_ip:
+        mac_value = resolve_local_mac(saved_ip)
+    record_device_lan_fetch(db, device.id, source="tuya_cloud_manual", cloud_ip=fetched_ip, mac=mac_value)
 
     probe_attempted = bool(config.local_ip and config.has_local_key)
     probe_success = False
@@ -119,6 +138,7 @@ def refresh_device_lan_key_from_tuya(db: Session, device: Device) -> DeviceLanKe
                 f"LAN-probe успешен: {probe.ip} · v{probe.protocol_version}. "
                 "SmartLife сохранил рабочие LAN-данные, но не менял флаги LAN-профиля и prefer-LAN автоматически."
             )
+            record_device_lan_fetch(db, device.id, source="tuya_cloud_manual", cloud_ip=fetched_ip, mac=resolve_local_mac(probe.ip) or mac_value)
             record_device_lan_probe(db, device.id, status="success", message=probe_message)
         except TuyaLocalError as exc:
             probe_message = str(exc)
@@ -166,6 +186,10 @@ def reprobe_device_lan_profile(db: Session, device: Device) -> DeviceLanProbeRef
             preserve_existing_key=False,
         )
         message = f"LAN-probe успешен: {probe.ip} · v{probe.protocol_version}."
+        resolved_mac = resolve_local_mac(probe.ip)
+        if resolved_mac:
+            record_device_lan_fetch(db, device.id, source=config.key_source or "lan_probe", cloud_ip=config.cloud_ip, mac=resolved_mac)
+            config = get_device_lan_config(db, device.id)
         record_device_lan_probe(db, device.id, status="success", message=message)
         return DeviceLanProbeRefreshResult(config=config, probe_success=True, probe_message=message)
     except TuyaLocalError as exc:

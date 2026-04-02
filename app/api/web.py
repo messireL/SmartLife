@@ -5,7 +5,7 @@ import math
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -37,6 +37,7 @@ from app.services.badge_service import ALLOWED_BADGE_COLORS, assign_badge_to_dev
 from app.services.device_lan_key_service import DeviceLanKeyError, refresh_device_lan_key_from_tuya, reprobe_device_lan_profile
 from app.services.device_lan_service import get_device_lan_config, get_device_lan_configs_map, save_device_lan_config
 from app.services.device_lan_batch_service import batch_probe_local_devices, get_device_lan_inventory_overview, import_device_lan_csv
+from app.services.device_lan_backup_service import dump_device_lan_backup_json, import_device_lan_backup_json, save_device_lan_backup_snapshot
 from app.services.channel_style_service import get_channel_icon_choices, get_channel_role_choices, normalize_channel_icon_key, normalize_channel_role_key
 from app.services.device_query_service import get_badge_choices, get_devices_for_ui, get_provider_choices, get_room_choices
 from app.services.room_service import get_rooms_overview
@@ -795,6 +796,49 @@ async def import_device_lan_csv_action(
         )
         if result.key_updates_total:
             flash += f" Ключей обновлено: {result.key_updates_total}."
+        if result.errors:
+            flash += " Ошибки: " + " | ".join(result.errors[:3])
+        if result.unmatched_external_ids:
+            flash += " Не найдены: " + ", ".join(result.unmatched_external_ids[:5])
+    except ValueError as exc:
+        flash = str(exc)
+    return RedirectResponse(url=f"/sync?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.get("/sync/lan-backup.json")
+def download_device_lan_backup_json(db: Session = Depends(get_db)):
+    filename, payload = dump_device_lan_backup_json(db)
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(iter([payload]), media_type="application/json", headers=headers)
+
+
+@router.post("/sync/lan-backup-save")
+def save_device_lan_backup_snapshot_action(db: Session = Depends(get_db)):
+    snapshot = save_device_lan_backup_snapshot(db)
+    flash = (
+        f"LAN-резерв сохранён на сервере: {snapshot['filename']} · "
+        f"{round(int(snapshot['size_bytes']) / 1024, 1)} KiB."
+    )
+    return RedirectResponse(url=f"/sync?flash={quote_plus(flash)}", status_code=303)
+
+
+@router.post("/sync/lan-backup-import")
+async def import_device_lan_backup_json_action(
+    json_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        filename = json_file.filename or "smartlife-device-lan-backup.json"
+        payload = await json_file.read()
+        result = import_device_lan_backup_json(db, filename=filename, content=payload)
+        flash = (
+            f"LAN JSON импортирован: элементов={result.rows_total}, совпало={result.matched_total}, изменено={result.changed_total}, "
+            f"без изменений={result.unchanged_total}, не найдено={result.unmatched_total}."
+        )
+        if result.key_updates_total:
+            flash += f" Ключей восстановлено: {result.key_updates_total}."
+        if result.mac_updates_total:
+            flash += f" MAC восстановлено: {result.mac_updates_total}."
         if result.errors:
             flash += " Ошибки: " + " | ".join(result.errors[:3])
         if result.unmatched_external_ids:
