@@ -88,7 +88,7 @@
                   <div class="tiny muted">{{ device.model or device.product_name or 'Устройство без модели' }}</div>
                   <div class="device-tags">
                     {% if device.badge %}<span class="badge custom-badge badge-{{ device.badge.color }}">{{ device.badge.name }}</span>{% endif %}
-                    {% if device.device_profile == "boiler" %}<span class="badge soft-badge">бойлер</span>{% elif device.device_profile == "power_strip" %}<span class="badge soft-badge">сетевой фильтр</span>{% elif device.current_temperature_c is not none or device.target_temperature_c is not none %}<span class="badge soft-badge">термоданные</span>{% endif %}
+                    {% if device.device_profile == "boiler" %}<span class="badge soft-badge">бойлер</span>{% elif device.device_profile == "power_strip" %}<span class="badge soft-badge">сетевой фильтр</span>{% elif device.device_profile == "metering_plug" %}<span class="badge soft-badge">розетка с измерением</span>{% elif device.current_temperature_c is not none or device.target_temperature_c is not none %}<span class="badge soft-badge">термоданные</span>{% endif %}
                     {% set codes = device.control_codes %}
                     {% set socket_ns = namespace(count=0, usb=0) %}
                     {% for code in codes %}{% if code.startswith("switch_") and not code.startswith("switch_usb") %}{% set socket_ns.count = socket_ns.count + 1 %}{% endif %}{% if code.startswith("switch_usb") or code == "switch_usb" %}{% set socket_ns.usb = socket_ns.usb + 1 %}{% endif %}{% endfor %}

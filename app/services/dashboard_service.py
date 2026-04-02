@@ -121,6 +121,8 @@ def _build_local_debug_hints(device: Device, local_rows: list[dict[str, Any]]) -
                 f'Текущее значение fault={fault_number} похоже на температуру/уставку, а не на аварийный код. '
                 'Посмотри таблицу сырых DP ниже и уточни маппинг.'
             )
+    if device.device_profile == 'metering_plug':
+        hints.append('Для измеряющей розетки SmartLife читает relay из dps[1], напряжение из dps[20] и пытается взять энергию/ток/мощность из dps[17]/[18]/[19]. Для точного маппинга мощности сними raw DP в состоянии под нагрузкой.')
     return hints
 
 
@@ -228,6 +230,8 @@ def _profile_label(value: str | None) -> str | None:
         return 'Температурное устройство'
     if value == 'power_strip':
         return 'Сетевой фильтр / удлинитель'
+    if value == 'metering_plug':
+        return 'Розетка с измерением'
     return None
 
 

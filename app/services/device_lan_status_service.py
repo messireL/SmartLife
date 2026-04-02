@@ -20,7 +20,7 @@ from app.integrations.tuya_provider import (
     _scaled_decimal,
 )
 from app.services.device_lan_service import DeviceLanConfig, get_device_lan_configs_map
-from app.services.tuya_local_service import TuyaLocalError, probe_local_device
+from app.services.tuya_local_service import TuyaLocalError, fetch_local_status, probe_local_device
 
 
 @dataclass(slots=True)
@@ -88,16 +88,18 @@ def _should_poll_locally(config: DeviceLanConfig | None) -> bool:
 
 
 def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, config: DeviceLanConfig) -> ProviderStatusSnapshot:
-    probe = probe_local_device(
+    probe = fetch_local_status(
         device_id=provider_device.external_id,
         config=config,
-        candidate_versions=(config.protocol_version, "3.5", "3.4", "3.3", "3.2", "3.1"),
+        timeout_seconds=2,
     )
     spec = _spec_from_device(device)
     payload = probe.result if isinstance(probe.result, dict) else {}
     dps = payload.get("dps") if isinstance(payload.get("dps"), dict) else {}
 
-    profile_hint = (device.device_profile or "").strip().lower() or None
+    profile_hint = (device.device_profile or '').strip().lower() or None
+    if profile_hint in {'power_strip', 'metering_plug'} or _looks_like_metering_plug(payload, dps, spec):
+        profile_hint = 'metering_plug'
 
     switch_on = _coalesce_bool(_first_value(payload, dps, ("switch", "switch_1"), ("1", 1)))
 
@@ -117,8 +119,10 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
         target_temperature_candidates = ("9", 9, "2", 2, "102", 102)
         mode_candidates = ("2", 2, "4", 4)
 
-    current_temperature_c = _local_temperature_decimal(payload, dps, code="temp_current", dps_candidates=current_temperature_candidates, definition=spec.definition("temp_current"))
-    target_temperature_c = _local_temperature_decimal(payload, dps, code="temp_set", dps_candidates=target_temperature_candidates, definition=spec.definition("temp_set"))
+    current_temp_definition = None if profile_hint == 'boiler' else spec.definition('temp_current')
+    target_temp_definition = None if profile_hint == 'boiler' else spec.definition('temp_set')
+    current_temperature_c = _local_temperature_decimal(payload, dps, code="temp_current", dps_candidates=current_temperature_candidates, definition=current_temp_definition)
+    target_temperature_c = _local_temperature_decimal(payload, dps, code="temp_set", dps_candidates=target_temperature_candidates, definition=target_temp_definition)
     operation_mode = _normalize_mode(_first_value(payload, dps, ("mode",), mode_candidates))
     energy_total_kwh = _local_metric_decimal(payload, dps, code="add_ele", dps_candidates=(("17", 3), (17, 3)), definition=spec.definition("add_ele"))
 
@@ -128,7 +132,7 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
         fault_raw = _first_value(payload, dps, ("fault",), ("9", 9))
     fault_code = None if fault_raw in (None, "", 0, "0") else str(fault_raw)
 
-    profile = device.device_profile or _detect_device_profile(provider_device, spec, current_temperature_c, target_temperature_c)
+    profile = profile_hint or _detect_device_profile(provider_device, spec, current_temperature_c, target_temperature_c)
     telemetry_flags = {
         "switch": switch_on is not None,
         "power": power_w is not None,
@@ -179,6 +183,14 @@ def _build_local_snapshot(*, provider_device: ProviderDevice, device: Device, co
         source_note=source_note,
         raw_payload=raw_payload,
     )
+
+
+def _looks_like_metering_plug(payload: dict[str, Any], dps: dict[str, Any], spec: TuyaDeviceSpec) -> bool:
+    metering_codes = {'cur_power', 'cur_voltage', 'cur_current', 'add_ele'}
+    if any(code in spec.all_codes for code in metering_codes):
+        return True
+    metering_dps = {'17', '18', '19', '20', 17, 18, 19, 20}
+    return sum(1 for key in metering_dps if key in dps) >= 3
 
 
 def _spec_from_device(device: Device) -> TuyaDeviceSpec:

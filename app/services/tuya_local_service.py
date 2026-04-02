@@ -49,6 +49,27 @@ def send_local_command(*, device_id: str, config: DeviceLanConfig, command_code:
     }
 
 
+def fetch_local_status(*, device_id: str, config: DeviceLanConfig, timeout_seconds: int = 2) -> TuyaLocalProbeResult:
+    if not (config.local_ip or '').strip():
+        raise TuyaLocalError('Для локального статуса нужен локальный IP устройства.')
+    if not (config.local_key or '').strip():
+        raise TuyaLocalError('Для локального статуса нужен local key устройства.')
+    protocol_version = str(config.protocol_version or '').strip()
+    if not protocol_version:
+        raise TuyaLocalError('Для локального статуса нужна сохранённая версия протокола.')
+
+    try:
+        result = _status_once(device_id=device_id, local_ip=config.local_ip, local_key=config.local_key, protocol_version=protocol_version, timeout_seconds=timeout_seconds)
+    except Exception as exc:  # noqa: BLE001
+        raise TuyaLocalError(f'Локальный статус не получен: {exc}') from exc
+
+    if _looks_like_tinytuya_error(result):
+        raise TuyaLocalError(_format_tinytuya_error(result))
+    if not isinstance(result, dict):
+        raise TuyaLocalError(f'Unexpected TinyTuya payload type: {type(result).__name__}')
+    return TuyaLocalProbeResult(ip=config.local_ip, protocol_version=protocol_version, result=result)
+
+
 def probe_local_device(*, device_id: str, config: DeviceLanConfig, candidate_versions: Iterable[str] | None = None) -> TuyaLocalProbeResult:
     if not (config.local_ip or "").strip():
         raise TuyaLocalError("Для LAN-probe нужен локальный IP устройства.")
@@ -67,8 +88,7 @@ def probe_local_device(*, device_id: str, config: DeviceLanConfig, candidate_ver
     last_error = ""
     for version in versions:
         try:
-            device = _build_tinytuya_device(device_id, config.local_ip, config.local_key, version)
-            result = device.status()
+            result = _status_once(device_id=device_id, local_ip=config.local_ip, local_key=config.local_key, protocol_version=version, timeout_seconds=5)
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)
             continue
@@ -85,7 +105,12 @@ def probe_local_device(*, device_id: str, config: DeviceLanConfig, candidate_ver
     )
 
 
-def _build_tinytuya_device(device_id: str, local_ip: str, local_key: str, protocol_version: str):
+def _status_once(*, device_id: str, local_ip: str, local_key: str, protocol_version: str, timeout_seconds: int):
+    device = _build_tinytuya_device(device_id, local_ip, local_key, protocol_version, socket_timeout=timeout_seconds)
+    return device.status()
+
+
+def _build_tinytuya_device(device_id: str, local_ip: str, local_key: str, protocol_version: str, socket_timeout: int = 5):
     try:
         import tinytuya
     except Exception as exc:  # noqa: BLE001
@@ -104,7 +129,7 @@ def _build_tinytuya_device(device_id: str, local_ip: str, local_key: str, protoc
     if hasattr(device, "set_socketPersistent"):
         device.set_socketPersistent(False)
     if hasattr(device, "set_socketTimeout"):
-        device.set_socketTimeout(5)
+        device.set_socketTimeout(socket_timeout)
     return device
 
 
